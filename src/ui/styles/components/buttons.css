@@ -1,0 +1,139 @@
+
+
+button.app-flat-button {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  color: alpha(@window_fg_color, 0.86);
+  box-shadow: none;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease,
+    opacity 120ms ease;
+}
+
+button.app-flat-button:hover {
+  background: alpha(@window_fg_color, 0.09);
+  background-color: alpha(@window_fg_color, 0.09);
+  border-color: alpha(@window_fg_color, 0.14);
+  color: alpha(@window_fg_color, 0.96);
+}
+
+button.app-flat-button:active {
+  background: alpha(@window_fg_color, 0.14);
+  background-color: alpha(@window_fg_color, 0.14);
+  border-color: alpha(@window_fg_color, 0.2);
+  color: alpha(@window_fg_color, 0.99);
+}
+
+button.app-flat-button:disabled {
+  opacity: 0.55;
+}
+
+button.app-flat-button label,
+button.app-flat-button image {
+  color: inherit;
+}
+
+
+menubutton.app-flat-button,
+menubutton.app-flat-button > button,
+menubutton.app-flat-button > button.toggle {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  background-image: none;
+  color: alpha(@window_fg_color, 0.86);
+  box-shadow: none;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease,
+    opacity 120ms ease;
+}
+
+menubutton.app-flat-button > button:hover,
+menubutton.app-flat-button > button.toggle:hover {
+  background: alpha(@window_fg_color, 0.09);
+  border-color: alpha(@window_fg_color, 0.14);
+  color: alpha(@window_fg_color, 0.96);
+}
+
+menubutton.app-flat-button > button:active,
+menubutton.app-flat-button > button:checked,
+menubutton.app-flat-button > button.toggle:active,
+menubutton.app-flat-button > button.toggle:checked {
+  background: alpha(@window_fg_color, 0.14);
+  border-color: alpha(@window_fg_color, 0.2);
+  color: alpha(@window_fg_color, 0.99);
+}
+
+menubutton.app-flat-button label,
+menubutton.app-flat-button image,
+menubutton.app-flat-button > button label,
+menubutton.app-flat-button > button image {
+  color: inherit;
+}
+
+button.suggested-action,
+button.profile-create-button {
+  border-radius: 10px;
+  border: 1px solid alpha(@accent_bg_color, 0.72);
+  background: alpha(@accent_bg_color, 0.25);
+  color: alpha(white, 0.96);
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease,
+    opacity 120ms ease;
+}
+
+button.suggested-action:hover,
+button.profile-create-button:hover {
+  border-color: alpha(@accent_bg_color, 0.84);
+  background: alpha(@accent_bg_color, 0.34);
+  color: alpha(white, 0.98);
+}
+
+button.suggested-action:active,
+button.profile-create-button:active {
+  border-color: alpha(@accent_bg_color, 0.9);
+  background: alpha(@accent_bg_color, 0.4);
+  color: alpha(white, 1.0);
+}
+
+button.suggested-action:disabled,
+button.profile-create-button:disabled {
+  opacity: 0.55;
+}
+
+button.suggested-action label,
+button.suggested-action image,
+button.profile-create-button label,
+button.profile-create-button image {
+  color: inherit;
+}
+
+button.destructive-action {
+  border-radius: 10px;
+  border: 1px solid alpha(#d35d5d, 0.72);
+  background: alpha(#d35d5d, 0.2);
+  color: alpha(white, 0.96);
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease,
+    opacity 120ms ease;
+}
+
+button.destructive-action:hover {
+  border-color: alpha(#de6b6b, 0.84);
+  background: alpha(#de6b6b, 0.3);
+  color: alpha(white, 0.98);
+}
+
+button.destructive-action:active {
+  border-color: alpha(#e67a7a, 0.9);
+  background: alpha(#e67a7a, 0.38);
+  color: alpha(white, 1.0);
+}
+
+button.destructive-action:disabled {
+  opacity: 0.55;
+}
+
+button.destructive-action label,
+button.destructive-action image {
+  color: inherit;
+}

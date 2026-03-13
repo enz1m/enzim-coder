@@ -1,0 +1,68 @@
+.restore-preview-heading {
+  font-weight: 600;
+}
+
+.restore-preview-summary {
+  color: alpha(@window_fg_color, 0.72);
+}
+
+.restore-preview-git-warning {
+  border-radius: 8px;
+  border: 1px solid alpha(@warning_color, 0.55);
+  background: alpha(@warning_color, 0.10);
+  color: alpha(@window_fg_color, 0.92);
+  font-size: 0.80rem;
+  padding: 6px 8px;
+}
+
+.restore-preview-row {
+  border-radius: 8px;
+}
+
+.restore-preview-path {
+  font-family: monospace;
+  font-size: 0.86rem;
+}
+
+.restore-preview-kind {
+  font-size: 0.78rem;
+  color: alpha(@window_fg_color, 0.68);
+}
+
+.restore-preview-force {
+  margin-left: 6px;
+}
+
+.restore-preview-reason {
+  font-size: 0.78rem;
+  color: alpha(@window_fg_color, 0.62);
+}
+
+.restore-preview-reason-conflict {
+  font-size: 0.78rem;
+  color: @error_color;
+}
+
+.restore-preview-context {
+  padding: 2px 0;
+}
+
+.restore-preview-card {
+  border-radius: 10px;
+  border: 1px solid alpha(@window_fg_color, 0.12);
+  background: alpha(@window_fg_color, 0.04);
+  padding: 8px 10px;
+}
+
+.restore-preview-card-title {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: alpha(@window_fg_color, 0.68);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.restore-preview-card-body {
+  font-size: 0.84rem;
+  color: alpha(@window_fg_color, 0.90);
+}

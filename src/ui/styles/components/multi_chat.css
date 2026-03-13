@@ -1,0 +1,306 @@
+.multi-chat-panes-row {
+  padding-top: 0;
+  min-height: 200px;
+}
+
+.multi-chat-pane {
+  border-radius: 14px;
+  border: 1px solid alpha(@window_fg_color, 0.12);
+  background-color: alpha(@view_bg_color, 0.88);
+  min-width: 420px;
+  transition: border-color 140ms ease, box-shadow 140ms ease, opacity 140ms ease, margin 120ms ease;
+}
+
+.multi-chat-column {
+  min-width: 420px;
+}
+
+.multi-chat-pane-focused {
+  border-color: alpha(@accent_bg_color, 0.72);
+  box-shadow: 0 0 0 1px alpha(@accent_bg_color, 0.28);
+}
+
+.multi-chat-panes-row.multi-chat-reordering .multi-chat-pane-focused {
+  border-color: alpha(@window_fg_color, 0.12);
+  box-shadow: none;
+}
+
+.multi-chat-panes-row.multi-chat-reordering .multi-chat-pane:drop(active) {
+  border-color: alpha(@window_fg_color, 0.12);
+  box-shadow: none;
+  outline: none;
+}
+
+.multi-chat-panes-row.multi-chat-reordering .multi-chat-pane *:drop(active) {
+  box-shadow: none;
+  outline: none;
+  border-color: transparent;
+  background-image: none;
+}
+
+.multi-chat-pane-header {
+  min-height: 28px;
+  border-radius: 10px 10px 0 0;
+  transition: background-color 120ms ease;
+}
+
+.multi-chat-pane-header:hover {
+  background-color: transparent;
+}
+
+.multi-chat-pane-bottom-extension {
+  border: none;
+  border-radius: 0;
+  padding: 2px 0 4px 0;
+  background: transparent;
+}
+
+.multi-chat-pane-bottom-extension .chat-live-status-row {
+  min-height: 20px;
+  padding: 0;
+}
+
+.multi-chat-pane-meta {
+  min-width: 120px;
+}
+
+.multi-chat-pane-thread-title {
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: alpha(@window_fg_color, 0.95);
+}
+
+.multi-chat-pane-workspace-name {
+  font-size: 0.77rem;
+  color: alpha(@window_fg_color, 0.65);
+}
+
+.multi-chat-pane-dragging {
+  opacity: 0.78;
+  border-color: alpha(@accent_bg_color, 0.55);
+}
+
+.multi-chat-pane-drop-before {
+  border-color: alpha(@window_fg_color, 0.12);
+  box-shadow: none;
+}
+
+.multi-chat-pane-drop-after {
+  border-color: alpha(@window_fg_color, 0.12);
+  box-shadow: none;
+}
+
+.multi-chat-pane-drop-top {
+  box-shadow: none;
+}
+
+.multi-chat-pane-drop-bottom {
+  box-shadow: none;
+}
+
+.multi-chat-pane-edge-indicator {
+  min-height: 0;
+  margin-left: 14px;
+  margin-right: 14px;
+  border-radius: 999px;
+  background: alpha(@accent_bg_color, 0.0);
+  transition: min-height 120ms ease, background-color 120ms ease, margin 120ms ease;
+}
+
+.multi-chat-pane-drop-top .multi-chat-pane-edge-indicator-top,
+.multi-chat-pane-drop-bottom .multi-chat-pane-edge-indicator-bottom {
+  min-height: 10px;
+  margin-left: 10px;
+  margin-right: 10px;
+  margin-top: 6px;
+  margin-bottom: 6px;
+  background: alpha(@accent_bg_color, 0.92);
+}
+
+.multi-chat-pane-drag-chip {
+  background: alpha(@window_bg_color, 0.95);
+  border-color: alpha(@accent_bg_color, 0.35);
+}
+
+.multi-chat-between-slot {
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  min-width: 4px;
+  padding-left: 6px;
+  padding-right: 6px;
+  transition: min-width 110ms ease, background-color 110ms ease, border-color 110ms ease, box-shadow 110ms ease;
+}
+
+.multi-chat-between-slot-active,
+.multi-chat-between-slot-hover {
+  min-width: 34px;
+}
+
+.multi-chat-between-slot-indicator {
+  min-width: 0;
+  border-radius: 999px;
+  background: alpha(@accent_bg_color, 0.0);
+  transition: min-width 110ms ease, background-color 110ms ease, box-shadow 110ms ease;
+}
+
+.multi-chat-between-slot-active .multi-chat-between-slot-indicator,
+.multi-chat-between-slot-hover .multi-chat-between-slot-indicator {
+  min-width: 14px;
+  background: alpha(@accent_bg_color, 0.9);
+  box-shadow: inset 0 0 0 1px alpha(@accent_bg_color, 0.98);
+}
+
+.multi-chat-pane-close {
+  min-width: 22px;
+  min-height: 22px;
+  color: alpha(@window_fg_color, 0.78);
+}
+
+#multi-chat-pane-close,
+#multi-chat-pane-close-icon,
+.multi-chat-pane-close-icon {
+  color: inherit;
+}
+
+.multi-chat-pane-close-icon {
+  -gtk-icon-style: symbolic;
+  opacity: 1;
+}
+
+.multi-chat-pane-close:hover,
+.multi-chat-pane-close.is-hover,
+.multi-chat-pane-close.is-active {
+  color: alpha(@window_fg_color, 0.95);
+}
+
+.multi-chat-pane-header-end {
+  min-height: 22px;
+}
+
+.multi-chat-pane-actions-button {
+  min-width: 22px;
+  min-height: 22px;
+  padding: 0;
+  margin: 0;
+  color: alpha(@window_fg_color, 0.78);
+}
+
+.multi-chat-pane-skills-mcp-button {
+  min-width: 22px;
+  min-height: 22px;
+  padding: 0;
+  margin: 0;
+  color: alpha(@window_fg_color, 0.78);
+}
+
+.multi-chat-pane-actions-button:hover {
+  color: alpha(@window_fg_color, 0.95);
+}
+
+.multi-chat-pane-skills-mcp-button:hover {
+  color: alpha(@window_fg_color, 0.95);
+}
+
+.multi-chat-pane-actions-button.is-active {
+  color: alpha(@window_fg_color, 0.95);
+}
+
+.multi-chat-pane-skills-mcp-button.is-active {
+  color: alpha(@window_fg_color, 0.95);
+}
+
+.multi-chat-drop-slot {
+  border-radius: 14px;
+  border: 1px dashed alpha(@window_fg_color, 0.26);
+  background: alpha(@window_fg_color, 0.03);
+  min-height: 240px;
+  min-width: 220px;
+}
+
+#multi-chat-panes-scroll {
+  padding-bottom: 138px;
+}
+
+#multi-chat-panes-scroll,
+#multi-chat-panes-scroll > viewport,
+#multi-chat-panes-scroll > viewport.view {
+  background: transparent;
+  background-color: transparent;
+}
+
+scrolledwindow#multi-chat-panes-scroll > scrollbar.horizontal,
+scrolledwindow#multi-chat-panes-scroll > scrollbar.horizontal > range,
+scrolledwindow#multi-chat-panes-scroll > scrollbar.horizontal > range > trough {
+  margin: 0 12px 10px 12px;
+  padding: 0;
+  background: transparent;
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  min-height: 8px;
+}
+
+scrolledwindow#multi-chat-panes-scroll > scrollbar.horizontal > range > trough > slider {
+  min-height: 6px;
+  border-radius: 999px;
+  background: alpha(@window_fg_color, 0.28);
+  border: none;
+  box-shadow: none;
+}
+
+scrolledwindow#multi-chat-panes-scroll > scrollbar.horizontal > range > trough > slider:hover {
+  background: alpha(@window_fg_color, 0.42);
+}
+
+scrolledwindow#multi-chat-panes-scroll > scrollbar.horizontal > range > trough > slider:active {
+  background: alpha(@window_fg_color, 0.52);
+}
+
+#multi-chat-panes-scroll undershoot.left,
+#multi-chat-panes-scroll undershoot.right {
+  background: transparent;
+  background-image: none;
+}
+
+.multi-chat-pane scrolledwindow#chat-messages-scroll > scrollbar.vertical,
+.multi-chat-pane scrolledwindow#chat-messages-scroll > scrollbar.vertical > range,
+.multi-chat-pane scrolledwindow#chat-messages-scroll > scrollbar.vertical > range > trough {
+  background: transparent;
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.multi-chat-pane scrolledwindow#chat-messages-scroll > scrollbar.vertical > range > trough > slider {
+  border-radius: 999px;
+  background: alpha(@window_fg_color, 0.24);
+  border: none;
+  box-shadow: none;
+}
+
+.multi-chat-pane scrolledwindow#chat-messages-scroll > scrollbar.vertical > range > trough > slider:hover {
+  background: alpha(@window_fg_color, 0.36);
+}
+
+.multi-chat-drop-plus {
+  font-size: 2.2rem;
+  color: alpha(@window_fg_color, 0.45);
+  font-weight: 600;
+}
+
+.multi-chat-bottom-base {
+  min-height: 130px;
+  border-top: none;
+  background: transparent;
+}
+
+.multi-chat-shared-composer {
+  padding: 0 8px 8px 8px;
+  border: none;
+  background: transparent;
+}
+
+.shared-composer-shell {
+  padding-top: 0;
+}

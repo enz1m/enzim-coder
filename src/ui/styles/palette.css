@@ -1,0 +1,17 @@
+@define-color enzim_window_bg #222226;
+@define-color enzim_view_bg #353433;
+@define-color enzim_window_fg #ffffff;
+@define-color enzim_accent_bg #3584e4;
+@define-color enzim_accent #81d0ff;
+@define-color enzim_destructive #ff938c;
+@define-color enzim_warning #ffc252;
+@define-color enzim_error #ff938c;
+
+@define-color window_bg_color @enzim_window_bg;
+@define-color view_bg_color @enzim_view_bg;
+@define-color window_fg_color @enzim_window_fg;
+@define-color accent_bg_color @enzim_accent_bg;
+@define-color accent_color @enzim_accent;
+@define-color destructive_color @enzim_destructive;
+@define-color warning_color @enzim_warning;
+@define-color error_color @enzim_error;

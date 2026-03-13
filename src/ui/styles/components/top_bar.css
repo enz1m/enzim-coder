@@ -1,0 +1,294 @@
+headerbar.top-tabs-bar {
+  min-height: 26px;
+  padding: 0;
+  margin: 0;
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+headerbar.top-tabs-bar box.start,
+headerbar.top-tabs-bar box.center,
+headerbar.top-tabs-bar box.end,
+headerbar.top-tabs-bar .top-tabs-container,
+headerbar.top-tabs-bar .top-window-controls,
+headerbar.top-tabs-bar .top-window-close-button {
+  min-height: 26px;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+headerbar.top-tabs-bar .titlebutton,
+headerbar.top-tabs-bar windowcontrols > button {
+  min-height: 20px;
+  min-width: 20px;
+  padding: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  background-image: none;
+  box-shadow: none;
+  color: alpha(@window_fg_color, 0.74);
+}
+
+headerbar.top-tabs-bar .top-window-controls > button image,
+headerbar.top-tabs-bar .titlebutton image {
+  color: alpha(@window_fg_color, 0.78);
+}
+
+headerbar.top-tabs-bar .top-window-controls > button:hover,
+headerbar.top-tabs-bar .titlebutton:hover {
+  background: alpha(@window_fg_color, 0.10);
+  border: none;
+  border-color: transparent;
+  color: alpha(@window_fg_color, 0.92);
+}
+
+headerbar.top-tabs-bar .top-window-controls > button:hover image,
+headerbar.top-tabs-bar .titlebutton:hover image {
+  color: alpha(@window_fg_color, 0.94);
+}
+
+headerbar.top-tabs-bar .top-window-controls > button:active,
+headerbar.top-tabs-bar .titlebutton:active {
+  background: alpha(@window_fg_color, 0.15);
+  border: none;
+  border-color: transparent;
+  color: alpha(@window_fg_color, 0.98);
+}
+
+headerbar.top-tabs-bar .top-window-controls > button.close,
+headerbar.top-tabs-bar .titlebutton.close {
+  border-radius: 999px;
+  color: alpha(@window_fg_color, 0.78);
+}
+
+headerbar.top-tabs-bar .top-window-controls > button.close image,
+headerbar.top-tabs-bar .titlebutton.close image {
+  color: alpha(@window_fg_color, 0.82);
+}
+
+headerbar.top-tabs-bar .top-window-controls > button.close:hover,
+headerbar.top-tabs-bar .titlebutton.close:hover,
+headerbar.top-tabs-bar .top-window-controls > button.close:active,
+headerbar.top-tabs-bar .titlebutton.close:active {
+  border-radius: 999px;
+  background: alpha(@window_fg_color, 0.12);
+  border: none;
+  border-color: transparent;
+  color: alpha(@window_fg_color, 0.96);
+}
+
+headerbar.top-tabs-bar .multiview-toggle-button {
+  min-height: 20px;
+  min-width: 20px;
+  padding: 0;
+  margin: 0 2px 0 0;
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  border-color: transparent;
+  box-shadow: none;
+  color: alpha(@window_fg_color, 0.75);
+}
+
+headerbar.top-tabs-bar .multiview-toggle-button image {
+  color: inherit;
+}
+
+headerbar.top-tabs-bar .multiview-toggle-button:checked {
+  color: @accent_color;
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+headerbar.top-tabs-bar .multiview-toggle-button:hover,
+headerbar.top-tabs-bar .multiview-toggle-button:active,
+headerbar.top-tabs-bar .multiview-toggle-button:focus-visible {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  border-color: transparent;
+  box-shadow: none;
+  color: alpha(@window_fg_color, 0.94);
+}
+
+.top-tabs {
+}
+
+.top-tabs-container {
+  padding: 0;
+  margin: 0;
+}
+
+.top-tab {
+  min-height: 24px;
+  padding: 0 3px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  background-image: none;
+  box-shadow: none;
+  color: alpha(@window_fg_color, 0.82);
+}
+
+.top-tab:hover,
+.top-tab:active,
+.top-tab:focus,
+.top-tab:focus-visible {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  border-color: transparent;
+  color: alpha(@window_fg_color, 0.95);
+}
+
+.top-tab-active {
+  color: @accent_color;
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  border-color: transparent;
+}
+
+.top-tab-active:hover,
+.top-tab-active:active,
+.top-tab-active:focus,
+.top-tab-active:focus-visible {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  border-color: transparent;
+}
+
+.tab-separator {
+  color: alpha(@window_fg_color, 0.35);
+  margin: 0 3px;
+}
+
+headerbar.top-tabs-bar .topbar-actions-button {
+  min-height: 20px;
+  min-width: 20px;
+  padding: 0;
+  margin: 0 2px 0 0;
+  color: alpha(@window_fg_color, 0.76);
+}
+
+headerbar.top-tabs-bar .topbar-skills-mcp-button {
+  min-height: 20px;
+  min-width: 20px;
+  padding: 0;
+  margin: 0 2px 0 0;
+  color: alpha(@window_fg_color, 0.76);
+}
+
+headerbar.top-tabs-bar .topbar-update-button {
+  min-height: 22px;
+  min-width: 22px;
+  padding: 0 8px;
+  margin: 0 4px 0 0;
+  border-radius: 999px;
+  background: alpha(@accent_color, 0.16);
+  color: @accent_color;
+}
+
+headerbar.top-tabs-bar .topbar-update-button:hover,
+headerbar.top-tabs-bar .topbar-update-button:active,
+headerbar.top-tabs-bar .topbar-update-button.is-active {
+  background: alpha(@accent_color, 0.24);
+  color: @accent_color;
+}
+
+headerbar.top-tabs-bar .topbar-update-button image,
+headerbar.top-tabs-bar .topbar-update-button label {
+  color: inherit;
+}
+
+.topbar-update-label {
+  font-size: 0.86rem;
+  font-weight: 650;
+}
+
+.topbar-update-dot {
+  min-width: 6px;
+  min-height: 6px;
+  margin-left: 2px;
+  border-radius: 999px;
+  background: @accent_color;
+  background-color: @accent_color;
+}
+
+.update-popover {
+  min-width: 460px;
+}
+
+.update-changelog-label {
+  padding: 0;
+  margin: 0;
+  color: alpha(@window_fg_color, 0.9);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+headerbar.top-tabs-bar .top-window-close-button,
+headerbar.top-tabs-bar button#top-window-close-button {
+  min-height: 24px;
+  min-width: 24px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 999px;
+  background: alpha(@window_fg_color, 0.08);
+  background-color: alpha(@window_fg_color, 0.08);
+  background-image: none;
+  box-shadow: none;
+  color: alpha(@window_fg_color, 0.78);
+}
+
+headerbar.top-tabs-bar .top-window-close-button image,
+headerbar.top-tabs-bar image#top-window-close-icon,
+headerbar.top-tabs-bar .top-window-close-icon {
+  color: inherit;
+  -gtk-icon-style: symbolic;
+  opacity: 1;
+}
+
+headerbar.top-tabs-bar .topbar-actions-button:hover {
+  color: alpha(@window_fg_color, 0.94);
+}
+
+headerbar.top-tabs-bar .topbar-skills-mcp-button:hover {
+  color: alpha(@window_fg_color, 0.94);
+}
+
+headerbar.top-tabs-bar .topbar-actions-button.is-active {
+  color: alpha(@window_fg_color, 0.94);
+}
+
+headerbar.top-tabs-bar .topbar-skills-mcp-button.is-active {
+  color: alpha(@window_fg_color, 0.94);
+}
+
+headerbar.top-tabs-bar .top-window-close-button:hover,
+headerbar.top-tabs-bar .top-window-close-button:active,
+headerbar.top-tabs-bar .top-window-close-button:focus-visible {
+  background: alpha(@window_fg_color, 0.16);
+  background-color: alpha(@window_fg_color, 0.16);
+  border: none;
+  border-color: transparent;
+  box-shadow: none;
+  color: alpha(@window_fg_color, 0.96);
+}

@@ -1,0 +1,261 @@
+.welcome-overlay {
+  background: alpha(#757b86, 0.14);
+  backdrop-filter: blur(3px);
+  opacity: 1;
+  transition: background 1500ms ease, backdrop-filter 1500ms ease, opacity 1500ms ease;
+}
+
+.welcome-overlay.guide-mode {
+  background: alpha(#757b86, 0.08);
+  backdrop-filter: blur(0px);
+}
+
+.welcome-overlay.is-dismissing {
+  background: alpha(#757b86, 0.0);
+  backdrop-filter: blur(0px);
+  opacity: 0;
+}
+
+.welcome-overlay-center {
+  padding: 20px;
+}
+
+.welcome-dialog {
+  border-radius: 16px;
+  border: 4px solid alpha(@window_bg_color, 0.98);
+  background: alpha(@window_bg_color, 0.96);
+  box-shadow: 0 0 0 1px alpha(@window_fg_color, 0.16), 0 22px 52px alpha(black, 0.34);
+  padding: 12px;
+}
+
+.welcome-brand {
+  margin-bottom: 2px;
+}
+
+.welcome-brand-title {
+  font-size: 1.08rem;
+}
+
+.welcome-brand-badge {
+  border-radius: 999px;
+}
+
+.welcome-section {
+  border-radius: 12px;
+  border: 1px solid alpha(@window_fg_color, 0.1);
+  background: alpha(@window_fg_color, 0.035);
+  padding: 12px;
+}
+
+.welcome-section-title {
+  font-size: 0.72rem;
+  font-weight: 640;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: alpha(@window_fg_color, 0.56);
+}
+
+.welcome-provider-rows {
+  margin-top: 4px;
+}
+
+.welcome-provider-row {
+  border-radius: 10px;
+  background: alpha(@window_fg_color, 0.04);
+  padding: 8px 10px;
+}
+
+.welcome-provider-name {
+  font-size: 0.94rem;
+  font-weight: 560;
+}
+
+.welcome-provider-icon {
+  min-width: 16px;
+  min-height: 16px;
+}
+
+.welcome-provider-icon-codex {
+  color: alpha(#ffffff, 0.98);
+}
+
+.welcome-pill-badge {
+  border-radius: 999px;
+  border: 1px solid alpha(@window_fg_color, 0.22);
+  background: alpha(@window_fg_color, 0.07);
+  padding: 2px 10px;
+  font-size: 0.7rem;
+  font-weight: 640;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.welcome-status-installed {
+  background: alpha(#5ebf85, 0.24);
+  border-color: alpha(#5ebf85, 0.7);
+  color: alpha(#d8ffe8, 0.98);
+}
+
+.welcome-status-not-installed {
+  background: alpha(#db7d89, 0.22);
+  border-color: alpha(#db7d89, 0.7);
+  color: alpha(#ffe6ea, 0.98);
+}
+
+.welcome-status-soon {
+  background: alpha(@window_fg_color, 0.1);
+  border-color: alpha(@window_fg_color, 0.24);
+  color: alpha(@window_fg_color, 0.86);
+}
+
+.welcome-auth-detected {
+  font-size: 0.9rem;
+  font-weight: 560;
+  color: alpha(@window_fg_color, 0.96);
+}
+
+.welcome-muted {
+  color: alpha(@window_fg_color, 0.8);
+  font-size: 0.88rem;
+}
+
+.welcome-subtle {
+  color: alpha(@window_fg_color, 0.62);
+  font-size: 0.8rem;
+}
+
+.welcome-login-url {
+  border-radius: 10px;
+}
+
+.welcome-login-button {
+  margin-top: 10px;
+  min-width: 220px;
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+
+.welcome-code-block {
+  border-radius: 10px;
+  border: 1px solid alpha(@window_fg_color, 0.2);
+  background: alpha(@window_fg_color, 0.08);
+  padding: 8px;
+}
+
+.welcome-code-text {
+  font-family: monospace;
+  font-size: 0.87rem;
+  color: alpha(@window_fg_color, 0.94);
+}
+
+.welcome-icon-copy {
+  min-width: 30px;
+  min-height: 30px;
+  border-radius: 999px;
+}
+
+.welcome-next-button {
+  min-width: 140px;
+}
+
+.welcome-skip-button {
+  min-width: 110px;
+  opacity: 0.82;
+}
+
+.welcome-guide-page {
+  background: transparent;
+  border: none;
+  padding: 2px 2px 2px;
+  min-height: 170px;
+}
+
+.welcome-guide-title {
+  font-size: 0.94rem;
+  font-weight: 670;
+  color: alpha(@window_fg_color, 0.96);
+  margin-bottom: 6px;
+}
+
+.welcome-guide-sections {
+  margin-top: 2px;
+}
+
+.welcome-guide-section {
+  border-radius: 7px;
+  border: 1px solid alpha(@window_fg_color, 0.14);
+  background: alpha(@window_fg_color, 0.048);
+  padding: 8px 10px;
+}
+
+.welcome-guide-section-icon-wrap {
+  min-width: 24px;
+  min-height: 24px;
+  border-radius: 0;
+  background: transparent;
+  color: alpha(@window_fg_color, 0.9);
+}
+
+.welcome-guide-section-title {
+  font-size: 0.92rem;
+  font-weight: 730;
+  color: alpha(@window_fg_color, 0.95);
+}
+
+.welcome-guide-section-body {
+  font-size: 0.8rem;
+  color: alpha(@window_fg_color, 0.8);
+}
+
+.welcome-guide-note {
+  font-size: 0.74rem;
+  color: alpha(@window_fg_color, 0.62);
+  margin-top: 2px;
+}
+
+.sidebar-add-workspace-button,
+.onboarding-mock-add-thread,
+.top-tab,
+.topbar-actions-button,
+.topbar-skills-mcp-button,
+.multiview-toggle-button,
+.bottom-remote-button,
+.bottom-settings-button,
+.bottom-style-button {
+  transition: color 140ms ease, opacity 140ms ease;
+}
+
+.sidebar-add-workspace-button label,
+.onboarding-mock-add-thread image,
+.top-tab label,
+.top-tab image,
+.topbar-actions-button image,
+.topbar-skills-mcp-button image,
+.multiview-toggle-button image,
+.bottom-remote-button image,
+.bottom-settings-button image,
+.bottom-style-button image {
+  transition: color 140ms ease, opacity 140ms ease;
+}
+
+.onboarding-hover-pulse {
+  color: alpha(@accent_color, 0.98);
+  opacity: 1;
+}
+
+.onboarding-hover-pulse-soft {
+  color: alpha(@accent_color, 0.72);
+  opacity: 0.9;
+}
+
+.onboarding-hover-pulse image,
+.onboarding-hover-pulse label {
+  color: alpha(@accent_color, 0.98);
+  opacity: 1;
+}
+
+.onboarding-hover-pulse-soft image,
+.onboarding-hover-pulse-soft label {
+  color: alpha(@accent_color, 0.72);
+  opacity: 0.9;
+}

@@ -1,0 +1,17 @@
+[package]
+name = "enzimcoder"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+
+[dependencies]
+gtk = { package = "gtk4", version = "0.11", features = ["v4_22"] }
+adw = { package = "libadwaita", version = "0.9", features = ["v1_8", "gtk_v4_22"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde_json = "1.0"
+sourceview5 = "0.11"
+diffy = "0.4"
+libc = "0.2"
+toml = "0.9"
+serde_yaml = "0.9"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }

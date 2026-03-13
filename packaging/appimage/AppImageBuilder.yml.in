@@ -1,0 +1,79 @@
+version: 1
+
+script:
+  - cargo build --release --locked --manifest-path Cargo.toml
+  - rm -rf AppDir
+  - mkdir -p AppDir/usr/bin
+  - mkdir -p AppDir/usr/share/applications
+  - mkdir -p AppDir/usr/share/icons/hicolor/scalable/apps
+  - mkdir -p AppDir/usr/share/icons/hicolor/512x512/apps
+  - mkdir -p AppDir/usr/share/metainfo
+  - install -Dm755 target/release/enzimcoder AppDir/usr/bin/enzimcoder
+  - install -Dm644 packaging/shared/dev.enzim.EnzimCoder.desktop AppDir/usr/share/applications/dev.enzim.EnzimCoder.desktop
+  - install -Dm644 packaging/appimage/dev.enzim.EnzimCoder.desktop AppDir/dev.enzim.EnzimCoder.desktop
+  - install -Dm644 packaging/shared/dev.enzim.EnzimCoder.metainfo.xml AppDir/usr/share/metainfo/dev.enzim.EnzimCoder.metainfo.xml
+  - install -Dm644 packaging/shared/dev.enzim.EnzimCoder.metainfo.xml AppDir/usr/share/metainfo/dev.enzim.EnzimCoder.appdata.xml
+  - install -Dm644 icons/dev.enzim.EnzimCoder.svg AppDir/usr/share/icons/hicolor/scalable/apps/dev.enzim.EnzimCoder.svg
+  - install -Dm644 icons/dev.enzim.EnzimCoder.svg AppDir/dev.enzim.EnzimCoder.svg
+  - rsvg-convert -w 512 -h 512 icons/dev.enzim.EnzimCoder.svg -o AppDir/dev.enzim.EnzimCoder.png
+  - install -Dm644 AppDir/dev.enzim.EnzimCoder.png AppDir/usr/share/icons/hicolor/512x512/apps/dev.enzim.EnzimCoder.png
+  - ln -sfn dev.enzim.EnzimCoder.png AppDir/.DirIcon
+
+AppDir:
+  path: AppDir
+  app_info:
+    id: dev.enzim.EnzimCoder
+    name: Enzim Coder
+    icon: dev.enzim.EnzimCoder
+    version: @VERSION@
+    exec: usr/bin/enzimcoder
+    exec_args: $@
+  apt:
+    arch: amd64
+    sources:
+      - sourceline: deb http://archive.ubuntu.com/ubuntu/ resolute main universe
+        key_url: https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x871920D1991BC93C
+      - sourceline: deb http://archive.ubuntu.com/ubuntu/ resolute-updates main universe
+        key_url: https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x871920D1991BC93C
+      - sourceline: deb http://security.ubuntu.com/ubuntu/ resolute-security main universe
+        key_url: https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x871920D1991BC93C
+    include:
+      - libgtk-4-1
+      - libgtk-4-bin
+      - libadwaita-1-0
+      - libdrm2
+      - libegl-mesa0
+      - libegl1
+      - libgbm1
+      - libgl1
+      - libgles2
+      - libglvnd0
+      - libglx-mesa0
+      - libglx0
+      - libgtksourceview-5-0
+      - libwayland-client0
+      - libwayland-cursor0
+      - libwayland-egl1
+      - libx11-6
+      - libx11-xcb1
+      - libxau6
+      - libxcb-dri3-0
+      - libxcb-glx0
+      - libxcb-present0
+      - libxcb-randr0
+      - libxcb-render0
+      - libxcb-shm0
+      - libxcb-sync1
+      - libxcb1
+      - libxcb-xfixes0
+      - libxdmcp6
+      - libxshmfence1
+      - librsvg2-common
+      - shared-mime-info
+    exclude:
+      - adwaita-icon-theme
+      - humanity-icon-theme
+
+AppImage:
+  arch: x86_64
+  file_name: EnzimCoder-@VERSION@-x86_64.AppImage

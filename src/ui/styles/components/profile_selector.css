@@ -1,0 +1,96 @@
+.chat-profile-selector {
+  min-width: 500px;
+  padding: 14px;
+  border-radius: 14px;
+  background: alpha(@window_fg_color, 0.03);
+  border: 1px solid alpha(@window_fg_color, 0.08);
+}
+
+.chat-profile-selector-title {
+  font-size: 1.06rem;
+  font-weight: 700;
+}
+
+.chat-profile-selector-subtitle {
+  color: alpha(@window_fg_color, 0.72);
+}
+
+.chat-profile-card {
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: alpha(@window_fg_color, 0.045);
+  border: 1px solid alpha(@window_fg_color, 0.08);
+}
+
+.chat-profile-card-avatar {
+  min-width: 18px;
+  min-height: 18px;
+  background: transparent;
+  border: none;
+}
+
+.chat-profile-card-avatar-image {
+  color: alpha(@window_fg_color, 0.88);
+}
+
+.chat-profile-card-state-pill {
+  padding: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  color: alpha(@window_fg_color, 0.68);
+}
+
+.chat-profile-card-state-pill.is-running {
+  color: alpha(#82d48a, 0.95);
+}
+
+.chat-profile-card-state-pill.is-stopped {
+  color: alpha(#dd8f8f, 0.9);
+}
+
+.chat-profile-card-actions {
+  min-height: 24px;
+}
+
+button.chat-profile-card-start,
+button.chat-profile-card-select {
+  border-radius: 8px;
+  min-height: 24px;
+  padding: 0 10px;
+  font-size: 0.8rem;
+  border: 1px solid alpha(@window_fg_color, 0.16);
+  background: alpha(@window_fg_color, 0.07);
+  color: alpha(@window_fg_color, 0.92);
+}
+
+button.chat-profile-card-start:hover,
+button.chat-profile-card-select:hover {
+  background: alpha(@window_fg_color, 0.11);
+  border-color: alpha(@window_fg_color, 0.24);
+}
+
+button.chat-profile-card-start:active,
+button.chat-profile-card-select:active {
+  background: alpha(@window_fg_color, 0.14);
+}
+
+.chat-profile-card-hint {
+  color: alpha(@window_fg_color, 0.64);
+  font-size: 0.8rem;
+}
+
+.chat-profile-card-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.chat-profile-card-email {
+  color: alpha(@window_fg_color, 0.72);
+  font-size: 0.82rem;
+}
+
+.chat-profile-selector-status {
+  color: alpha(@window_fg_color, 0.8);
+}

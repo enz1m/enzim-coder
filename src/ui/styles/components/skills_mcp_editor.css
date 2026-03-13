@@ -1,0 +1,44 @@
+#skills-mcp-editor-scroll,
+.skills-mcp-editor-scroll {
+  border-radius: 10px;
+  border: 1px solid alpha(@window_fg_color, 0.14);
+  background: alpha(@window_fg_color, 0.05);
+  background-color: alpha(@window_fg_color, 0.05);
+  background-image: none;
+}
+
+.skills-mcp-editor-scroll > border,
+#skills-mcp-editor-scroll > border,
+.skills-mcp-editor-scroll > viewport,
+.skills-mcp-editor-scroll > viewport.view,
+#skills-mcp-editor-scroll > viewport,
+#skills-mcp-editor-scroll > viewport.view,
+.skills-mcp-editor-scroll > viewport > textview,
+.skills-mcp-editor-scroll > viewport > textview.view,
+#skills-mcp-editor-scroll > viewport > textview,
+#skills-mcp-editor-scroll > viewport > textview.view,
+textview.skills-mcp-editor-view,
+textview.skills-mcp-editor-view.view,
+textview.skills-mcp-editor-view text,
+textview#skills-mcp-editor-view,
+textview#skills-mcp-editor-view.view,
+textview#skills-mcp-editor-view text {
+  background: alpha(@window_fg_color, 0.05);
+  background-color: alpha(@window_fg_color, 0.05);
+  background-image: none;
+  color: @window_fg_color;
+  border-width: 0;
+  border-style: none;
+  border-color: transparent;
+  box-shadow: unset;
+}
+
+textview.skills-mcp-editor-view {
+  font-family: monospace;
+  font-size: 0.76rem;
+}
+
+textview#skills-mcp-editor-view {
+  font-family: monospace;
+  font-size: 0.76rem;
+}

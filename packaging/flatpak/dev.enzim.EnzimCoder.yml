@@ -1,0 +1,34 @@
+app-id: dev.enzim.EnzimCoder
+runtime: org.gnome.Platform
+runtime-version: "master"
+sdk: org.gnome.Sdk
+command: enzimcoder
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --filesystem=host
+  - --talk-name=org.freedesktop.Flatpak
+build-options:
+  build-args:
+    - --share=network
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/enzimcoder/.cargo
+    CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+modules:
+  - name: enzimcoder
+    buildsystem: simple
+    build-commands:
+      - cargo build --release --locked
+      - install -Dm755 target/release/enzimcoder /app/bin/enzimcoder
+      - install -Dm644 packaging/shared/dev.enzim.EnzimCoder.desktop /app/share/applications/dev.enzim.EnzimCoder.desktop
+      - install -Dm644 packaging/shared/dev.enzim.EnzimCoder.metainfo.xml /app/share/metainfo/dev.enzim.EnzimCoder.metainfo.xml
+      - install -Dm644 icons/dev.enzim.EnzimCoder.svg /app/share/icons/hicolor/scalable/apps/dev.enzim.EnzimCoder.svg
+    sources:
+      - type: dir
+        path: ../..
