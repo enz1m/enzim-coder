@@ -1,0 +1,205 @@
+.threads-list {
+  margin-top: 0px;
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+}
+
+.workspace-container > box.threads-list,
+.workspace-container > box.threads-list > *,
+.workspace-container > box.threads-list > listbox.thread-listbox-custom,
+.workspace-container > box.threads-list > listbox.thread-listbox-custom > row,
+.workspace-container > box.threads-list > listbox.thread-listbox-custom > row > box {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  outline: none;
+}
+
+.threads-list > box,
+.thread-listbox,
+.thread-listbox-custom,
+.thread-listbox-custom > row,
+.thread-listbox-custom > row > box {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+}
+
+.thread-listbox-custom {
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  padding: 0;
+}
+
+listbox.thread-listbox-custom,
+listbox.thread-listbox-custom.view,
+listbox.thread-listbox-custom row,
+listbox.thread-listbox-custom row.activatable,
+listbox.thread-listbox-custom row.selectable,
+listbox.thread-listbox-custom row.thread-row,
+listbox.thread-listbox-custom row.thread-row:hover,
+listbox.thread-listbox-custom row.thread-row:selected,
+listbox.thread-listbox-custom row.thread-row.thread-row-selected,
+listbox.thread-listbox-custom row.thread-row:active,
+listbox.thread-listbox-custom row.thread-row:focus,
+listbox.thread-listbox-custom row.thread-row:focus-visible {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  outline: none;
+}
+
+window:backdrop listbox.thread-listbox-custom row.thread-row,
+window:backdrop listbox.thread-listbox-custom row.thread-row:hover,
+window:backdrop listbox.thread-listbox-custom row.thread-row:selected,
+window:backdrop listbox.thread-listbox-custom row.thread-row.thread-row-selected,
+window:backdrop listbox.thread-listbox-custom row.thread-row:active,
+window:backdrop listbox.thread-listbox-custom row.thread-row:focus,
+window:backdrop listbox.thread-listbox-custom row.thread-row:focus-visible {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  outline: none;
+}
+
+.thread-listbox-custom row.thread-row {
+  min-height: 0;
+  margin: 1px 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  outline: none;
+  transition: none;
+}
+
+.thread-listbox-custom row.thread-row:hover,
+.thread-listbox-custom row.thread-row:selected,
+.thread-listbox-custom row.thread-row.thread-row-selected,
+.thread-listbox-custom row.thread-row:active {
+  background-color: transparent;
+  box-shadow: none;
+}
+
+.thread-listbox-custom row.thread-row > box.thread-row-content {
+  min-height: 20px;
+  margin: 0 1px;
+  padding: 1px 7px;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: 0 0 0 0 alpha(#b7b7b7, 0.0);
+  transition: background-color 120ms ease, box-shadow 220ms ease;
+}
+
+.thread-listbox-custom row.thread-row > box.thread-row-content:backdrop {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+}
+
+.thread-listbox-custom row.thread-row:hover > box.thread-row-content {
+  background-color: alpha(#8f8f8f, 0.12);
+}
+
+.thread-listbox-custom row.thread-row:selected > box.thread-row-content,
+.thread-listbox-custom row.thread-row.thread-row-selected > box.thread-row-content {
+  background-color: alpha(#8f8f8f, 0.12);
+  border: none;
+  box-shadow: 0 0 0 0 alpha(#b7b7b7, 0.0);
+}
+
+.thread-listbox-custom row.thread-row:active > box.thread-row-content {
+  background-color: alpha(#9a9a9a, 0.22);
+  box-shadow: 0 0 0 3px alpha(#b7b7b7, 0.16);
+  transition-duration: 45ms, 180ms;
+}
+
+window:backdrop .thread-listbox-custom row.thread-row > box.thread-row-content {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  transition: none;
+}
+
+.thread-title {
+  font-size: 0.82rem;
+  font-weight: 460;
+  line-height: 1.05;
+  color: alpha(@window_fg_color, 0.94);
+}
+
+.thread-listbox-custom row.thread-row:selected .thread-title,
+.thread-listbox-custom row.thread-row.thread-row-selected .thread-title {
+  color: @accent_color;
+  font-weight: 680;
+}
+
+.thread-listbox-custom row.thread-row:selected .thread-profile-icon,
+.thread-listbox-custom row.thread-row.thread-row-selected .thread-profile-icon {
+  color: @accent_color;
+}
+
+.thread-lock-icon {
+  color: alpha(@window_fg_color, 0.58);
+}
+
+.thread-worktree-icon {
+  color: alpha(@window_fg_color, 0.62);
+}
+
+.thread-profile-icon {
+  color: alpha(@window_fg_color, 0.7);
+}
+
+.thread-complete-icon {
+  color: #d8ad2f;
+}
+
+.thread-time {
+  font-size: 0.75rem;
+  color: alpha(@window_fg_color, 0.5);
+}
+
+.thread-listbox-custom row.thread-row:selected .thread-time,
+.thread-listbox-custom row.thread-row.thread-row-selected .thread-time {
+  color: @accent_color;
+}
+
+.thread-leading-icon.thread-wave-active,
+.thread-time.thread-wave-active,
+.thread-listbox-custom row.thread-row:selected .thread-leading-icon.thread-wave-active,
+.thread-listbox-custom row.thread-row.thread-row-selected .thread-leading-icon.thread-wave-active,
+.thread-listbox-custom row.thread-row:selected .thread-time.thread-wave-active,
+.thread-listbox-custom row.thread-row.thread-row-selected .thread-time.thread-wave-active {
+  color: #f1f3f6;
+}
+
+.thread-drag-chip {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: alpha(@window_bg_color, 0.92);
+  border: 1px solid alpha(@window_fg_color, 0.15);
+}
+
+.thread-drag-chip-label {
+  font-size: 0.78rem;
+  color: alpha(@window_fg_color, 0.9);
+}

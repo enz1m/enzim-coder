@@ -1,0 +1,255 @@
+.sidebar-content {
+  padding: 4px;
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+}
+
+.sidebar-host,
+.sidebar-body,
+.sidebar-scroll-overlay {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+}
+
+toolbarview.sidebar-content,
+toolbarview.sidebar-content > box,
+toolbarview.sidebar-content > box > box,
+toolbarview.sidebar-content > box > box > box,
+toolbarview.sidebar-content > box > box > widget,
+toolbarview.sidebar-content > box > widget,
+toolbarview.sidebar-content scrolledwindow,
+toolbarview.sidebar-content scrolledwindow > viewport,
+toolbarview.sidebar-content scrolledwindow > viewport.view,
+toolbarview.sidebar-content .sidebar-scroll,
+toolbarview.sidebar-content .sidebar-scroll > viewport,
+toolbarview.sidebar-content .sidebar-scroll > viewport.view {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+}
+
+.sidebar-content headerbar {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+}
+
+.sidebar-frame {
+  border-radius: 0;
+  border: none;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.sidebar-scroll,
+.sidebar-scroll > viewport,
+.sidebar-scroll > viewport.view,
+.sidebar-scroll undershoot,
+.sidebar-scroll overshoot {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+}
+
+.sidebar-scroll-fade {
+  min-height: 18px;
+  transition: opacity 160ms ease;
+}
+
+.sidebar-scroll-fade-top {
+  background-image: linear-gradient(to bottom,
+    alpha(@window_bg_color, 0.96) 0%,
+    alpha(@window_bg_color, 0.0) 100%);
+}
+
+.sidebar-scroll-fade-bottom {
+  background-image: linear-gradient(to top,
+    alpha(@window_bg_color, 0.96) 0%,
+    alpha(@window_bg_color, 0.0) 100%);
+}
+
+.app-brand {
+  min-height: 20px;
+  margin: 0;
+  padding: 0;
+}
+
+.app-brand-title {
+  font-size: 0.88rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  margin: 0;
+  padding: 0;
+  text-transform: uppercase;
+}
+
+.app-brand-badge {
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  margin: 0;
+  padding: 2px 5px;
+  border-radius: 4px;
+  border: 1px solid alpha(@window_fg_color, 0.2);
+}
+
+.preview-badge {
+  color: alpha(@window_fg_color, 0.72);
+  opacity: 1;
+}
+
+window:backdrop .preview-badge {
+  color: alpha(@window_fg_color, 0.72);
+  opacity: 1;
+}
+
+.workspace-container {
+  margin-bottom: 2px;
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+}
+
+.workspace-name {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.section-title {
+  font-size: 0.70rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: alpha(@window_fg_color, 0.3);
+}
+
+.workspace-add-thread-button {
+  min-width: 20px;
+  min-height: 20px;
+  padding: 0;
+  border-radius: 999px;
+  color: alpha(@window_fg_color, 0.48);
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.workspace-thread-settings-button {
+  min-width: 20px;
+  min-height: 20px;
+  padding: 0;
+  border-radius: 999px;
+  color: alpha(@window_fg_color, 0.48);
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.workspace-add-thread-button image,
+.workspace-thread-settings-button image {
+  color: inherit;
+}
+
+.workspace-add-thread-button:hover,
+.workspace-thread-settings-button:hover {
+  color: alpha(@window_fg_color, 0.62);
+  background: transparent;
+}
+
+.workspace-add-thread-button:active,
+.workspace-thread-settings-button:active {
+  color: alpha(@window_fg_color, 0.72);
+  background: transparent;
+}
+
+.workspace-add-thread-label {
+  color: alpha(@window_fg_color, 0.95);
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+
+.sidebar-action-button {
+  border-radius: 8px;
+  background-color: alpha(@window_fg_color, 0.06);
+  backdrop-filter: blur(10px);
+  border: 1px solid alpha(@window_fg_color, 0.1);
+  font-size: 0.85rem;
+  opacity: 0.68;
+  transition: opacity 140ms ease;
+}
+
+.sidebar-action-button:hover {
+  background-color: alpha(@window_fg_color, 0.1);
+  opacity: 1.0;
+}
+
+.sidebar-action-button:active {
+  background-color: alpha(@window_fg_color, 0.12);
+}
+
+.sidebar-action-button.workspace-attention {
+  border-color: alpha(@accent_color, 0.6);
+  background-color: alpha(@accent_color, 0.12);
+  box-shadow: 0 0 0 1px alpha(@accent_color, 0.36);
+  opacity: 1.0;
+}
+
+.onboarding-mock-workspaces {
+  margin-top: 2px;
+}
+
+.onboarding-mock-workspace {
+  opacity: 0.96;
+}
+
+.onboarding-mock-thread-list {
+  margin-top: 2px;
+}
+
+.onboarding-mock-thread-row {
+  border-radius: 6px;
+  background: alpha(@window_fg_color, 0.04);
+  padding: 4px 8px;
+}
+
+.thread-settings-title {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.thread-settings-subtitle {
+  color: alpha(@window_fg_color, 0.66);
+}
+
+.thread-settings-open-button {
+  opacity: 0.8;
+}
+
+.thread-settings-open-button:hover {
+  opacity: 1.0;
+  background: alpha(@window_fg_color, 0.1);
+}
+
+.thread-settings-content {
+  border-radius: 12px;
+  border: 1px solid alpha(@window_fg_color, 0.14);
+  background: alpha(@window_fg_color, 0.03);
+}

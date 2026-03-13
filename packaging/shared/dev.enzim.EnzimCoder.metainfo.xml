@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.enzim.EnzimCoder</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Enzim Coder</name>
+  <summary>Local-first AI coding workspace with threads, Git, and files</summary>
+  <developer id="dev.enzim">
+    <name>Enzim</name>
+  </developer>
+  <launchable type="desktop-id">dev.enzim.EnzimCoder.desktop</launchable>
+  <url type="homepage">https://enzim.dev</url>
+  <url type="vcs-browser">https://github.com/enz1m/enzim-coder</url>
+  <url type="bugtracker">https://github.com/enz1m/enzim-coder/issues</url>
+  <provides>
+    <binary>enzimcoder</binary>
+  </provides>
+  <description>
+    <p>
+      Enzim Coder is a local-first AI coding workspace that combines persistent threads,
+      Git tools, file browsing, and local agent sessions in one desktop app.
+    </p>
+  </description>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Workspace sidebar, chat, Git, and files in one local-first coding workspace.</caption>
+      <image type="source" width="1204" height="866">https://flatpak.enzim.dev/screenshots/EnzimCoder.png</image>
+    </screenshot>
+  </screenshots>
+  <releases>
+    <release version="0.1.0" date="2026-03-10"/>
+  </releases>
+  <content_rating type="oars-1.1"/>
+</component>

@@ -1,0 +1,94 @@
+mod repository;
+mod types;
+
+use crate::data::AppDb;
+use serde_json::Value;
+
+pub use types::RestoreApplyResult;
+pub use types::{RestoreAction, RestoreCheckpoint, RestorePreview};
+
+pub fn init(db: &AppDb) {
+    if let Err(err) = repository::init_schema(db) {
+        eprintln!("failed to initialize restore schema: {err}");
+    }
+}
+
+pub fn capture_turn_checkpoint(
+    db: &AppDb,
+    codex_thread_id: &str,
+    turn_id: &str,
+    file_change_items: &[Value],
+) -> Option<i64> {
+    match repository::capture_turn_checkpoint(db, codex_thread_id, turn_id, file_change_items) {
+        Ok(id) => id,
+        Err(err) => {
+            eprintln!("failed to capture restore checkpoint: {err}");
+            None
+        }
+    }
+}
+
+pub fn capture_workspace_delta_checkpoint(
+    db: &AppDb,
+    codex_thread_id: &str,
+    turn_id: &str,
+) -> Option<i64> {
+    match repository::capture_workspace_delta_checkpoint(db, codex_thread_id, turn_id) {
+        Ok(id) => id,
+        Err(err) => {
+            eprintln!("failed to capture workspace delta checkpoint: {err}");
+            None
+        }
+    }
+}
+
+pub fn ensure_thread_baseline_checkpoint(db: &AppDb, codex_thread_id: &str) -> Option<i64> {
+    match repository::ensure_thread_baseline_checkpoint(db, codex_thread_id) {
+        Ok(id) => id,
+        Err(err) => {
+            eprintln!("failed to ensure restore baseline checkpoint: {err}");
+            None
+        }
+    }
+}
+
+pub fn capture_preimages_for_item(
+    db: &AppDb,
+    codex_thread_id: &str,
+    item: &Value,
+) -> Option<Value> {
+    repository::capture_preimages_for_item(db, codex_thread_id, item)
+}
+
+pub fn list_checkpoints_for_thread(db: &AppDb, codex_thread_id: &str) -> Vec<RestoreCheckpoint> {
+    repository::list_checkpoints_for_thread(db, codex_thread_id).unwrap_or_default()
+}
+
+pub fn preview_restore_to_checkpoint(
+    db: &AppDb,
+    codex_thread_id: &str,
+    target_checkpoint_id: i64,
+) -> Option<RestorePreview> {
+    repository::preview_restore_to_checkpoint(db, codex_thread_id, target_checkpoint_id)
+        .ok()
+        .flatten()
+}
+
+pub fn last_backup_checkpoint_for_thread(db: &AppDb, codex_thread_id: &str) -> Option<i64> {
+    repository::last_backup_checkpoint_for_thread(db, codex_thread_id)
+        .ok()
+        .flatten()
+}
+
+pub fn apply_restore_to_checkpoint(
+    db: &AppDb,
+    codex_thread_id: &str,
+    target_checkpoint_id: i64,
+    forced_paths: &[String],
+) -> Result<Option<RestoreApplyResult>, String> {
+    repository::apply_restore_to_checkpoint(db, codex_thread_id, target_checkpoint_id, forced_paths)
+}
+
+pub fn clear_thread_restore_data(db: &AppDb, local_thread_id: i64) -> Result<(), String> {
+    repository::clear_thread_restore_data(db, local_thread_id)
+}

@@ -1,0 +1,346 @@
+.git-tab-root {
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+}
+
+.git-tab-header {
+  margin-bottom: 2px;
+}
+
+.git-tab-outgoing-card {
+  border: 1px solid alpha(@window_fg_color, 0.12);
+  border-radius: 10px;
+  background: alpha(@window_fg_color, 0.03);
+  padding: 8px;
+  margin-bottom: 2px;
+}
+
+.git-tab-outgoing-title {
+  color: @window_fg_color;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.git-tab-outgoing-count {
+  color: @window_fg_color;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 999px;
+  background: alpha(@window_fg_color, 0.1);
+  padding: 2px 7px;
+}
+
+.git-tab-outgoing-hint {
+  color: alpha(@window_fg_color, 0.66);
+  font-size: 0.74rem;
+}
+
+.git-tab-outgoing-list {
+  margin-top: 2px;
+}
+
+.git-tab-outgoing-item {
+  border-radius: 6px;
+  padding: 2px 0;
+}
+
+.git-tab-outgoing-hash {
+  min-width: 48px;
+  color: alpha(@window_fg_color, 0.72);
+  font-family: monospace;
+  font-size: 0.74rem;
+}
+
+.git-tab-outgoing-summary {
+  color: alpha(@window_fg_color, 0.90);
+  font-size: 0.76rem;
+}
+
+.git-tab-meta {
+  color: @window_fg_color;
+  font-size: 0.82rem;
+}
+
+.git-tab-header .dim-label {
+  color: alpha(@window_fg_color, 0.72);
+  font-size: 0.78rem;
+}
+
+.git-tab-header .git-tab-meta,
+.git-tab-header .git-tab-meta.dim-label {
+  color: alpha(@window_fg_color, 0.86);
+}
+
+.git-tab-muted {
+  color: alpha(@window_fg_color, 0.70);
+}
+
+.git-tab-list .git-tab-muted,
+.git-tab-status.git-tab-muted {
+  color: alpha(@window_fg_color, 0.72);
+}
+
+.git-tab-branch {
+  color: alpha(@window_fg_color, 0.82);
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: 999px;
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  padding: 2px 8px;
+  opacity: 0.68;
+  transition: opacity 140ms ease, color 140ms ease;
+}
+
+.git-tab-selected-delta {
+  border-radius: 999px;
+  background: alpha(@window_fg_color, 0.06);
+  padding: 2px 8px;
+}
+
+.git-tab-delta-add {
+  color: #3ba55d;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.git-tab-delta-remove {
+  color: #d64545;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.git-tab-list {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  background-color: transparent;
+}
+
+.git-tab-list,
+.git-tab-list row,
+.git-tab-list row:selected,
+.git-tab-list row:focus,
+.git-tab-list > row {
+  background: transparent;
+  background-color: transparent;
+  box-shadow: none;
+  min-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin: 0;
+}
+
+.git-tab-scroll,
+.git-tab-scroll > viewport,
+.git-tab-scroll > viewport.view {
+  background: transparent;
+  background-color: transparent;
+}
+
+.git-tab-scroll {
+  border-radius: 10px;
+  border: 1px solid alpha(@window_fg_color, 0.10);
+}
+
+.git-tab-item {
+  border-radius: 0;
+  border: none;
+  background: transparent;
+  background-color: transparent;
+  margin: 0;
+  padding: 0;
+  min-height: 0;
+  box-shadow: inset 0 -1px alpha(@window_fg_color, 0.07);
+}
+
+.git-tab-list > row:hover,
+.git-tab-list > row:focus-within {
+  background-color: alpha(@window_fg_color, 0.08);
+}
+
+.git-tab-list > row:active {
+  background-color: alpha(@window_fg_color, 0.11);
+}
+
+.git-tab-file-status {
+  color: alpha(@window_fg_color, 0.72);
+  font-size: 0.72rem;
+}
+
+.git-tab-file-check {
+  min-height: 14px;
+  min-width: 14px;
+  margin: 0;
+  padding: 0;
+}
+
+.git-tab-file-check > check {
+  min-height: 13px;
+  min-width: 13px;
+  margin: 0;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid alpha(@window_fg_color, 0.22);
+  background: alpha(@window_fg_color, 0.03);
+  background-color: alpha(@window_fg_color, 0.03);
+  background-image: none;
+  box-shadow: none;
+  color: transparent;
+  -gtk-icon-size: 8px;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.git-tab-file-check:hover > check,
+.git-tab-file-check:focus-visible > check {
+  border-color: alpha(@window_fg_color, 0.34);
+  background: alpha(@window_fg_color, 0.06);
+  background-color: alpha(@window_fg_color, 0.06);
+  box-shadow: none;
+}
+
+.git-tab-file-check:checked > check {
+  border-color: alpha(@accent_color, 0.42);
+  background: alpha(@accent_color, 0.18);
+  background-color: alpha(@accent_color, 0.18);
+  color: alpha(@accent_color, 0.98);
+  box-shadow: inset 0 0 0 1px alpha(@accent_color, 0.08);
+}
+
+.git-tab-file-check:checked:hover > check,
+.git-tab-file-check:checked:focus-visible > check {
+  border-color: alpha(@accent_color, 0.56);
+  background: alpha(@accent_color, 0.24);
+  background-color: alpha(@accent_color, 0.24);
+  color: alpha(@accent_color, 1.0);
+}
+
+.git-tab-file-check:active > check {
+  background: alpha(@window_fg_color, 0.09);
+  background-color: alpha(@window_fg_color, 0.09);
+}
+
+.git-tab-file-check:checked:active > check {
+  background: alpha(@accent_color, 0.28);
+  background-color: alpha(@accent_color, 0.28);
+}
+
+.git-tab-file-check > check:indeterminate {
+  border-color: alpha(@window_fg_color, 0.28);
+  background: alpha(@window_fg_color, 0.08);
+  background-color: alpha(@window_fg_color, 0.08);
+  color: alpha(@window_fg_color, 0.78);
+}
+
+.git-tab-file-button {
+  border-radius: 0;
+  min-height: 0;
+  line-height: 1;
+  padding: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border: none;
+  background: transparent;
+  background-color: transparent;
+  box-shadow: none;
+  outline: none;
+  transition: none;
+}
+
+.git-tab-file-path {
+  font-size: 0.76rem;
+  color: alpha(@window_fg_color, 0.92);
+}
+
+button.git-tab-branch > label {
+  color: alpha(@window_fg_color, 0.82);
+}
+
+button.git-tab-refresh > image {
+  color: alpha(@window_fg_color, 0.74);
+}
+
+button.git-tab-refresh {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  opacity: 0.68;
+  transition: opacity 140ms ease, color 140ms ease;
+}
+
+.git-tab-action-button,
+.git-tab-footer > button {
+  background: alpha(@window_fg_color, 0.04);
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+button.git-tab-branch:hover,
+button.git-tab-branch:focus-visible,
+.git-tab-action-button:hover,
+.git-tab-action-button:focus-visible,
+.git-tab-footer > button:hover,
+.git-tab-footer > button:focus-visible {
+  background: alpha(@window_fg_color, 0.12);
+}
+
+button.git-tab-branch:hover,
+button.git-tab-branch:focus-visible,
+button.git-tab-refresh:hover,
+button.git-tab-refresh:focus-visible {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  opacity: 0.92;
+}
+
+button.git-tab-branch:hover > label,
+button.git-tab-branch:focus-visible > label {
+  color: alpha(@window_fg_color, 0.96);
+}
+
+button.git-tab-refresh:hover > image,
+button.git-tab-refresh:focus-visible > image,
+.git-tab-action-button:hover > box > image.git-tab-action-icon,
+.git-tab-action-button:focus-visible > box > image.git-tab-action-icon {
+  color: alpha(@window_fg_color, 0.96);
+}
+
+.git-tab-action-button:hover > box > label.git-tab-action-label,
+.git-tab-action-button:focus-visible > box > label.git-tab-action-label,
+.git-tab-footer > button:hover > label,
+.git-tab-footer > button:focus-visible > label {
+  color: alpha(@window_fg_color, 0.98);
+}
+
+.git-tab-file-button,
+.git-tab-file-button > label {
+  color: alpha(@window_fg_color, 0.92);
+}
+
+.git-tab-action-button > box > image.git-tab-action-icon {
+  color: alpha(@window_fg_color, 0.92);
+}
+
+.git-tab-action-button > box > label.git-tab-action-label {
+  color: alpha(@window_fg_color, 0.96);
+}
+
+.git-tab-footer {
+  margin-top: 4px;
+}
+
+.git-tab-init {
+  min-width: 120px;
+}
+
+.git-tab-commit-message {
+  min-width: 240px;
+}
+
+.git-tab-status {
+  margin-top: 2px;
+  margin-bottom: 2px;
+}

@@ -1,0 +1,12 @@
+.git
+.github
+.agents
+.vscode
+target
+dist
+.flatpak-build
+.flatpak-builder
+.appimage-build
+.appimage-builder-tools
+AppDir
+.bundle.yml

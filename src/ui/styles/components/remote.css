@@ -1,0 +1,83 @@
+.bottom-icon-button.bottom-remote-button.is-on {
+  color: alpha(#79a8eb, 0.98);
+  opacity: 0.98;
+}
+
+.remote-mode-overlay {
+  background: alpha(#2a5ea8, 0.24);
+  backdrop-filter: blur(12px);
+}
+
+.remote-mode-overlay-content {
+  padding: 20px;
+}
+
+.remote-mode-overlay-title {
+  font-size: 1.36rem;
+  font-weight: 750;
+  color: alpha(white, 0.98);
+}
+
+.remote-mode-overlay-hint {
+  font-size: 0.94rem;
+  color: alpha(white, 0.84);
+}
+
+button.remote-mode-overlay-close,
+button.remote-mode-overlay-close:hover,
+button.remote-mode-overlay-close:active,
+button.remote-mode-overlay-close:focus,
+button.remote-mode-overlay-close:focus-visible {
+  min-width: 62px;
+  min-height: 62px;
+  padding: 0;
+  border-radius: 999px;
+  background: alpha(#ffdce1, 0.12);
+  border: 1px solid alpha(#ffc3cc, 0.55);
+  color: alpha(#ff9aa2, 0.98);
+  background-image: none;
+  box-shadow: none;
+}
+
+button.remote-mode-overlay-close label {
+  color: inherit;
+  font-size: 1.9rem;
+  font-weight: 760;
+  margin: 0;
+  padding: 0;
+}
+
+.remote-mode-overlay-close-glyph {
+  color: alpha(#ff9aa2, 0.98);
+  font-size: 1.9rem;
+  font-weight: 760;
+}
+
+button.remote-mode-overlay-close image {
+  color: inherit;
+}
+
+button.remote-mode-overlay-close:hover {
+  background: alpha(#ffdce1, 0.2);
+  border-color: alpha(#ffb2be, 0.7);
+  color: alpha(#ff8a95, 1.0);
+}
+button.remote-mode-overlay-close:hover .remote-mode-overlay-close-glyph {
+  color: alpha(#ff8a95, 1.0);
+}
+
+button.remote-mode-overlay-close:active {
+  background: alpha(#ffdce1, 0.28);
+  border-color: alpha(#ff9fae, 0.82);
+  color: alpha(#ff7d8b, 1.0);
+}
+button.remote-mode-overlay-close:active .remote-mode-overlay-close-glyph {
+  color: alpha(#ff7d8b, 1.0);
+}
+
+.remote-auth-code {
+  font-family: monospace;
+  font-size: 1.25rem;
+  font-weight: 740;
+  letter-spacing: 0.1em;
+}

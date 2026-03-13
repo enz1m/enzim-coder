@@ -1,0 +1,53 @@
+include!("attach_history.rs");
+include!("attach_loop.rs");
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn attach(
+    db: Rc<AppDb>,
+    manager: Rc<CodexProfileManager>,
+    messages_box: gtk::Box,
+    messages_scroll: gtk::ScrolledWindow,
+    conversation_stack: gtk::Stack,
+    suggestion_row: gtk::Box,
+    track_background_completion: bool,
+    active_codex_thread_id: Rc<RefCell<Option<String>>>,
+    turn_uis: Rc<RefCell<HashMap<String, super::TurnUi>>>,
+    item_turns: Rc<RefCell<HashMap<String, String>>>,
+    item_kinds: Rc<RefCell<HashMap<String, String>>>,
+    item_threads: Rc<RefCell<HashMap<String, String>>>,
+    turn_threads: Rc<RefCell<HashMap<String, String>>>,
+    active_turn: Rc<RefCell<Option<String>>>,
+    active_turn_thread: Rc<RefCell<Option<String>>>,
+    cached_commands_for_thread: Rc<RefCell<Vec<Value>>>,
+    cached_file_changes_for_thread: Rc<RefCell<Vec<Value>>>,
+    cached_tool_items_for_thread: Rc<RefCell<Vec<Value>>>,
+    cached_pending_requests_for_thread: Rc<RefCell<Vec<Value>>>,
+    cached_turn_errors_for_thread: Rc<RefCell<Vec<Value>>>,
+    loaded_history_thread_id: Rc<RefCell<Option<String>>>,
+    loading_history_thread_id: Rc<RefCell<Option<String>>>,
+) {
+    attach_inner(
+        db,
+        manager,
+        messages_box,
+        messages_scroll,
+        conversation_stack,
+        suggestion_row,
+        track_background_completion,
+        active_codex_thread_id,
+        turn_uis,
+        item_turns,
+        item_kinds,
+        item_threads,
+        turn_threads,
+        active_turn,
+        active_turn_thread,
+        cached_commands_for_thread,
+        cached_file_changes_for_thread,
+        cached_tool_items_for_thread,
+        cached_pending_requests_for_thread,
+        cached_turn_errors_for_thread,
+        loaded_history_thread_id,
+        loading_history_thread_id,
+    );
+}

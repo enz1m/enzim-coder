@@ -1,0 +1,972 @@
+.composer {
+  padding: 10px;
+  border-radius: 12px;
+}
+
+.composer-floating-shell {
+  margin-top: 4px;
+}
+
+.composer-floating {
+  background: alpha(@view_bg_color, 0.52);
+  backdrop-filter: blur(10px);
+  border: 1px solid alpha(@window_fg_color, 0.12);
+  box-shadow: 0 8px 24px alpha(black, 0.18),
+    inset 0 1px 0 alpha(white, 0.06);
+}
+
+.composer-input {
+  font-size: 0.88rem;
+  min-height: 40px;
+  border-radius: 12px;
+  background-color: alpha(@window_fg_color, 0.06);
+  border: 1px solid alpha(@window_fg_color, 0.09);
+  box-shadow: none;
+}
+
+
+#composer-input-scroll,
+#composer-input-scroll>viewport,
+#composer-input-scroll>viewport.view,
+#composer-input-scroll>viewport>textview,
+#composer-input-scroll>viewport>textview.view,
+textview#composer-input-view,
+textview#composer-input-view.view,
+textview.composer-input-view,
+textview.composer-input-view.view,
+textview#composer-input-view text,
+textview.composer-input-view text {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  color: @window_fg_color;
+  border: none;
+  box-shadow: none;
+  outline: none;
+}
+
+
+scrolledwindow#composer-input-scroll > scrollbar.vertical,
+scrolledwindow#composer-input-scroll > scrollbar.vertical > range,
+scrolledwindow#composer-input-scroll > scrollbar.vertical > range > trough,
+scrolledwindow#composer-input-scroll > scrollbar.vertical > range > trough > slider {
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  opacity: 0;
+}
+
+.composer-input-view {
+  font-size: 0.88rem;
+  line-height: 1.25;
+  background: transparent;
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  outline: none;
+}
+
+.composer-input-view text {
+  background: transparent;
+  color: @window_fg_color;
+}
+
+.chat-frame {
+  border-radius: 14px;
+  border: 1px solid alpha(@window_fg_color, 0.12);
+  background-color: alpha(@view_bg_color, 0.88);
+  padding-bottom: 0px;
+}
+
+.chat-worktree-overlay {
+  min-width: 280px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid alpha(@window_fg_color, 0.13);
+  background: alpha(@view_bg_color, 0.54);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 24px alpha(black, 0.16),
+    inset 0 1px 0 alpha(white, 0.06);
+}
+
+.chat-worktree-overlay-icon {
+  color: alpha(@window_fg_color, 0.8);
+}
+
+.chat-worktree-overlay-title {
+  font-size: 0.84rem;
+  font-weight: 640;
+  color: alpha(@window_fg_color, 0.94);
+}
+
+.chat-worktree-overlay-subtitle {
+  font-size: 0.78rem;
+  color: alpha(@window_fg_color, 0.74);
+}
+
+button.chat-worktree-overlay-action {
+  min-height: 0;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  color: alpha(@window_fg_color, 0.82);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+button.chat-worktree-overlay-action label {
+  color: alpha(@window_fg_color, 0.82);
+}
+
+button.chat-worktree-overlay-action image,
+.chat-worktree-overlay-action-icon {
+  color: alpha(@window_fg_color, 0.72);
+}
+
+button.chat-worktree-overlay-action:hover,
+button.chat-worktree-overlay-action:active,
+button.chat-worktree-overlay-action:focus-visible {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  color: @window_fg_color;
+}
+
+button.chat-worktree-overlay-action:hover label,
+button.chat-worktree-overlay-action:active label,
+button.chat-worktree-overlay-action:focus-visible label {
+  color: @window_fg_color;
+}
+
+button.chat-worktree-overlay-action:hover image,
+button.chat-worktree-overlay-action:active image,
+button.chat-worktree-overlay-action:focus-visible image {
+  color: alpha(@window_fg_color, 0.94);
+}
+
+.chat-scroll-bottom-fade {
+  background-image: linear-gradient(to bottom,
+      alpha(@view_bg_color, 0.0) 0%,
+      alpha(@view_bg_color, 0.58) 60%,
+      alpha(@view_bg_color, 0.92) 100%);
+}
+
+popover.composer-worktree-popover > contents {
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid alpha(@window_fg_color, 0.14);
+  background: alpha(@window_bg_color, 0.98);
+  background-color: alpha(@window_bg_color, 0.98);
+  background-image: none;
+  box-shadow: 0 8px 20px alpha(black, 0.24);
+}
+
+.composer-worktree-popover-box {
+  min-width: 300px;
+}
+
+.composer-worktree-title {
+  font-size: 0.86rem;
+  font-weight: 640;
+  color: alpha(@window_fg_color, 0.96);
+}
+
+.composer-worktree-subtitle {
+  font-size: 0.78rem;
+  color: alpha(@window_fg_color, 0.72);
+}
+
+.composer-worktree-count-row {
+  margin-top: 2px;
+}
+
+.composer-worktree-count-label {
+  font-size: 0.8rem;
+  color: alpha(@window_fg_color, 0.86);
+}
+
+spinbutton.composer-worktree-count {
+  min-height: 30px;
+  border-radius: 8px;
+  border: 1px solid alpha(@window_fg_color, 0.16);
+  background: alpha(@window_fg_color, 0.06);
+  color: alpha(@window_fg_color, 0.98);
+}
+
+spinbutton.composer-worktree-count entry {
+  min-width: 34px;
+  padding: 0 6px;
+  background: transparent;
+  border: none;
+  color: alpha(@window_fg_color, 0.98);
+}
+
+spinbutton.composer-worktree-count button {
+  min-width: 24px;
+  padding: 0;
+  border: none;
+  background: alpha(@window_fg_color, 0.08);
+  color: alpha(@window_fg_color, 0.96);
+}
+
+spinbutton.composer-worktree-count button:hover {
+  background: alpha(@window_fg_color, 0.14);
+}
+
+spinbutton.composer-worktree-count button:active {
+  background: alpha(@window_fg_color, 0.18);
+}
+
+.composer-worktree-actions {
+  margin-top: 2px;
+}
+
+button.composer-worktree-cancel {
+  min-height: 28px;
+  padding: 0 12px;
+}
+
+button.composer-worktree-create {
+  min-height: 28px;
+  padding: 0 14px;
+}
+
+.compact-heading {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.composer-placeholder {
+  font-size: 0.88rem;
+  color: alpha(@window_fg_color, 0.45);
+  line-height: 1;
+}
+
+.composer-voice-activity {
+  font-size: 0.88rem;
+  color: alpha(@window_fg_color, 0.72);
+  line-height: 1;
+}
+
+.composer-lock-note {
+  font-size: 0.74rem;
+  color: alpha(@window_fg_color, 0.78);
+  background: alpha(@window_fg_color, 0.08);
+  border: 1px solid alpha(@window_fg_color, 0.12);
+  border-radius: 8px;
+  padding: 4px 6px;
+}
+
+.composer-image-strip-scroll {
+  min-height: 58px;
+}
+
+.composer-image-strip {
+  padding: 2px 0 0 0;
+}
+
+.composer-image-chip {
+  min-height: 44px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  border: 1px solid alpha(@window_fg_color, 0.12);
+  background: alpha(@window_fg_color, 0.05);
+}
+
+.composer-image-preview {
+  min-width: 34px;
+  min-height: 34px;
+}
+
+.composer-image-name {
+  font-size: 0.72rem;
+  color: alpha(@window_fg_color, 0.86);
+}
+
+.composer-image-remove {
+  min-width: 22px;
+  min-height: 22px;
+  padding: 0;
+  border-radius: 6px;
+}
+
+.composer-button {
+  font-size: 0.80rem;
+  min-height: 22px;
+  padding: 0px 6px;
+  margin: 0;
+  border-radius: 6px;
+  background-color: transparent;
+  border: 1px solid transparent;
+}
+
+.composer-button label {
+  padding: 0;
+  margin: 0;
+}
+
+.composer-button:hover {
+  background-color: alpha(@window_fg_color, 0.1);
+}
+
+.compact-selector {
+  padding: 0;
+  margin: 0 4px 0 2px;
+}
+
+button.composer-selector-button {
+  min-height: 22px;
+  padding: 0 6px;
+  margin: 0;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  color: alpha(@window_fg_color, 0.86);
+}
+
+button.composer-selector-button:hover {
+  background: alpha(@window_fg_color, 0.1);
+  background-color: alpha(@window_fg_color, 0.1);
+  border-color: alpha(@window_fg_color, 0.14);
+  color: alpha(@window_fg_color, 0.96);
+}
+
+button.composer-selector-button:active,
+button.composer-selector-button:checked {
+  background: alpha(@window_fg_color, 0.14);
+  background-color: alpha(@window_fg_color, 0.14);
+  border-color: alpha(@window_fg_color, 0.2);
+  color: alpha(@window_fg_color, 0.99);
+}
+
+menubutton.composer-selector-button,
+menubutton.composer-selector-button > button,
+menubutton.composer-selector-button > button.toggle {
+  min-height: 22px;
+  padding: 0 6px;
+  margin: 0;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  background-image: none;
+  box-shadow: none;
+  color: alpha(@window_fg_color, 0.86);
+}
+
+menubutton.composer-selector-button > button:hover,
+menubutton.composer-selector-button > button.toggle:hover {
+  background: alpha(@window_fg_color, 0.1);
+  border-color: alpha(@window_fg_color, 0.14);
+  color: alpha(@window_fg_color, 0.96);
+}
+
+menubutton.composer-selector-button > button:active,
+menubutton.composer-selector-button > button:checked,
+menubutton.composer-selector-button > button.toggle:active,
+menubutton.composer-selector-button > button.toggle:checked {
+  background: alpha(@window_fg_color, 0.14);
+  border-color: alpha(@window_fg_color, 0.2);
+  color: alpha(@window_fg_color, 0.99);
+}
+
+.compact-selector-label {
+  font-size: 0.75rem;
+  color: alpha(@window_fg_color, 0.75);
+}
+
+.compact-selector-arrow {
+  color: alpha(@window_fg_color, 0.55);
+}
+
+.compact-selector-popover {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+}
+
+popover.compact-selector-popover > contents,
+popover.compact-selector-popover.background > contents {
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid alpha(@window_fg_color, 0.14);
+  background: alpha(@window_bg_color, 0.98);
+  background-color: alpha(@window_bg_color, 0.98);
+  background-image: none;
+  box-shadow: 0 8px 20px alpha(black, 0.24);
+}
+
+popover.compact-selector-popover > arrow,
+popover.compact-selector-popover.background > arrow {
+  background: alpha(@window_bg_color, 0.98);
+  background-color: alpha(@window_bg_color, 0.98);
+  background-image: none;
+  border: 1px solid alpha(@window_fg_color, 0.14);
+  box-shadow: none;
+}
+
+popover.composer-worktree-popover > arrow,
+popover.composer-worktree-popover.background > arrow,
+popover.composer-attach-popover > arrow,
+popover.composer-attach-popover.background > arrow,
+popover.composer-attach-picker-popover > arrow,
+popover.composer-attach-picker-popover.background > arrow {
+  background: alpha(@window_bg_color, 0.98);
+  background-color: alpha(@window_bg_color, 0.98);
+  background-image: none;
+  border: 1px solid alpha(@window_fg_color, 0.14);
+  box-shadow: none;
+}
+
+.compact-selector-menu {
+  min-width: 190px;
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  border: none;
+}
+
+button.compact-selector-item {
+  min-height: 28px;
+  border-radius: 8px;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  color: alpha(@window_fg_color, 0.9);
+  min-width: 0;
+}
+
+button.compact-selector-item label {
+  color: alpha(@window_fg_color, 0.9);
+}
+
+button.compact-selector-item:hover,
+button.compact-selector-item:active,
+button.compact-selector-item:checked {
+  background: alpha(@window_fg_color, 0.12);
+  color: @window_fg_color;
+}
+
+button.compact-selector-item:hover label,
+button.compact-selector-item:active label,
+button.compact-selector-item:checked label {
+  color: @window_fg_color;
+}
+
+.compact-separator {
+  margin: 0 2px;
+  color: alpha(@window_fg_color, 0.15);
+  font-size: 0.75rem;
+}
+
+
+.chat-queued-list {
+  margin: 1px 2px 0 2px;
+}
+
+button.chat-queued-merge {
+  min-height: 0;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  font-size: 0.69rem;
+  letter-spacing: 0.01em;
+  color: alpha(@accent_bg_color, 0.9);
+  opacity: 0.9;
+}
+
+button.chat-queued-merge:hover {
+  background: transparent;
+  color: alpha(@accent_bg_color, 1);
+  opacity: 1;
+}
+
+.chat-queued-card {
+  border-radius: 10px;
+  padding: 4px 7px;
+  background: alpha(@view_bg_color, 0.52);
+  backdrop-filter: blur(10px);
+  border: 1px solid alpha(@window_fg_color, 0.12);
+  box-shadow: inset 0 1px 0 alpha(white, 0.05);
+}
+
+.chat-queued-text-scroll {
+  min-height: 18px;
+}
+
+.chat-queued-text {
+  font-size: 0.78rem;
+  line-height: 1.24;
+  color: alpha(@window_fg_color, 0.92);
+  margin: 0;
+}
+
+.chat-queued-actions {
+  margin-top: 2px;
+}
+
+button.chat-queued-action {
+  min-height: 0;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  font-size: 0.69rem;
+  letter-spacing: 0.01em;
+  color: alpha(@window_fg_color, 0.68);
+  opacity: 0.88;
+}
+
+button.chat-queued-action:hover {
+  background: transparent;
+  color: alpha(@window_fg_color, 0.96);
+  opacity: 1.0;
+}
+
+button.chat-queued-steer {
+  color: alpha(@accent_bg_color, 0.92);
+}
+
+button.chat-queued-cancel {
+  color: alpha(@window_fg_color, 0.62);
+}
+
+.send-button {
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+  border-radius: 15px;
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  transition: color 120ms ease, opacity 120ms ease;
+}
+
+.send-button:hover {
+  background: transparent;
+  background-color: transparent;
+  box-shadow: none;
+}
+
+.send-button:active {
+  background: transparent;
+  background-color: transparent;
+  box-shadow: none;
+}
+
+.send-button image {
+  color: alpha(@window_fg_color, 0.68);
+  -gtk-icon-size: 13px;
+}
+
+.send-button:hover image,
+.send-button:active image,
+.send-button:focus-visible image {
+  color: alpha(@window_fg_color, 0.98);
+}
+
+.composer-icon-button {
+  min-height: 28px;
+  min-width: 28px;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.composer-icon-button:hover {
+  background-color: alpha(@window_fg_color, 0.08);
+}
+
+.composer-input-mic {
+  min-height: 26px;
+  min-width: 26px;
+  padding: 2px;
+  border-radius: 6px;
+}
+
+button.composer-input-mic,
+button.composer-worktree-button {
+  color: alpha(@window_fg_color, 0.82);
+  background: transparent;
+  border: none;
+  opacity: 0.7;
+  transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease;
+}
+
+button.composer-input-mic image,
+button.composer-worktree-button image {
+  color: alpha(@window_fg_color, 0.82);
+}
+
+button.composer-input-mic:hover,
+button.composer-worktree-button:hover {
+  color: alpha(@window_fg_color, 0.96);
+  background: alpha(@window_fg_color, 0.1);
+  opacity: 0.9;
+}
+
+button.composer-input-mic:hover image,
+button.composer-worktree-button:hover image {
+  color: alpha(@window_fg_color, 0.96);
+}
+
+button.composer-input-mic:active,
+button.composer-worktree-button:active {
+  background: alpha(@window_fg_color, 0.14);
+  opacity: 1.0;
+}
+
+button.composer-worktree-button.composer-worktree-button-merge-active {
+  color: #e6bd56;
+  background: alpha(#e6bd56, 0.12);
+  opacity: 0.92;
+}
+
+button.composer-worktree-button.composer-worktree-button-merge-active image {
+  color: #e6bd56;
+}
+
+button.composer-worktree-button.composer-worktree-button-merge-active:hover {
+  color: #f1ca68;
+  background: alpha(#e6bd56, 0.22);
+  opacity: 1.0;
+}
+
+button.composer-worktree-button.composer-worktree-button-merge-active:hover image {
+  color: #f1ca68;
+}
+
+.composer-plus-label {
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+popover.composer-attach-popover > contents {
+  border-radius: 11px;
+  border: 1px solid alpha(@window_fg_color, 0.14);
+  background: alpha(@view_bg_color, 0.97);
+  box-shadow: 0 10px 22px alpha(black, 0.2);
+  padding: 5px;
+}
+
+popover.composer-attach-picker-popover > contents {
+  border-radius: 14px;
+  border: 1px solid alpha(@window_fg_color, 0.14);
+  background: alpha(@view_bg_color, 0.98);
+  box-shadow: 0 14px 30px alpha(black, 0.24);
+  padding: 0;
+}
+
+button.composer-attach-trigger {
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0;
+  background: transparent;
+  background-color: transparent;
+  border: none;
+  border-radius: 13px;
+  box-shadow: none;
+  background-image: none;
+  transition: color 120ms ease, opacity 120ms ease;
+  transform: none;
+}
+
+button.composer-attach-trigger:hover {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  transform: none;
+}
+
+button.composer-attach-trigger:active,
+button.composer-attach-trigger:checked,
+button.composer-attach-trigger:focus,
+button.composer-attach-trigger:focus-visible {
+  background: transparent;
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  background-image: none;
+  animation: none;
+  transition: none;
+  transform: none;
+}
+
+button.composer-attach-trigger label,
+button.composer-attach-trigger image {
+  color: alpha(@window_fg_color, 0.68);
+}
+
+button.composer-attach-trigger:hover label,
+button.composer-attach-trigger:hover image,
+button.composer-attach-trigger:active label,
+button.composer-attach-trigger:active image,
+button.composer-attach-trigger:focus-visible label,
+button.composer-attach-trigger:focus-visible image {
+  color: alpha(@window_fg_color, 0.98);
+}
+
+.composer-attach-menu {
+  min-width: 174px;
+  padding: 2px;
+}
+
+button.composer-attach-menu-item {
+  min-height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  padding: 3px 6px;
+  box-shadow: none;
+}
+
+button.composer-attach-menu-item:hover {
+  background: alpha(@window_fg_color, 0.09);
+}
+
+button.composer-attach-menu-item:active,
+button.composer-attach-menu-item:checked {
+  background: alpha(@window_fg_color, 0.14);
+}
+
+.composer-attach-menu-item-icon {
+  color: alpha(@window_fg_color, 0.8);
+}
+
+.composer-attach-menu-item-label {
+  font-size: 0.83rem;
+  font-weight: 580;
+  color: alpha(@window_fg_color, 0.95);
+}
+
+.composer-attach-picker-box {
+  padding: 10px;
+}
+
+.composer-attach-picker-header {
+  margin-bottom: 2px;
+}
+
+button.composer-attach-picker-back {
+  min-width: 26px;
+  min-height: 26px;
+  border-radius: 7px;
+}
+
+button.composer-attach-picker-back:hover {
+  background: alpha(@window_fg_color, 0.1);
+}
+
+.composer-attach-picker-path {
+  color: alpha(@window_fg_color, 0.72);
+  font-size: 0.76rem;
+  font-family: "JetBrains Mono", "Fira Mono", monospace;
+}
+
+.composer-attach-picker-search {
+  min-height: 28px;
+  margin-bottom: 5px;
+  border-radius: 8px;
+}
+
+.composer-attach-picker-scroll,
+.composer-attach-picker-scroll > viewport,
+.composer-attach-picker-scroll > viewport.view {
+  background: transparent;
+  background-color: transparent;
+}
+
+.composer-attach-picker-scroll {
+  border-radius: 8px;
+  border: 1px solid alpha(@window_fg_color, 0.08);
+  background-color: alpha(@window_fg_color, 0.02);
+}
+
+.composer-attach-picker-list {
+  background: transparent;
+}
+
+.composer-attach-picker-list,
+.composer-attach-picker-row-button {
+  background: transparent;
+  background-color: transparent;
+  box-shadow: none;
+}
+
+button.composer-attach-picker-row-button {
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  outline: none;
+  
+  box-shadow: inset 0 -1px alpha(@window_fg_color, 0.07);
+  transition: none;
+  animation: none;
+}
+
+.composer-attach-picker-row {
+  border-radius: 0;
+  border: none;
+  padding: 1px 8px;
+  min-height: 14px;
+  background: transparent;
+  background-color: transparent;
+  box-shadow: none;
+}
+
+button.composer-attach-picker-row-button:hover {
+  background: alpha(@window_fg_color, 0.07);
+  background-color: alpha(@window_fg_color, 0.07);
+  box-shadow: none;
+}
+
+button.composer-attach-picker-row-button:hover .composer-attach-picker-row {
+  background: transparent;
+  background-color: transparent;
+}
+
+button.composer-attach-picker-row-button:active,
+button.composer-attach-picker-row-button:focus,
+button.composer-attach-picker-row-button:focus-visible {
+  background: alpha(@window_fg_color, 0.11);
+  background-color: alpha(@window_fg_color, 0.11);
+  box-shadow: none;
+}
+
+button.composer-attach-picker-row-button:active .composer-attach-picker-row,
+button.composer-attach-picker-row-button:focus .composer-attach-picker-row,
+button.composer-attach-picker-row-button:focus-visible .composer-attach-picker-row {
+  background: transparent;
+  background-color: transparent;
+}
+
+button.composer-attach-picker-row-button,
+button.composer-attach-picker-row-button:focus,
+button.composer-attach-picker-row-button:focus-visible,
+button.composer-attach-picker-row-button:active {
+  border: none;
+  outline: none;
+  box-shadow: none;
+  transition: none;
+  animation: none;
+}
+
+.composer-attach-picker-row-icon {
+  color: alpha(@window_fg_color, 0.66);
+  -gtk-icon-size: 14px;
+}
+
+.composer-attach-picker-row-label {
+  color: alpha(@window_fg_color, 0.94);
+  font-size: 0.78rem;
+  margin: 0;
+}
+
+.composer-attach-picker-empty {
+  margin: 6px 8px;
+  color: alpha(@window_fg_color, 0.6);
+  font-size: 0.77rem;
+}
+
+button.composer-attach-picker-action {
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  padding: 4px 8px;
+  color: alpha(@window_fg_color, 0.82);
+}
+
+button.composer-attach-picker-action:hover {
+  background: alpha(@window_fg_color, 0.09);
+  color: alpha(@window_fg_color, 0.96);
+}
+
+.composer-send-button {
+  min-height: 32px;
+  min-width: 32px;
+  padding: 6px;
+  border-radius: 8px;
+}
+
+
+.composer-controls > button,
+.composer-controls > menubutton > button {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.composer-controls > button:hover,
+.composer-controls > button:active,
+.composer-controls > button:checked,
+.composer-controls > button:focus,
+.composer-controls > button:focus-visible,
+.composer-controls > menubutton > button:hover,
+.composer-controls > menubutton > button:active,
+.composer-controls > menubutton > button:checked,
+.composer-controls > menubutton > button:focus,
+.composer-controls > menubutton > button:focus-visible {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+}
+
+.composer-controls > button label,
+.composer-controls > button image,
+.composer-controls > menubutton > button label,
+.composer-controls > menubutton > button image {
+  color: alpha(@window_fg_color, 0.68);
+}
+
+.composer-controls > button:hover label,
+.composer-controls > button:hover image,
+.composer-controls > button:active label,
+.composer-controls > button:active image,
+.composer-controls > button:focus-visible label,
+.composer-controls > button:focus-visible image,
+.composer-controls > button:checked label,
+.composer-controls > button:checked image,
+.composer-controls > menubutton > button:hover label,
+.composer-controls > menubutton > button:hover image,
+.composer-controls > menubutton > button:active label,
+.composer-controls > menubutton > button:active image,
+.composer-controls > menubutton > button:focus-visible label,
+.composer-controls > menubutton > button:focus-visible image,
+.composer-controls > menubutton > button:checked label,
+.composer-controls > menubutton > button:checked image {
+  color: alpha(@window_fg_color, 0.98);
+}

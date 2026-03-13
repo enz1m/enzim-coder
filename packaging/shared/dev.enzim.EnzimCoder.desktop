@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Enzim Coder
+Comment=Local-first AI coding workspace with threads, Git, and files
+Exec=enzimcoder
+Icon=dev.enzim.EnzimCoder
+Terminal=false
+Categories=Development;IDE;
+Keywords=codex;coding;chat;git;workspace;
+StartupNotify=true
+StartupWMClass=dev.enzim.EnzimCoder

@@ -1,0 +1,267 @@
+.file-browser-root {
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+}
+
+.file-browser-header {
+  margin-bottom: 2px;
+}
+
+.file-browser-path {
+  color: @window_fg_color;
+  font-size: 0.82rem;
+}
+
+.file-browser-list {
+  background: transparent;
+}
+
+.file-browser-list,
+.file-browser-list row,
+.file-browser-list row:selected,
+.file-browser-list row:focus,
+.file-browser-list > row {
+  background: transparent;
+  background-color: transparent;
+  box-shadow: none;
+  border: none;
+  outline: none;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.file-browser-scroll,
+.file-browser-scroll > viewport,
+.file-browser-scroll > viewport.view {
+  background: transparent;
+  background-color: transparent;
+}
+
+.file-browser-scroll {
+  border-radius: 10px;
+  border: 1px solid alpha(@window_fg_color, 0.10);
+  background-color: alpha(@window_fg_color, 0.025);
+}
+
+.file-browser-row {
+  border-radius: 0;
+  border: none;
+  background: transparent;
+  background-color: transparent;
+  box-shadow: none;
+  background-image: none;
+  min-height: 16px;
+  padding: 0;
+  margin: 0;
+  outline: none;
+  box-shadow: none;
+  transition: none;
+}
+
+.file-browser-list > row:hover .file-browser-row,
+.file-browser-list > row:focus-within .file-browser-row {
+  background-color: alpha(@window_fg_color, 0.08);
+  box-shadow: none;
+}
+
+.file-browser-list > row:active .file-browser-row {
+  background-color: alpha(@window_fg_color, 0.11);
+  box-shadow: none;
+}
+
+.file-browser-item {
+  border-radius: 0;
+  background: transparent;
+  background-color: transparent;
+  padding: 0;
+  margin: 0;
+}
+
+.file-browser-name {
+  color: @window_fg_color;
+  font-size: 0.84rem;
+  line-height: 1.0;
+}
+
+.file-browser-modified {
+  color: alpha(@window_fg_color, 0.7);
+  font-size: 0.75rem;
+  min-width: 46px;
+  line-height: 1.0;
+}
+
+.file-browser-icon {
+  color: alpha(@window_fg_color, 0.78);
+  -gtk-icon-style: symbolic;
+}
+
+.file-preview-scrim {
+  background: alpha(black, 0.45);
+  border-radius: 0;
+  padding: 0;
+}
+
+.file-preview-card {
+  border-radius: 12px;
+  padding: 10px;
+  background: @view_bg_color;
+  backdrop-filter: blur(10px);
+  border: 1px solid alpha(@window_fg_color, 0.12);
+  box-shadow: 0 8px 24px alpha(black, 0.18),
+              inset 0 1px 0 alpha(white, 0.06);
+}
+
+.file-preview-header {
+  margin-bottom: 0;
+}
+
+.file-preview-title {
+  color: @window_fg_color;
+  font-weight: 600;
+}
+
+.file-preview-meta {
+  color: alpha(@window_fg_color, 0.72);
+  font-size: 0.78rem;
+}
+
+.file-preview-scroll {
+  background: #13141a;
+  border-radius: 8px;
+}
+
+.file-preview-scroll > viewport,
+.file-preview-scroll > viewport > textview,
+.file-preview-source,
+.file-preview-source text {
+  border-radius: 8px;
+}
+
+.file-preview-source {
+  padding: 0;
+}
+
+.file-preview-source border {
+  background: #13141a;
+  border-radius: 8px 0 0 8px;
+}
+
+.file-preview-image {
+  background: transparent;
+  padding: 12px;
+}
+
+.file-preview-diff-panel {
+  min-width: 430px;
+  border-left: 1px solid alpha(@window_fg_color, 0.14);
+  padding: 8px 0 0 10px;
+}
+
+.file-preview-split {
+  min-height: 0;
+}
+
+button.file-preview-diff-toggle {
+  border-radius: 8px;
+  padding: 0 10px;
+  min-height: 30px;
+  border: 1px solid alpha(@window_fg_color, 0.16);
+  background: alpha(@window_fg_color, 0.05);
+}
+
+button.file-preview-diff-toggle:checked {
+  background: alpha(@accent_bg_color, 0.2);
+  border-color: alpha(@accent_bg_color, 0.42);
+}
+
+.file-preview-diff-switcher {
+  margin-bottom: 0;
+  background: alpha(@window_fg_color, 0.05);
+  border: 1px solid alpha(@window_fg_color, 0.1);
+  border-radius: 10px;
+  padding: 3px;
+}
+
+.file-preview-diff-switcher button {
+  border-radius: 7px;
+  min-height: 28px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+.file-preview-diff-switcher button:checked {
+  background: alpha(@accent_bg_color, 0.18);
+  border-color: alpha(@accent_bg_color, 0.4);
+  color: alpha(@window_fg_color, 0.98);
+}
+
+.file-preview-diff-switcher button:hover:not(:checked) {
+  background: alpha(@window_fg_color, 0.08);
+}
+
+.file-preview-diff-title {
+  font-size: 0.86rem;
+  font-weight: 650;
+  color: alpha(@window_fg_color, 0.96);
+}
+
+.file-preview-diff-subtitle {
+  font-size: 0.73rem;
+  color: alpha(@window_fg_color, 0.64);
+}
+
+.file-preview-diff-list-scroll {
+  background: alpha(@window_fg_color, 0.025);
+  border-radius: 8px;
+  border: 1px solid alpha(@window_fg_color, 0.1);
+}
+
+.file-preview-diff-list {
+  background: transparent;
+}
+
+.file-preview-diff-row {
+  border-radius: 8px;
+  margin: 1px 0;
+}
+
+.file-preview-diff-list row:selected {
+  background: alpha(@accent_bg_color, 0.16);
+}
+
+.file-preview-diff-list row:hover {
+  background: alpha(@window_fg_color, 0.07);
+}
+
+.file-preview-diff-row-title {
+  font-size: 0.8rem;
+  color: alpha(@window_fg_color, 0.92);
+  letter-spacing: 0.01em;
+}
+
+.file-preview-diff-row-subtitle {
+  font-size: 0.72rem;
+  color: alpha(@window_fg_color, 0.62);
+}
+
+.file-preview-diff-row-icon {
+  color: alpha(@window_fg_color, 0.7);
+}
+
+.file-preview-diff-meta {
+  font-size: 0.74rem;
+  color: alpha(@window_fg_color, 0.72);
+  border: 1px solid alpha(@window_fg_color, 0.1);
+  border-radius: 8px;
+  padding: 4px 8px;
+  background: alpha(@window_fg_color, 0.035);
+}
+
+.file-preview-diff-empty {
+  font-size: 0.76rem;
+  color: alpha(@window_fg_color, 0.6);
+  margin: 8px;
+}
