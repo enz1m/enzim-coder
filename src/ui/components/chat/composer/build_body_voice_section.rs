@@ -6,21 +6,7 @@
         let db = db.clone();
         let manager = manager.clone();
         let mic = mic.clone();
-        let messages_box = messages_box.clone();
-        let messages_scroll = messages_scroll.clone();
-        let conversation_stack = conversation_stack.clone();
         Rc::new(move || {
-            if let Err(err) = voice::ensure_ffmpeg_available() {
-                super::message_render::append_message(
-                    &messages_box,
-                    Some(&messages_scroll),
-                    &conversation_stack,
-                    &err,
-                    false,
-                    std::time::SystemTime::now(),
-                );
-                return;
-            }
             let parent = mic.root().and_then(|root| root.downcast::<gtk::Window>().ok());
             voice::open_voice_settings_dialog(parent, db.clone(), manager.clone());
         })
@@ -166,6 +152,10 @@
             }
 
             if voice_capture_state.borrow().recording_child.is_none() {
+                if voice::ensure_ffmpeg_available().is_err() {
+                    (open_voice_settings)();
+                    return;
+                }
                 let config = db.voice_to_text_config().ok().flatten();
                 let Some(config) = config else {
                     (open_voice_settings)();

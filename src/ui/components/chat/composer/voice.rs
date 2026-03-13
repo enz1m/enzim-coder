@@ -34,6 +34,22 @@ pub(crate) fn build_settings_page(
     title.add_css_class("chat-profile-selector-title");
     root.append(&title);
 
+    let ffmpeg_status = gtk::Label::new(None);
+    ffmpeg_status.set_xalign(0.0);
+    ffmpeg_status.set_wrap(true);
+    ffmpeg_status.add_css_class("chat-profile-card-hint");
+    match ensure_ffmpeg_available() {
+        Ok(()) => {
+            ffmpeg_status.set_text("FFmpeg is available for voice capture.");
+        }
+        Err(_) => {
+            ffmpeg_status.set_text(
+                "FFmpeg is required for microphone input. Install ffmpeg, then restart the app.",
+            );
+        }
+    }
+    root.append(&ffmpeg_status);
+
     let backend_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let backend_label = gtk::Label::new(Some("Active backend"));
     backend_label.set_xalign(0.0);
