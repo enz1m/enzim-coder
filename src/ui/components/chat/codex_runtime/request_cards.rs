@@ -349,11 +349,6 @@ fn request_title(method: &str) -> &'static str {
     }
 }
 
-fn sanitize_cancel_payload(method: &str) -> Value {
-    let _ = method;
-    json!({"decision": "cancel"})
-}
-
 fn create_request_submit_payload(method: &str, params: &Value) -> (String, String, Vec<Value>) {
     let title = request_title(method).to_string();
     let details = request_details_text(method, params);

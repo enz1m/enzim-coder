@@ -19,14 +19,9 @@
                         active_thread_id.as_deref(),
                     );
                     if !should_render_active {
-                        if let Some(client) = event_client.as_ref() {
-                            let _ = client.respond_to_server_request(
-                                request_id,
-                                build_tool_call_failure_payload(
-                                    "Tool call ignored because thread is not active",
-                                ),
-                            );
-                        }
+                        // Multiple runtime listeners can receive the same server request event.
+                        // Inactive listeners must not auto-respond, or they can race the active UI
+                        // and clear the request before the user answers.
                         continue;
                     }
 
@@ -97,12 +92,9 @@
                         active_thread_id.as_deref(),
                     );
                     if !should_render_active {
-                        if let Some(client) = event_client.as_ref() {
-                            let _ = client.respond_to_server_request(
-                                request_id,
-                                sanitize_cancel_payload(&event.method),
-                            );
-                        }
+                        // Multiple runtime listeners can receive the same server request event.
+                        // Inactive listeners must not auto-respond, or they can race the active UI
+                        // and clear the request before the user answers.
                         continue;
                     }
 
