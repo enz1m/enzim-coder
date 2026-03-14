@@ -169,10 +169,7 @@ fn build_codex_command(home_dir: Option<&Path>) -> Result<Command, String> {
             Command::new(local_codex)
         } else {
             let mut shell_command = Command::new("bash");
-            shell_command
-                .arg("-lc")
-                .arg("exec codex \"$@\"")
-                .arg("_");
+            shell_command.arg("-lc").arg("exec codex \"$@\"").arg("_");
             shell_command
         };
         configure_codex_env(&mut local_command, home_dir, false);

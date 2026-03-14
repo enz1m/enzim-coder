@@ -737,6 +737,7 @@ pub fn open_restore_preview_dialog(
                         &codex_thread_id,
                         checkpoint_id,
                         selected_turn_id_value.as_deref(),
+                        &[],
                         &forced,
                         parent_window.as_ref(),
                         selected_user_prompt_value.as_deref(),
@@ -835,6 +836,7 @@ pub fn open_restore_preview_dialog(
                         &db,
                         &codex_thread_id,
                         backup_checkpoint_id,
+                        &[],
                         &undo_forced_paths,
                     ) {
                         Ok(Some(result)) => {

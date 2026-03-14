@@ -84,9 +84,16 @@ pub fn apply_restore_to_checkpoint(
     db: &AppDb,
     codex_thread_id: &str,
     target_checkpoint_id: i64,
+    selected_paths: &[String],
     forced_paths: &[String],
 ) -> Result<Option<RestoreApplyResult>, String> {
-    repository::apply_restore_to_checkpoint(db, codex_thread_id, target_checkpoint_id, forced_paths)
+    repository::apply_restore_to_checkpoint(
+        db,
+        codex_thread_id,
+        target_checkpoint_id,
+        selected_paths,
+        forced_paths,
+    )
 }
 
 pub fn clear_thread_restore_data(db: &AppDb, local_thread_id: i64) -> Result<(), String> {

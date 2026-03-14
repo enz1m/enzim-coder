@@ -29,3 +29,5 @@ squashfs-root/
 .appimage-builder-tools/
 AppDir/
 .bundle.yml
+agent_docs/
+agent_plans/

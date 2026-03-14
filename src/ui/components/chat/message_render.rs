@@ -133,14 +133,11 @@ fn process_stream_reveal_queue() -> gtk::glib::ControlFlow {
             }
             let transition_ms =
                 u64::from(revealer.transition_duration()).max(STREAM_REVEAL_IDLE_MS) + 30;
-            gtk::glib::timeout_add_local_once(
-                Duration::from_millis(transition_ms),
-                move || {
-                    STREAM_REVEAL_QUEUE.with(|state_cell| {
-                        state_cell.borrow_mut().active = false;
-                    });
-                },
-            );
+            gtk::glib::timeout_add_local_once(Duration::from_millis(transition_ms), move || {
+                STREAM_REVEAL_QUEUE.with(|state_cell| {
+                    state_cell.borrow_mut().active = false;
+                });
+            });
         }
         gtk::glib::ControlFlow::Continue
     })

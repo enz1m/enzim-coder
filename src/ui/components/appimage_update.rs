@@ -189,132 +189,130 @@ pub fn build_update_button() -> gtk::Box {
         let changelog_scroll = changelog_scroll.clone();
         let changelog_label = changelog_label.clone();
         let action_button = action_button.clone();
-        Rc::new(move |state: UpdateState| {
-            match &state {
-                UpdateState::Unsupported | UpdateState::Idle | UpdateState::Checking => {
-                    button.set_visible(false);
-                    label.set_text("Update");
-                    dot.set_visible(false);
-                    icon.set_icon_name(Some("folder-download-symbolic"));
-                    title.set_text("AppImage updates");
-                    summary.set_text("No updates available.");
-                    status.set_text("");
-                    changelog_heading.set_visible(false);
-                    changelog_scroll.set_visible(false);
-                    changelog_label.set_text("");
-                    action_button.set_visible(false);
-                    action_button.set_sensitive(false);
-                }
-                UpdateState::Available(release) => {
-                    button.set_visible(true);
-                    label.set_text("Update");
-                    dot.set_visible(true);
-                    icon.set_icon_name(Some("folder-download-symbolic"));
-                    title.set_text("Update available");
-                    summary.set_text(&format!(
-                        "{} is available. You are on {}.",
-                        release.title, APP_VERSION
-                    ));
-                    status.set_text(
-                        release
-                            .published_at
-                            .as_deref()
-                            .map(|value| format!("Published {}", value))
-                            .unwrap_or_default()
-                            .as_str(),
-                    );
-                    changelog_heading.set_visible(true);
-                    changelog_scroll.set_visible(true);
-                    changelog_label.set_text(if release.body.trim().is_empty() {
-                        "No changelog was included in the GitHub release."
-                    } else {
-                        &release.body
-                    });
-                    action_button.set_visible(true);
-                    action_button.set_label("Update");
-                    action_button.set_sensitive(true);
-                }
-                UpdateState::Updating(release) => {
-                    button.set_visible(true);
-                    label.set_text("Updating");
-                    dot.set_visible(false);
-                    icon.set_icon_name(Some("view-refresh-symbolic"));
-                    title.set_text("Updating AppImage");
-                    summary.set_text(&format!(
-                        "Downloading and applying Enzim Coder {}.",
-                        release.version
-                    ));
-                    status.set_text("The updated AppImage is being written in place.");
-                    changelog_heading.set_visible(true);
-                    changelog_scroll.set_visible(true);
-                    changelog_label.set_text(if release.body.trim().is_empty() {
-                        "No changelog was included in the GitHub release."
-                    } else {
-                        &release.body
-                    });
-                    action_button.set_visible(true);
-                    action_button.set_label("Updating...");
-                    action_button.set_sensitive(false);
-                }
-                UpdateState::ReadyToRestart(release) => {
-                    button.set_visible(true);
-                    label.set_text("Restart");
-                    dot.set_visible(false);
-                    icon.set_icon_name(Some("view-refresh-symbolic"));
-                    title.set_text("Restart to apply update");
-                    summary.set_text(&format!(
-                        "Enzim Coder {} has been installed.",
-                        release.version
-                    ));
-                    status.set_text("Restart the app to launch the new AppImage.");
-                    changelog_heading.set_visible(true);
-                    changelog_scroll.set_visible(true);
-                    changelog_label.set_text(if release.body.trim().is_empty() {
-                        "No changelog was included in the GitHub release."
-                    } else {
-                        &release.body
-                    });
-                    action_button.set_visible(true);
-                    action_button.set_label("Restart to Apply");
-                    action_button.set_sensitive(true);
-                }
-                UpdateState::Error { release, message } => {
-                    button.set_visible(true);
-                    label.set_text("Update");
-                    dot.set_visible(true);
-                    icon.set_icon_name(Some("dialog-warning-symbolic"));
-                    title.set_text("Update failed");
-                    summary.set_text(
-                        release
-                            .as_ref()
-                            .map(|info| {
-                                format!(
-                                    "Enzim Coder {} is available, but the update did not complete.",
-                                    info.version
-                                )
-                            })
-                            .unwrap_or_else(|| {
-                                "Automatic AppImage updates are unavailable.".to_string()
-                            })
-                            .as_str(),
-                    );
-                    status.set_text(message);
-                    let body = release
+        Rc::new(move |state: UpdateState| match &state {
+            UpdateState::Unsupported | UpdateState::Idle | UpdateState::Checking => {
+                button.set_visible(false);
+                label.set_text("Update");
+                dot.set_visible(false);
+                icon.set_icon_name(Some("folder-download-symbolic"));
+                title.set_text("AppImage updates");
+                summary.set_text("No updates available.");
+                status.set_text("");
+                changelog_heading.set_visible(false);
+                changelog_scroll.set_visible(false);
+                changelog_label.set_text("");
+                action_button.set_visible(false);
+                action_button.set_sensitive(false);
+            }
+            UpdateState::Available(release) => {
+                button.set_visible(true);
+                label.set_text("Update");
+                dot.set_visible(true);
+                icon.set_icon_name(Some("folder-download-symbolic"));
+                title.set_text("Update available");
+                summary.set_text(&format!(
+                    "{} is available. You are on {}.",
+                    release.title, APP_VERSION
+                ));
+                status.set_text(
+                    release
+                        .published_at
+                        .as_deref()
+                        .map(|value| format!("Published {}", value))
+                        .unwrap_or_default()
+                        .as_str(),
+                );
+                changelog_heading.set_visible(true);
+                changelog_scroll.set_visible(true);
+                changelog_label.set_text(if release.body.trim().is_empty() {
+                    "No changelog was included in the GitHub release."
+                } else {
+                    &release.body
+                });
+                action_button.set_visible(true);
+                action_button.set_label("Update");
+                action_button.set_sensitive(true);
+            }
+            UpdateState::Updating(release) => {
+                button.set_visible(true);
+                label.set_text("Updating");
+                dot.set_visible(false);
+                icon.set_icon_name(Some("view-refresh-symbolic"));
+                title.set_text("Updating AppImage");
+                summary.set_text(&format!(
+                    "Downloading and applying Enzim Coder {}.",
+                    release.version
+                ));
+                status.set_text("The updated AppImage is being written in place.");
+                changelog_heading.set_visible(true);
+                changelog_scroll.set_visible(true);
+                changelog_label.set_text(if release.body.trim().is_empty() {
+                    "No changelog was included in the GitHub release."
+                } else {
+                    &release.body
+                });
+                action_button.set_visible(true);
+                action_button.set_label("Updating...");
+                action_button.set_sensitive(false);
+            }
+            UpdateState::ReadyToRestart(release) => {
+                button.set_visible(true);
+                label.set_text("Restart");
+                dot.set_visible(false);
+                icon.set_icon_name(Some("view-refresh-symbolic"));
+                title.set_text("Restart to apply update");
+                summary.set_text(&format!(
+                    "Enzim Coder {} has been installed.",
+                    release.version
+                ));
+                status.set_text("Restart the app to launch the new AppImage.");
+                changelog_heading.set_visible(true);
+                changelog_scroll.set_visible(true);
+                changelog_label.set_text(if release.body.trim().is_empty() {
+                    "No changelog was included in the GitHub release."
+                } else {
+                    &release.body
+                });
+                action_button.set_visible(true);
+                action_button.set_label("Restart to Apply");
+                action_button.set_sensitive(true);
+            }
+            UpdateState::Error { release, message } => {
+                button.set_visible(true);
+                label.set_text("Update");
+                dot.set_visible(true);
+                icon.set_icon_name(Some("dialog-warning-symbolic"));
+                title.set_text("Update failed");
+                summary.set_text(
+                    release
                         .as_ref()
-                        .map(|info| info.body.as_str())
-                        .unwrap_or("No changelog was included in the GitHub release.");
-                    let body = if body.trim().is_empty() {
-                        "No changelog was included in the GitHub release."
-                    } else {
-                        body
-                    };
-                    changelog_heading.set_visible(release.is_some());
-                    changelog_scroll.set_visible(release.is_some());
-                    changelog_label.set_text(body);
-                    action_button.set_visible(release.is_some());
-                    action_button.set_label("Retry Update");
-                    action_button.set_sensitive(release.is_some());
-                }
+                        .map(|info| {
+                            format!(
+                                "Enzim Coder {} is available, but the update did not complete.",
+                                info.version
+                            )
+                        })
+                        .unwrap_or_else(|| {
+                            "Automatic AppImage updates are unavailable.".to_string()
+                        })
+                        .as_str(),
+                );
+                status.set_text(message);
+                let body = release
+                    .as_ref()
+                    .map(|info| info.body.as_str())
+                    .unwrap_or("No changelog was included in the GitHub release.");
+                let body = if body.trim().is_empty() {
+                    "No changelog was included in the GitHub release."
+                } else {
+                    body
+                };
+                changelog_heading.set_visible(release.is_some());
+                changelog_scroll.set_visible(release.is_some());
+                changelog_label.set_text(body);
+                action_button.set_visible(release.is_some());
+                action_button.set_label("Retry Update");
+                action_button.set_sensitive(release.is_some());
             }
         })
     };

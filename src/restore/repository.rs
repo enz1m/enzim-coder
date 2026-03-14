@@ -4,7 +4,7 @@ use crate::restore::types::{
 };
 use rusqlite::params;
 use serde_json::Value;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -796,6 +796,7 @@ pub fn apply_restore_to_checkpoint(
     db: &AppDb,
     codex_thread_id: &str,
     target_checkpoint_id: i64,
+    selected_paths: &[String],
     forced_paths: &[String],
 ) -> Result<Option<RestoreApplyResult>, String> {
     let _ = forced_paths;
@@ -819,10 +820,36 @@ pub fn apply_restore_to_checkpoint(
         &state.before_tree,
     )?;
 
-    let touched_paths: Vec<String> = if diff_entries.is_empty() {
-        state.touched_paths.clone()
+    let selected_path_set: Option<HashSet<&str>> = if selected_paths.is_empty() {
+        None
     } else {
-        diff_entries
+        Some(selected_paths.iter().map(String::as_str).collect())
+    };
+
+    let filtered_diff_entries: Vec<&GitDiffEntry> = diff_entries
+        .iter()
+        .filter(|entry| {
+            selected_path_set
+                .as_ref()
+                .map(|selected| selected.contains(entry.path.as_str()))
+                .unwrap_or(true)
+        })
+        .collect();
+
+    let touched_paths: Vec<String> = if diff_entries.is_empty() {
+        state
+            .touched_paths
+            .iter()
+            .filter(|path| {
+                selected_path_set
+                    .as_ref()
+                    .map(|selected| selected.contains(path.as_str()))
+                    .unwrap_or(true)
+            })
+            .cloned()
+            .collect()
+    } else {
+        filtered_diff_entries
             .iter()
             .map(|entry| entry.path.clone())
             .collect()
@@ -838,7 +865,7 @@ pub fn apply_restore_to_checkpoint(
         &touched_paths,
     )?;
 
-    if diff_entries.is_empty() {
+    if filtered_diff_entries.is_empty() {
         return Ok(Some(RestoreApplyResult {
             target_checkpoint_id,
             backup_checkpoint_id,
@@ -853,7 +880,7 @@ pub fn apply_restore_to_checkpoint(
     let mut deleted_count = 0usize;
     let mut recreated_count = 0usize;
 
-    for entry in &diff_entries {
+    for entry in filtered_diff_entries {
         let abs_path = ctx.workspace_root.join(&entry.path);
         match action_from_status(entry.status) {
             RestoreAction::Delete => {

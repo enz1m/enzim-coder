@@ -6,6 +6,7 @@ pub(crate) fn apply_restore_with_chat_sync(
     codex_thread_id: &str,
     checkpoint_id: i64,
     target_turn_id: Option<&str>,
+    selected_paths: &[String],
     forced_paths: &[String],
     parent_window: Option<&gtk::Window>,
     prefill_prompt: Option<&str>,
@@ -14,6 +15,7 @@ pub(crate) fn apply_restore_with_chat_sync(
         db,
         codex_thread_id,
         checkpoint_id,
+        selected_paths,
         forced_paths,
     )?;
     let Some(result) = apply else {
@@ -215,4 +217,3 @@ pub(crate) fn apply_restore_with_chat_sync(
 
     Ok((result, rollback_status))
 }
-
