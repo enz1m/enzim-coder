@@ -27,7 +27,7 @@ pub(super) fn open_upstream_dialog(
     root.set_margin_bottom(12);
 
     let intro = gtk::Label::new(Some(
-        "Set the tracking remote for this branch. Add remote URL for first-time publish.",
+        "Set the tracking remote for this branch. Add a remote URL if this remote does not exist yet.",
     ));
     intro.set_wrap(true);
     intro.set_xalign(0.0);
@@ -58,7 +58,7 @@ pub(super) fn open_upstream_dialog(
         cancel.connect_clicked(move |_| dialog.close());
     }
 
-    let submit = gtk::Button::with_label("Save & Publish");
+    let submit = gtk::Button::with_label("Save Upstream");
     submit.add_css_class("suggested-action");
     {
         let dialog = dialog.clone();

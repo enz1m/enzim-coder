@@ -264,7 +264,7 @@ pub(super) fn remote_name_from_upstream_ref(
 pub(super) fn run_configure_upstream(
     repo_root: &str,
     options: &UpstreamOptions,
-    credentials: Option<PushCredentials>,
+    _credentials: Option<PushCredentials>,
 ) -> Result<String, String> {
     let remote_name = options.remote_name.trim();
     let remote_url = options.remote_url.trim();
@@ -296,18 +296,11 @@ pub(super) fn run_configure_upstream(
         return Err("Upstream setup failed: remote URL is required for a new remote.".to_string());
     }
 
-    match run_push_command(
-        repo_root,
-        &["--porcelain", "--set-upstream", remote_name, branch_name],
-        credentials,
-    ) {
-        PushOutcome::Success(_) => Ok(format!(
-            "Upstream configured: {} -> {}/{}",
-            branch_name, remote_name, branch_name
-        )),
-        PushOutcome::AuthRequired(err) => Err(err),
-        PushOutcome::Failure(err) => Err(format!("Upstream setup failed: {}", err)),
-    }
+    set_local_branch_upstream(repo_root, remote_name, branch_name)?;
+    Ok(format!(
+        "Upstream configured locally: {} -> {}/{}",
+        branch_name, remote_name, branch_name
+    ))
 }
 
 pub(super) fn parse_compact_commit_lines(input: &str) -> Vec<LocalCommitEntry> {

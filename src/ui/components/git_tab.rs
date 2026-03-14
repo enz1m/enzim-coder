@@ -17,12 +17,12 @@ use dialogs::{
     open_branch_manager_popover, open_git_feedback_dialog, open_init_repository_dialog,
     open_upstream_dialog,
 };
-use model::{GitFileEntry, GitSnapshot, PushOutcome, WorkerEvent};
+use model::{GitFileEntry, GitSnapshot, WorkerEvent};
 use operations::{
-    credentials_required, install_refresh_on_map, install_workspace_observer, list_local_branches,
-    load_git_snapshot, resolve_workspace_root, run_branch_action, run_commit_selected,
-    run_configure_upstream, run_fetch, run_initialize_repository, run_pull_ff_only,
-    run_push_with_optional_credentials, selected_line_delta,
+    install_refresh_on_map, install_workspace_observer, list_local_branches, load_git_snapshot,
+    resolve_workspace_root, run_branch_action, run_commit_selected, run_configure_upstream,
+    run_fetch, run_initialize_repository, run_pull_ff_only, run_push_with_optional_credentials,
+    selected_line_delta,
 };
 use runtime::install_worker_event_pump;
 
@@ -838,20 +838,7 @@ pub fn build_git_tab(
                     let workspace_root = snapshot.workspace_root.clone();
                     thread::spawn(move || {
                         let result = run_configure_upstream(&workspace_root, &options, None);
-                        match result {
-                            Ok(message) => {
-                                let _ = worker_tx.send(WorkerEvent::UpstreamDone(Ok(message)));
-                            }
-                            Err(err) => {
-                                if credentials_required(&err.to_ascii_lowercase()) {
-                                    let _ = worker_tx.send(WorkerEvent::PushDone(
-                                        PushOutcome::AuthRequired(err),
-                                    ));
-                                } else {
-                                    let _ = worker_tx.send(WorkerEvent::UpstreamDone(Err(err)));
-                                }
-                            }
-                        }
+                        let _ = worker_tx.send(WorkerEvent::UpstreamDone(result));
                     });
                 }),
             );
