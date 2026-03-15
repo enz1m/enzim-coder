@@ -5,8 +5,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use super::chat;
-use super::profile_settings_dialog;
 use super::remote_settings;
+use super::settings;
 use super::skills_mcp_settings;
 use crate::ui::widget_tree;
 
@@ -317,28 +317,10 @@ pub fn show(
     stack.set_transition_type(gtk::StackTransitionType::Crossfade);
     stack.set_transition_duration(140);
 
-    let (codex_page, profiles_create_action) = profile_settings_dialog::build_settings_page(
-        &dialog,
-        db.clone(),
-        manager.clone(),
-        Some("codex"),
-        "Codex Profiles",
-        "Manage isolated Codex runtime profiles. Create additional profiles for separate accounts and backend sessions.",
-        true,
-        false,
-        false,
-    );
-    let (opencode_page, _opencode_create_action) = profile_settings_dialog::build_settings_page(
-        &dialog,
-        db.clone(),
-        manager.clone(),
-        Some("opencode"),
-        "OpenCode",
-        "OpenCode uses a single runtime settings page. This page shows its status and provider settings without exposing extra profile creation.",
-        false,
-        false,
-        true,
-    );
+    let (codex_page, profiles_create_action) =
+        settings::codex::build_settings_page(&dialog, db.clone(), manager.clone());
+    let (opencode_page, _opencode_create_action) =
+        settings::opencode::build_settings_page(&dialog, db.clone(), manager.clone());
     let voice_page = chat::composer::voice::build_settings_page(&dialog, db.clone(), None, false);
     let skills_mcp_page = skills_mcp_settings::build_settings_page(&dialog, db.clone(), manager);
     let remote_page = remote_settings::build_settings_page(&dialog, db.clone());

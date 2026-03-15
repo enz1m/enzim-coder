@@ -154,7 +154,7 @@ fn is_system_home_profile(db: &AppDb, profile_id: i64) -> bool {
         .unwrap_or(false)
 }
 
-pub(crate) fn build_settings_page(
+pub(super) fn build_profile_settings_page(
     dialog: &gtk::Window,
     db: Rc<AppDb>,
     manager: Rc<CodexProfileManager>,
@@ -332,11 +332,17 @@ pub(crate) fn build_settings_page(
     let provider_selector_button = gtk::Button::new();
     provider_selector_button.set_hexpand(true);
     provider_selector_button.set_halign(gtk::Align::Fill);
+    provider_selector_button.set_width_request(320);
+    provider_selector_button.set_widget_name("opencode-provider-selector");
+    provider_selector_button.add_css_class("opencode-provider-selector");
     let provider_selector_content = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    provider_selector_content.add_css_class("opencode-provider-selector-content");
     let provider_selector_label = gtk::Label::new(Some("(None)"));
+    provider_selector_label.set_widget_name("opencode-provider-selector-label");
     provider_selector_label.set_xalign(0.0);
     provider_selector_label.set_hexpand(true);
     provider_selector_label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    provider_selector_label.add_css_class("opencode-provider-selector-label");
     let provider_selector_arrow = gtk::Image::from_icon_name("pan-down-symbolic");
     provider_selector_content.append(&provider_selector_label);
     provider_selector_content.append(&provider_selector_arrow);
@@ -350,7 +356,13 @@ pub(crate) fn build_settings_page(
     let provider_search_entry = gtk::SearchEntry::new();
     provider_search_entry.set_placeholder_text(Some("Filter providers"));
     provider_search_entry.set_visible(runtime_only);
+    provider_search_entry.set_width_request(320);
+    provider_search_entry.set_widget_name("opencode-provider-search");
+    provider_search_entry.add_css_class("opencode-provider-search");
     let provider_picker_list = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    provider_picker_list.set_widget_name("opencode-provider-picker-list");
+    provider_picker_list.set_margin_end(8);
+    provider_picker_list.add_css_class("opencode-provider-picker-list");
     let provider_picker_scroll = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
         .vscrollbar_policy(gtk::PolicyType::Automatic)
@@ -359,17 +371,25 @@ pub(crate) fn build_settings_page(
         .child(&provider_picker_list)
         .build();
     provider_picker_scroll.set_has_frame(false);
+    provider_picker_scroll.set_overlay_scrolling(false);
+    provider_picker_scroll.set_width_request(320);
+    provider_picker_scroll.set_widget_name("opencode-provider-picker-scroll");
+    provider_picker_scroll.add_css_class("opencode-provider-picker-scroll");
     let provider_picker_root = gtk::Box::new(gtk::Orientation::Vertical, 6);
     provider_picker_root.set_margin_start(8);
     provider_picker_root.set_margin_end(8);
     provider_picker_root.set_margin_top(8);
     provider_picker_root.set_margin_bottom(8);
+    provider_picker_root.set_width_request(320);
+    provider_picker_root.set_widget_name("opencode-provider-picker-root");
+    provider_picker_root.add_css_class("opencode-provider-picker-root");
     provider_picker_root.append(&provider_search_entry);
     provider_picker_root.append(&provider_picker_scroll);
     let provider_picker_popover = gtk::Popover::new();
     provider_picker_popover.set_has_arrow(true);
     provider_picker_popover.set_autohide(true);
     provider_picker_popover.set_position(gtk::PositionType::Bottom);
+    provider_picker_popover.set_widget_name("opencode-provider-picker-popover");
     provider_picker_popover.set_parent(&provider_selector_button);
     provider_picker_popover.set_child(Some(&provider_picker_root));
     let provider_hint_label = gtk::Label::new(Some(""));
@@ -532,11 +552,19 @@ pub(crate) fn build_settings_page(
                 }
             }
             for provider in provider_items.borrow().iter().cloned() {
-                let row_button =
-                    gtk::Button::with_label(&opencode_provider_dropdown_label(&provider));
+                let row_button = gtk::Button::new();
+                row_button.set_widget_name("opencode-provider-picker-row");
                 row_button.set_halign(gtk::Align::Fill);
                 row_button.set_hexpand(true);
-                row_button.add_css_class("app-flat-button");
+                row_button.set_has_frame(false);
+                row_button.add_css_class("opencode-provider-picker-row");
+                let row_label = gtk::Label::new(Some(&opencode_provider_dropdown_label(&provider)));
+                row_label.set_widget_name("opencode-provider-picker-row-label");
+                row_label.set_xalign(0.0);
+                row_label.set_hexpand(true);
+                row_label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+                row_label.add_css_class("opencode-provider-picker-row-label");
+                row_button.set_child(Some(&row_label));
                 let selected_provider_id = selected_provider_id.clone();
                 let refresh_provider_selector_label = refresh_provider_selector_label.clone();
                 let provider_picker_popover = provider_picker_popover.clone();

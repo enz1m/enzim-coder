@@ -82,6 +82,138 @@ listbox.settings-nav-list row.settings-nav-row:selected {
   font-size: 0.92rem;
 }
 
+button.opencode-provider-selector,
+button#opencode-provider-selector {
+  min-height: 34px;
+  padding: 0 10px;
+}
+
+button.opencode-provider-selector box.opencode-provider-selector-content,
+button#opencode-provider-selector box.opencode-provider-selector-content {
+  min-height: 0;
+}
+
+label.opencode-provider-selector-label,
+label#opencode-provider-selector-label {
+  font-weight: 500;
+  color: alpha(@window_fg_color, 0.92);
+}
+
+popover#opencode-provider-picker-popover {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+}
+
+popover#opencode-provider-picker-popover > contents,
+popover#opencode-provider-picker-popover.background > contents {
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid alpha(@window_fg_color, 0.14);
+  background: alpha(@window_bg_color, 0.98);
+  background-color: alpha(@window_bg_color, 0.98);
+  background-image: none;
+  box-shadow: 0 8px 20px alpha(black, 0.24);
+}
+
+popover#opencode-provider-picker-popover > arrow,
+popover#opencode-provider-picker-popover.background > arrow {
+  background: alpha(@window_bg_color, 0.98);
+  background-color: alpha(@window_bg_color, 0.98);
+  background-image: none;
+  border: 1px solid alpha(@window_fg_color, 0.14);
+  box-shadow: none;
+}
+
+.opencode-provider-picker-root,
+box#opencode-provider-picker-root {
+  min-width: 320px;
+}
+
+.opencode-provider-picker-scroll,
+scrolledwindow#opencode-provider-picker-scroll,
+scrolledwindow#opencode-provider-picker-scroll > viewport,
+scrolledwindow#opencode-provider-picker-scroll > viewport.view {
+  min-width: 320px;
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+}
+
+scrolledwindow#opencode-provider-picker-scroll > scrollbar.vertical,
+scrolledwindow#opencode-provider-picker-scroll > scrollbar.vertical > range,
+scrolledwindow#opencode-provider-picker-scroll > scrollbar.vertical > range > trough {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  min-width: 10px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  box-shadow: none;
+}
+
+scrolledwindow#opencode-provider-picker-scroll > scrollbar.vertical > range > trough > slider {
+  min-width: 6px;
+  min-height: 28px;
+  border-radius: 999px;
+  background: alpha(@window_fg_color, 0.16);
+  background-color: alpha(@window_fg_color, 0.16);
+  background-image: none;
+  border: none;
+  box-shadow: none;
+}
+
+scrolledwindow#opencode-provider-picker-scroll > scrollbar.vertical > range > trough > slider:hover {
+  background: alpha(@window_fg_color, 0.24);
+  background-color: alpha(@window_fg_color, 0.24);
+}
+
+button.opencode-provider-picker-row,
+button#opencode-provider-picker-row,
+button.opencode-provider-picker-row:hover,
+button#opencode-provider-picker-row:hover,
+button.opencode-provider-picker-row:active,
+button#opencode-provider-picker-row:active,
+button.opencode-provider-picker-row:checked,
+button#opencode-provider-picker-row:checked,
+button.opencode-provider-picker-row:focus,
+button#opencode-provider-picker-row:focus,
+button.opencode-provider-picker-row:focus-visible,
+button#opencode-provider-picker-row:focus-visible {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  outline: none;
+  color: alpha(@window_fg_color, 0.92);
+}
+
+button.opencode-provider-picker-row:hover,
+button#opencode-provider-picker-row:hover,
+button.opencode-provider-picker-row:focus-visible,
+button#opencode-provider-picker-row:focus-visible {
+  background: alpha(@window_fg_color, 0.05);
+}
+
+button.opencode-provider-picker-row:active,
+button#opencode-provider-picker-row:active {
+  background: alpha(@window_fg_color, 0.08);
+}
+
+button.opencode-provider-picker-row label.opencode-provider-picker-row-label,
+button#opencode-provider-picker-row label,
+label#opencode-provider-picker-row-label {
+  font-weight: 500;
+  color: alpha(@window_fg_color, 0.92);
+}
+
 .about-hero-card {
   padding: 16px;
 }

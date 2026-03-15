@@ -4,7 +4,7 @@ use adw::prelude::*;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use super::profile_settings_dialog;
+use super::settings;
 use super::settings_dialog;
 use super::style_picker;
 
@@ -177,7 +177,7 @@ pub fn build_bottom_bar(db: Rc<AppDb>, manager: Rc<CodexProfileManager>) -> gtk:
             let parent = click_target
                 .root()
                 .and_then(|root| root.downcast::<gtk::Window>().ok());
-            profile_settings_dialog::show(parent.as_ref(), db.clone(), manager.clone());
+            settings::show(parent.as_ref(), db.clone(), manager.clone());
         });
         settings_button.add_controller(click);
     }
