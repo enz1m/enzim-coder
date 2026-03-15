@@ -510,7 +510,6 @@ button.chat-message-context-item:focus-visible image,
 
 .chat-action-header {
   min-height: 18px;
-  align-items: start;
 }
 
 .chat-action-hidden-thinking-button {
