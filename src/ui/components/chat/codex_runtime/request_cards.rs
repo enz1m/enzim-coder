@@ -574,8 +574,8 @@ fn persist_pending_request_entry(
         "params": params
     });
     let mut cached = cached_pending_requests_for_thread.borrow_mut();
-    super::codex_history::upsert_cached_pending_request(&mut cached, entry);
-    super::codex_history::save_cached_pending_requests(db, thread_id, &cached);
+    super::history::upsert_cached_pending_request(&mut cached, entry);
+    super::history::save_cached_pending_requests(db, thread_id, &cached);
 }
 
 fn remove_persisted_pending_request(
@@ -585,8 +585,8 @@ fn remove_persisted_pending_request(
     request_id: i64,
 ) {
     let mut cached = cached_pending_requests_for_thread.borrow_mut();
-    if super::codex_history::remove_cached_pending_request(&mut cached, request_id) {
-        super::codex_history::save_cached_pending_requests(db, thread_id, &cached);
+    if super::history::remove_cached_pending_request(&mut cached, request_id) {
+        super::history::save_cached_pending_requests(db, thread_id, &cached);
     }
 }
 

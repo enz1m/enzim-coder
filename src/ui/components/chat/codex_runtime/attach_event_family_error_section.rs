@@ -25,8 +25,8 @@
                                     "message": message
                                 });
                                 let mut cached = cached_turn_errors_for_thread.borrow_mut();
-                                super::codex_history::upsert_cached_turn_error(&mut cached, entry);
-                                super::codex_history::save_cached_turn_errors(
+                                super::history::upsert_cached_turn_error(&mut cached, entry);
+                                super::history::save_cached_turn_errors(
                                     &db, thread_id, &cached,
                                 );
                             }

@@ -488,14 +488,14 @@ fn start_fork_from_context(content: &gtk::Widget) {
                 }
             };
 
-            if let Err(err) = super::codex_history::sync_completed_turns_from_thread(
+            if let Err(err) = super::history::sync_completed_turns_from_thread(
                 db.as_ref(),
                 &forked_thread_id,
                 &forked_thread,
             ) {
                 eprintln!("failed to sync forked thread local history: {err}");
             } else {
-                super::codex_history::prune_cached_state_for_thread(
+                super::history::prune_cached_state_for_thread(
                     db.as_ref(),
                     &forked_thread_id,
                     &forked_thread,

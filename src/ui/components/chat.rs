@@ -15,7 +15,7 @@ use std::time::SystemTime;
 
 pub(crate) mod runtime_controls;
 mod codex_events;
-mod codex_history;
+mod history;
 mod codex_runtime;
 pub(crate) mod composer;
 mod markdown;
@@ -968,16 +968,16 @@ pub(crate) fn refresh_visible_history_for_thread(
         thread_id, before_rows
     );
 
-    if let Err(err) = codex_history::sync_completed_turns_from_thread(db, thread_id, thread) {
+    if let Err(err) = history::sync_completed_turns_from_thread(db, thread_id, thread) {
         eprintln!(
             "[chat-refresh] failed to sync local completed turns thread_id={}: {}",
             thread_id, err
         );
         return false;
     }
-    codex_history::prune_cached_state_for_thread(db, thread_id, thread);
+    history::prune_cached_state_for_thread(db, thread_id, thread);
 
-    let _ = codex_history::render_local_thread_history_from_db(
+    let _ = history::render_local_thread_history_from_db(
         db,
         None,
         &messages_box,
@@ -1004,9 +1004,9 @@ pub(crate) fn refresh_visible_history_for_thread(
 }
 
 pub(crate) fn sync_local_history_for_thread(db: &AppDb, thread_id: &str, thread: &Value) -> bool {
-    match codex_history::sync_completed_turns_from_thread(db, thread_id, thread) {
+    match history::sync_completed_turns_from_thread(db, thread_id, thread) {
         Ok(_) => {
-            codex_history::prune_cached_state_for_thread(db, thread_id, thread);
+            history::prune_cached_state_for_thread(db, thread_id, thread);
             true
         }
         Err(err) => {

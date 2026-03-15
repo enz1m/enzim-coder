@@ -27,7 +27,7 @@ fn attach_inner(
     let (pending_request_tx, pending_request_rx) = mpsc::channel::<PendingRequestSyncMessage>();
     let (history_snapshot_tx, history_snapshot_rx) = mpsc::channel::<(
         String,
-        Result<super::codex_history::ThreadHistoryRenderSnapshot, String>,
+        Result<super::history::ThreadHistoryRenderSnapshot, String>,
     )>();
     let (event_tx, event_rx) = mpsc::channel::<(i64, AppServerNotification)>();
     let (checkpoint_tx, checkpoint_rx) = mpsc::channel::<(String, String, i64)>();
@@ -43,10 +43,10 @@ fn attach_inner(
     let pending_request_thread_by_id: Rc<RefCell<HashMap<i64, String>>> =
         Rc::new(RefCell::new(HashMap::new()));
     let pending_history_snapshots: Rc<
-        RefCell<HashMap<String, super::codex_history::ThreadHistoryRenderSnapshot>>,
+        RefCell<HashMap<String, super::history::ThreadHistoryRenderSnapshot>>,
     > = Rc::new(RefCell::new(HashMap::new()));
     let cached_history_snapshots: Rc<
-        RefCell<HashMap<String, super::codex_history::ThreadHistoryRenderSnapshot>>,
+        RefCell<HashMap<String, super::history::ThreadHistoryRenderSnapshot>>,
     > = Rc::new(RefCell::new(HashMap::new()));
     let event_note_counter: Rc<RefCell<u64>> = Rc::new(RefCell::new(0));
     let turns_with_write_like_commands: Rc<RefCell<HashSet<String>>> =
@@ -147,7 +147,7 @@ fn attach_inner(
                             &cached_pending_requests_for_thread,
                         );
                     } else {
-                        super::codex_history::save_cached_pending_requests(&db, &thread_id, &entries);
+                        super::history::save_cached_pending_requests(&db, &thread_id, &entries);
                     }
                 }
                 Err(err) => {

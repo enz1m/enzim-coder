@@ -871,8 +871,8 @@
                                     "afterTextCountMode": "agentMessageOnly"
                                 });
                                 let mut cached = cached_commands_for_thread.borrow_mut();
-                                super::codex_history::upsert_cached_command(&mut cached, entry);
-                                super::codex_history::save_cached_commands(&db, thread_id, &cached);
+                                super::history::upsert_cached_command(&mut cached, entry);
+                                super::history::save_cached_commands(&db, thread_id, &cached);
                             }
                             }
                             if should_render_active && is_probably_file_write_command(command) {
@@ -932,8 +932,8 @@
                                     "afterTextCountMode": "agentMessageOnly"
                                 });
                                 let mut cached = cached_file_changes_for_thread.borrow_mut();
-                                super::codex_history::upsert_cached_file_change(&mut cached, entry);
-                                super::codex_history::save_cached_file_changes(
+                                super::history::upsert_cached_file_change(&mut cached, entry);
+                                super::history::save_cached_file_changes(
                                     &db, thread_id, &cached,
                                 );
                             }
@@ -993,8 +993,8 @@
                                     "afterTextCountMode": "agentMessageOnly"
                                 });
                                 let mut cached = cached_tool_items_for_thread.borrow_mut();
-                                super::codex_history::upsert_cached_tool_item(&mut cached, entry);
-                                super::codex_history::save_cached_tool_items(
+                                super::history::upsert_cached_tool_item(&mut cached, entry);
+                                super::history::save_cached_tool_items(
                                     &db, thread_id, &cached,
                                 );
                             }
@@ -1049,8 +1049,8 @@
                                     "afterTextCountMode": "agentMessageOnly"
                                 });
                                 let mut cached = cached_tool_items_for_thread.borrow_mut();
-                                super::codex_history::upsert_cached_tool_item(&mut cached, entry);
-                                super::codex_history::save_cached_tool_items(
+                                super::history::upsert_cached_tool_item(&mut cached, entry);
+                                super::history::save_cached_tool_items(
                                     &db, thread_id, &cached,
                                 );
                             }

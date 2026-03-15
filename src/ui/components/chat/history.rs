@@ -799,7 +799,7 @@ fn append_cached_tool_items_for_text_count<'a>(
     }
 }
 
-include!("codex_history/assistant_turn.rs");
+include!("history/assistant_turn.rs");
 #[allow(dead_code)]
 pub(super) fn render_thread_history(
     messages_box: &gtk::Box,

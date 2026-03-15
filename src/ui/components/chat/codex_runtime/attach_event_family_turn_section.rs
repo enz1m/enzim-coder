@@ -206,11 +206,11 @@
                                         "message": message
                                     });
                                     let mut cached = cached_turn_errors_for_thread.borrow_mut();
-                                    super::codex_history::upsert_cached_turn_error(
+                                    super::history::upsert_cached_turn_error(
                                         &mut cached,
                                         entry,
                                     );
-                                    super::codex_history::save_cached_turn_errors(
+                                    super::history::save_cached_turn_errors(
                                         &db, thread_id, &cached,
                                     );
                                 }
@@ -313,11 +313,11 @@
                         if is_active_thread {
                             if let Some(thread_id) = resolved_thread_id.as_deref() {
                                 let mut cached = cached_pending_requests_for_thread.borrow_mut();
-                                if super::codex_history::remove_cached_pending_requests_for_turn(
+                                if super::history::remove_cached_pending_requests_for_turn(
                                     &mut cached,
                                     &turn_id,
                                 ) {
-                                    super::codex_history::save_cached_pending_requests(
+                                    super::history::save_cached_pending_requests(
                                         &db, thread_id, &cached,
                                     );
                                 }

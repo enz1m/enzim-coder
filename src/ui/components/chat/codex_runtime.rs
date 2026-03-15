@@ -398,7 +398,7 @@ fn append_checkpoint_strip_for_turn(
         existing = node.next_sibling();
     }
 
-    let strip = super::codex_history::create_checkpoint_strip_widget(
+    let strip = super::history::create_checkpoint_strip_widget(
         thread_id,
         checkpoint_id,
         turn_id,

@@ -49,7 +49,7 @@ fn replace_pending_requests_for_thread(
     }
 
     cached_pending_requests_for_thread.replace(entries.clone());
-    super::codex_history::save_cached_pending_requests(db, thread_id, &entries);
+    super::history::save_cached_pending_requests(db, thread_id, &entries);
 
     let Some(client) = manager.resolve_running_client_for_thread_id(thread_id) else {
         return;
@@ -110,15 +110,15 @@ fn handle_active_thread_transition(
     cached_pending_requests_for_thread: &Rc<RefCell<Vec<Value>>>,
     cached_turn_errors_for_thread: &Rc<RefCell<Vec<Value>>>,
     pending_history_snapshots: &Rc<
-        RefCell<HashMap<String, super::codex_history::ThreadHistoryRenderSnapshot>>,
+        RefCell<HashMap<String, super::history::ThreadHistoryRenderSnapshot>>,
     >,
     cached_history_snapshots: &Rc<
-        RefCell<HashMap<String, super::codex_history::ThreadHistoryRenderSnapshot>>,
+        RefCell<HashMap<String, super::history::ThreadHistoryRenderSnapshot>>,
     >,
     loaded_history_thread_id: &Rc<RefCell<Option<String>>>,
     loading_history_thread_id: &Rc<RefCell<Option<String>>>,
     history_snapshot_tx:
-        &mpsc::Sender<(String, Result<super::codex_history::ThreadHistoryRenderSnapshot, String>)>,
+        &mpsc::Sender<(String, Result<super::history::ThreadHistoryRenderSnapshot, String>)>,
     history_tx: &mpsc::Sender<HistorySyncMessage>,
     pending_request_tx: &mpsc::Sender<PendingRequestSyncMessage>,
 ) {
@@ -146,7 +146,7 @@ fn handle_active_thread_transition(
             let thread_id_for_worker = thread_id.clone();
             let history_snapshot_tx = history_snapshot_tx.clone();
             thread::spawn(move || {
-                let result = super::codex_history::load_thread_history_render_snapshot_detached(
+                let result = super::history::load_thread_history_render_snapshot_detached(
                     &thread_id_for_worker,
                 );
                 let _ = history_snapshot_tx.send((thread_id_for_worker, result));
@@ -165,21 +165,21 @@ fn handle_active_thread_transition(
             cached_turn_errors_for_thread.replace(snapshot.caches.turn_errors.clone());
         } else {
             cached_commands_for_thread
-                .replace(super::codex_history::load_cached_commands(db, &thread_id));
-            cached_file_changes_for_thread.replace(super::codex_history::load_cached_file_changes(
+                .replace(super::history::load_cached_commands(db, &thread_id));
+            cached_file_changes_for_thread.replace(super::history::load_cached_file_changes(
                 db, &thread_id,
             ));
             cached_tool_items_for_thread
-                .replace(super::codex_history::load_cached_tool_items(db, &thread_id));
+                .replace(super::history::load_cached_tool_items(db, &thread_id));
             cached_pending_requests_for_thread.replace(
-                super::codex_history::load_cached_pending_requests(db, &thread_id),
+                super::history::load_cached_pending_requests(db, &thread_id),
             );
-            cached_turn_errors_for_thread.replace(super::codex_history::load_cached_turn_errors(
+            cached_turn_errors_for_thread.replace(super::history::load_cached_turn_errors(
                 db, &thread_id,
             ));
         }
 
-        let has_local_history = super::codex_history::render_local_thread_history_from_db(
+        let has_local_history = super::history::render_local_thread_history_from_db(
             db,
             Some(manager.clone()),
             messages_box,

@@ -26,7 +26,7 @@
                     );
                     let was_already_loaded = loaded_history_thread_id.borrow().as_deref()
                         == Some(thread_id.as_str());
-                    match super::codex_history::sync_completed_turns_from_thread(
+                    match super::history::sync_completed_turns_from_thread(
                         &db,
                         &thread_id,
                         &thread_value,
@@ -70,24 +70,24 @@
                                 loaded_history_thread_id.replace(Some(thread_id));
                             continue;
                         }
-                        super::codex_history::prune_cached_state_for_thread(
+                        super::history::prune_cached_state_for_thread(
                             &db,
                             &thread_id,
                             &thread_value,
                         );
                         cached_commands_for_thread
-                            .replace(super::codex_history::load_cached_commands(&db, &thread_id));
+                            .replace(super::history::load_cached_commands(&db, &thread_id));
                         cached_file_changes_for_thread.replace(
-                            super::codex_history::load_cached_file_changes(&db, &thread_id),
+                            super::history::load_cached_file_changes(&db, &thread_id),
                         );
                         cached_tool_items_for_thread.replace(
-                            super::codex_history::load_cached_tool_items(&db, &thread_id),
+                            super::history::load_cached_tool_items(&db, &thread_id),
                         );
                         cached_pending_requests_for_thread.replace(
-                            super::codex_history::load_cached_pending_requests(&db, &thread_id),
+                            super::history::load_cached_pending_requests(&db, &thread_id),
                         );
                         cached_turn_errors_for_thread.replace(
-                            super::codex_history::load_cached_turn_errors(&db, &thread_id),
+                            super::history::load_cached_turn_errors(&db, &thread_id),
                         );
                             let needs_rerender = matches!(
                                 render_policy,
@@ -99,7 +99,7 @@
                                     &thread_id,
                                     "scheduling sqlite re-render after sync",
                                 );
-                                let _ = super::codex_history::render_local_thread_history_from_db(
+                                let _ = super::history::render_local_thread_history_from_db(
                                     &db,
                                     Some(manager.clone()),
                                     &messages_box,

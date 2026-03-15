@@ -346,9 +346,9 @@ mod tests {
 
     #[test]
     fn renders_file_links_as_valid_pango_markup() {
-        let text = "Implemented both requested fixes:\n\n- [assistant_turn.rs](/workspace/project/src/ui/components/chat/codex_history/assistant_turn.rs:259)\n- [codex_history.rs](/workspace/project/src/ui/components/chat/codex_history.rs:183)\n\nValidation:\n- `cargo check` passes.";
+        let text = "Implemented both requested fixes:\n\n- [assistant_turn.rs](/workspace/project/src/ui/components/chat/history/assistant_turn.rs:259)\n- [history.rs](/workspace/project/src/ui/components/chat/history.rs:183)\n\nValidation:\n- `cargo check` passes.";
         let markup = markdown_to_pango(text);
-        assert!(markup.contains("<a href=\"file:///workspace/project/src/ui/components/chat/codex_history/assistant_turn.rs:259\">"));
+        assert!(markup.contains("<a href=\"file:///workspace/project/src/ui/components/chat/history/assistant_turn.rs:259\">"));
         assert!(markup.contains(INLINE_CODE_BACKGROUND));
         assert!(markup.contains(INLINE_CODE_BACKGROUND_ALPHA));
         assert!(markup.contains(INLINE_CODE_FOREGROUND));
