@@ -65,6 +65,17 @@ fn opencode_provider_dropdown_label(provider: &crate::backend::AccountProviderIn
     }
 }
 
+fn open_uri_in_browser(uri: &str) {
+    let trimmed = uri.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+    let _ = gtk::gio::AppInfo::launch_default_for_uri(
+        trimmed,
+        None::<&gtk::gio::AppLaunchContext>,
+    );
+}
+
 fn reload_profile_dropdown(
     profile_model: &gtk::StringList,
     dropdown: &gtk::DropDown,
@@ -396,7 +407,7 @@ pub(crate) fn build_settings_page(
     let login_link_section = gtk::Box::new(gtk::Orientation::Vertical, 6);
     login_link_section.add_css_class("profile-settings-section");
     login_link_section.set_visible(false);
-    let login_link_title = gtk::Label::new(Some("Login Link"));
+    let login_link_title = gtk::Label::new(Some("Provider Login"));
     login_link_title.add_css_class("profile-section-title");
     login_link_title.set_xalign(0.0);
     login_link_section.append(&login_link_title);
@@ -404,12 +415,30 @@ pub(crate) fn build_settings_page(
     let login_link_entry = gtk::Entry::new();
     login_link_entry.set_editable(false);
     login_link_entry.set_hexpand(true);
-    login_link_entry.set_placeholder_text(Some("Login URL will appear here"));
+    login_link_entry.set_placeholder_text(Some("Provider login URL will appear here"));
+    let open_link_button = gtk::Button::with_label("Open");
+    open_link_button.set_sensitive(false);
     let copy_link_button = gtk::Button::with_label("Copy");
     copy_link_button.set_sensitive(false);
     login_link_row.append(&login_link_entry);
+    login_link_row.append(&open_link_button);
     login_link_row.append(&copy_link_button);
     login_link_section.append(&login_link_row);
+    let login_device_code_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    login_device_code_row.set_visible(false);
+    let login_device_code_label = gtk::Label::new(Some("Code"));
+    login_device_code_label.set_xalign(0.0);
+    login_device_code_label.add_css_class("dim-label");
+    let login_device_code_value = gtk::Label::new(None);
+    login_device_code_value.set_xalign(0.0);
+    login_device_code_value.set_hexpand(true);
+    login_device_code_value.add_css_class("monospace");
+    let copy_device_code_button = gtk::Button::with_label("Copy Code");
+    copy_device_code_button.set_sensitive(false);
+    login_device_code_row.append(&login_device_code_label);
+    login_device_code_row.append(&login_device_code_value);
+    login_device_code_row.append(&copy_device_code_button);
+    login_link_section.append(&login_device_code_row);
     let login_link_hint = gtk::Label::new(None);
     login_link_hint.set_xalign(0.0);
     login_link_hint.set_wrap(true);
@@ -417,6 +446,15 @@ pub(crate) fn build_settings_page(
     login_link_hint.add_css_class("dim-label");
     login_link_hint.set_visible(false);
     login_link_section.append(&login_link_hint);
+    let login_waiting_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    login_waiting_row.set_visible(false);
+    let login_waiting_spinner = gtk::Spinner::new();
+    let login_waiting_label = gtk::Label::new(Some("Waiting for authorization..."));
+    login_waiting_label.set_xalign(0.0);
+    login_waiting_label.add_css_class("dim-label");
+    login_waiting_row.append(&login_waiting_spinner);
+    login_waiting_row.append(&login_waiting_label);
+    login_link_section.append(&login_waiting_row);
     let login_code_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     login_code_row.set_visible(false);
     let login_code_entry = gtk::Entry::new();
@@ -1486,6 +1524,24 @@ pub(crate) fn build_settings_page(
             }
         });
     }
+    {
+        let login_link_entry = login_link_entry.clone();
+        open_link_button.connect_clicked(move |_| {
+            open_uri_in_browser(login_link_entry.text().as_str());
+        });
+    }
+    {
+        let login_device_code_value = login_device_code_value.clone();
+        copy_device_code_button.connect_clicked(move |_| {
+            let text = login_device_code_value.text();
+            if text.is_empty() {
+                return;
+            }
+            if let Some(display) = gtk::gdk::Display::default() {
+                display.clipboard().set_text(text.as_str());
+            }
+        });
+    }
 
     let pending_runtime_oauth_flow: Rc<RefCell<Option<(i64, crate::backend::OAuthFlowInfo)>>> =
         Rc::new(RefCell::new(None));
@@ -1505,16 +1561,25 @@ pub(crate) fn build_settings_page(
         let login_code_row = login_code_row.clone();
         let login_code_entry = login_code_entry.clone();
         let login_code_button = login_code_button.clone();
+        let login_device_code_row = login_device_code_row.clone();
+        let login_device_code_value = login_device_code_value.clone();
+        let copy_device_code_button = copy_device_code_button.clone();
         let login_link_hint = login_link_hint.clone();
+        let login_waiting_row = login_waiting_row.clone();
+        let login_waiting_spinner = login_waiting_spinner.clone();
         let pending_runtime_oauth_flow = pending_runtime_oauth_flow.clone();
         Rc::new(
             move |profile_id: i64, flow: crate::backend::OAuthFlowInfo, code: Option<String>| {
                 operation_label.set_visible(true);
                 operation_label.set_text("Completing OAuth login...");
                 login_code_button.set_sensitive(false);
+                login_waiting_row.set_visible(true);
+                login_waiting_spinner.start();
                 let Ok(client) = manager.ensure_started(profile_id) else {
                     operation_label.set_text("Failed to keep OpenCode runtime active.");
                     login_code_button.set_sensitive(true);
+                    login_waiting_row.set_visible(false);
+                    login_waiting_spinner.stop();
                     return;
                 };
                 let provider_id = flow.provider_id.clone();
@@ -1540,7 +1605,12 @@ pub(crate) fn build_settings_page(
                 let login_code_row = login_code_row.clone();
                 let login_code_entry = login_code_entry.clone();
                 let login_code_button = login_code_button.clone();
+                let login_device_code_row = login_device_code_row.clone();
+                let login_device_code_value = login_device_code_value.clone();
+                let copy_device_code_button = copy_device_code_button.clone();
                 let login_link_hint = login_link_hint.clone();
+                let login_waiting_row = login_waiting_row.clone();
+                let login_waiting_spinner = login_waiting_spinner.clone();
                 let pending_runtime_oauth_flow = pending_runtime_oauth_flow.clone();
                 gtk::glib::timeout_add_local(Duration::from_millis(120), move || match rx.try_recv()
                 {
@@ -1550,7 +1620,12 @@ pub(crate) fn build_settings_page(
                         login_code_row.set_visible(false);
                         login_code_entry.set_text("");
                         login_code_button.set_sensitive(true);
+                        login_device_code_row.set_visible(false);
+                        login_device_code_value.set_text("");
+                        copy_device_code_button.set_sensitive(false);
                         login_link_hint.set_visible(false);
+                        login_waiting_spinner.stop();
+                        login_waiting_row.set_visible(false);
                         if let Some(account) = account {
                             let account_text = account
                                 .email
@@ -1588,12 +1663,16 @@ pub(crate) fn build_settings_page(
                     Ok(Err(err)) => {
                         operation_label.set_text(&format!("OAuth login failed: {err}"));
                         login_code_button.set_sensitive(true);
+                        login_waiting_spinner.stop();
+                        login_waiting_row.set_visible(false);
                         gtk::glib::ControlFlow::Break
                     }
                     Err(mpsc::TryRecvError::Empty) => gtk::glib::ControlFlow::Continue,
                     Err(mpsc::TryRecvError::Disconnected) => {
                         operation_label.set_text("OAuth login stopped unexpectedly.");
                         login_code_button.set_sensitive(true);
+                        login_waiting_spinner.stop();
+                        login_waiting_row.set_visible(false);
                         gtk::glib::ControlFlow::Break
                     }
                 });
@@ -1633,13 +1712,20 @@ pub(crate) fn build_settings_page(
         let login_code_row = login_code_row.clone();
         let login_code_entry = login_code_entry.clone();
         let login_code_button = login_code_button.clone();
+        let login_device_code_row = login_device_code_row.clone();
+        let login_device_code_value = login_device_code_value.clone();
+        let copy_device_code_button = copy_device_code_button.clone();
         let copy_link_button = copy_link_button.clone();
+        let open_link_button = open_link_button.clone();
         let status_label = status_label.clone();
         let account_label = account_label.clone();
         let profile_ids = profile_ids.clone();
         let reload_runtime_only_providers = reload_runtime_only_providers.clone();
         let pending_runtime_oauth_flow = pending_runtime_oauth_flow.clone();
         let complete_runtime_oauth_flow = complete_runtime_oauth_flow.clone();
+        let login_waiting_row = login_waiting_row.clone();
+        let login_waiting_spinner = login_waiting_spinner.clone();
+        let login_waiting_label = login_waiting_label.clone();
         Rc::new(move |profile_id: i64, provider: Option<(String, String)>| {
             let Ok(client) = manager.ensure_started(profile_id) else {
                 operation_label.set_visible(true);
@@ -1661,9 +1747,16 @@ pub(crate) fn build_settings_page(
             login_link_hint.set_visible(false);
             login_code_entry.set_text("");
             login_code_row.set_visible(false);
+            login_device_code_value.set_text("");
+            login_device_code_row.set_visible(false);
+            copy_device_code_button.set_sensitive(false);
             login_code_button.set_sensitive(true);
             pending_runtime_oauth_flow.replace(None);
             copy_link_button.set_sensitive(false);
+            open_link_button.set_sensitive(false);
+            login_waiting_spinner.stop();
+            login_waiting_row.set_visible(false);
+            login_waiting_label.set_text("Waiting for authorization...");
             if runtime_only {
                 let provider_for_thread = provider.clone();
                 let (tx, rx) =
@@ -1683,7 +1776,14 @@ pub(crate) fn build_settings_page(
                 let login_link_hint_after_start = login_link_hint.clone();
                 let login_code_row_after_start = login_code_row.clone();
                 let login_code_entry_after_start = login_code_entry.clone();
+                let login_device_code_row_after_start = login_device_code_row.clone();
+                let login_device_code_value_after_start = login_device_code_value.clone();
+                let copy_device_code_button_after_start = copy_device_code_button.clone();
                 let copy_link_button_after_start = copy_link_button.clone();
+                let open_link_button_after_start = open_link_button.clone();
+                let login_waiting_row_after_start = login_waiting_row.clone();
+                let login_waiting_spinner_after_start = login_waiting_spinner.clone();
+                let login_waiting_label_after_start = login_waiting_label.clone();
                 let provider_name = provider.as_ref().map(|(_, name)| name.clone());
                 let pending_runtime_oauth_flow_after_start = pending_runtime_oauth_flow.clone();
                 let complete_runtime_oauth_flow_after_start =
@@ -1695,24 +1795,41 @@ pub(crate) fn build_settings_page(
                             login_link_section_after_start.set_visible(true);
                             login_link_entry_after_start.set_text(&flow.url);
                             copy_link_button_after_start.set_sensitive(true);
-                            let instructions = flow
-                                .instructions
-                                .clone()
-                                .filter(|value| !value.trim().is_empty())
-                                .unwrap_or_else(|| {
-                                    if flow.method == "code" {
-                                        "Open the link above, finish the provider login, then paste the returned authorization code below.".to_string()
-                                    } else {
-                                        "Open the link above and finish the provider login in your browser.".to_string()
-                                    }
-                                });
+                            open_link_button_after_start.set_sensitive(true);
+                            let is_device_flow = flow.device_code.is_some();
+                            let instructions = if is_device_flow {
+                                "Open the page above, enter the code below, and finish login in your browser."
+                                    .to_string()
+                            } else {
+                                flow.instructions
+                                    .clone()
+                                    .filter(|value| !value.trim().is_empty())
+                                    .unwrap_or_else(|| {
+                                        if flow.method == "code" {
+                                            "Open the link above, finish the provider login, then paste the returned authorization code below.".to_string()
+                                        } else {
+                                            "Open the link above and finish the provider login in your browser.".to_string()
+                                        }
+                                    })
+                            };
                             login_link_hint_after_start.set_text(&instructions);
                             login_link_hint_after_start.set_visible(true);
+                            if let Some(device_code) = flow.device_code.as_deref() {
+                                login_device_code_value_after_start.set_text(device_code);
+                                login_device_code_row_after_start.set_visible(true);
+                                copy_device_code_button_after_start.set_sensitive(true);
+                            } else {
+                                login_device_code_value_after_start.set_text("");
+                                login_device_code_row_after_start.set_visible(false);
+                                copy_device_code_button_after_start.set_sensitive(false);
+                            }
                             if flow.method == "code" {
                                 pending_runtime_oauth_flow_after_start
                                     .replace(Some((profile_id, flow)));
                                 login_code_entry_after_start.set_text("");
                                 login_code_row_after_start.set_visible(true);
+                                login_waiting_spinner_after_start.stop();
+                                login_waiting_row_after_start.set_visible(false);
                                 if let Some(provider_name) = provider_name.as_ref() {
                                     operation_label_after_start.set_text(&format!(
                                         "Open the link above to connect {provider_name}, then paste the authorization code below."
@@ -1724,14 +1841,31 @@ pub(crate) fn build_settings_page(
                                 }
                             } else {
                                 login_code_row_after_start.set_visible(false);
+                                login_waiting_label_after_start.set_text(
+                                    "Waiting for authorization...",
+                                );
+                                login_waiting_row_after_start.set_visible(true);
+                                login_waiting_spinner_after_start.start();
                                 if let Some(provider_name) = provider_name.as_ref() {
-                                    operation_label_after_start.set_text(&format!(
-                                        "Open the link above to connect {provider_name}. Waiting for OpenCode to finish the OAuth callback..."
-                                    ));
+                                    if is_device_flow {
+                                        operation_label_after_start.set_text(&format!(
+                                            "Enter the code for {provider_name} in your browser. OpenCode will finish login automatically."
+                                        ));
+                                    } else {
+                                        operation_label_after_start.set_text(&format!(
+                                            "Open the link above to connect {provider_name}. Waiting for OpenCode to finish the OAuth callback..."
+                                        ));
+                                    }
                                 } else {
-                                    operation_label_after_start.set_text(
-                                        "Open the link above. Waiting for OpenCode to finish the OAuth callback...",
-                                    );
+                                    if is_device_flow {
+                                        operation_label_after_start.set_text(
+                                            "Enter the code in your browser. OpenCode will finish login automatically.",
+                                        );
+                                    } else {
+                                        operation_label_after_start.set_text(
+                                            "Open the link above. Waiting for OpenCode to finish the OAuth callback...",
+                                        );
+                                    }
                                 }
                                 complete_runtime_oauth_flow_after_start(profile_id, flow, None);
                             }

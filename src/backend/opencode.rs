@@ -230,6 +230,15 @@ fn format_opencode_error(error: &Value) -> String {
         .to_string()
 }
 
+fn opencode_device_code_from_instructions(instructions: Option<&str>) -> Option<String> {
+    instructions
+        .map(str::trim)
+        .and_then(|value| value.strip_prefix("Enter code:"))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
 fn push_subscriber_event(
     subscribers: &Arc<Mutex<Vec<mpsc::Sender<AppServerNotification>>>>,
     event: AppServerNotification,
@@ -3382,6 +3391,9 @@ impl OpenCodeAppServer {
                 .get("instructions")
                 .and_then(Value::as_str)
                 .map(ToOwned::to_owned),
+            device_code: opencode_device_code_from_instructions(
+                auth.get("instructions").and_then(Value::as_str),
+            ),
             method_index: method_idx as u32,
         })
     }

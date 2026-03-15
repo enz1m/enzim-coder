@@ -42,6 +42,7 @@ pub struct OAuthFlowInfo {
     pub url: String,
     pub method: String,
     pub instructions: Option<String>,
+    pub device_code: Option<String>,
     pub method_index: u32,
 }
 
@@ -213,6 +214,7 @@ impl RuntimeClient {
                     url,
                     method: "external".to_string(),
                     instructions: None,
+                    device_code: None,
                     method_index: 0,
                 })
             }
