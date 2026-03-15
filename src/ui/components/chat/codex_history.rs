@@ -1,12 +1,15 @@
+use crate::backend::RuntimeClient;
 use crate::codex_profiles::CodexProfileManager;
 use crate::data::{AppDb, LocalChatTurnInput, LocalChatTurnRecord};
 use crate::restore::RestoreCheckpoint;
+use crate::ui::components::restore_preview;
 use gtk::prelude::*;
 use rusqlite::{Connection, params};
 use serde_json::Value;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn user_row_marker(turn_id: &str) -> String {
@@ -104,6 +107,35 @@ fn turn_sort_timestamp(turn: &LocalChatTurnRecord) -> i64 {
 
 fn checkpoint_sort_timestamp(checkpoint: &RestoreCheckpoint) -> i64 {
     checkpoint.created_at
+}
+
+fn connect_runtime_for_thread(
+    db: &AppDb,
+    remote_thread_id: &str,
+) -> Result<Arc<RuntimeClient>, String> {
+    let profile = db
+        .get_thread_profile_id_by_remote_thread_id(remote_thread_id)
+        .ok()
+        .flatten()
+        .and_then(|profile_id| db.get_codex_profile(profile_id).ok().flatten());
+
+    RuntimeClient::connect_for_profile(profile.as_ref(), "checkpoint-restore")
+}
+
+fn resolve_runtime_for_thread(
+    db: &AppDb,
+    manager: Option<&Rc<CodexProfileManager>>,
+    remote_thread_id: &str,
+) -> Result<Arc<RuntimeClient>, String> {
+    if let Some(manager) = manager {
+        if let Some(client) = manager.resolve_running_client_for_thread_id(remote_thread_id) {
+            return Ok(client);
+        }
+        if let Some(client) = manager.resolve_client_for_thread_id(remote_thread_id) {
+            return Ok(client);
+        }
+    }
+    connect_runtime_for_thread(db, remote_thread_id)
 }
 
 fn resolve_checkpoint_map_for_turns(
@@ -886,7 +918,7 @@ pub(super) fn create_checkpoint_strip_widget(
     thread_id: &str,
     checkpoint_id: i64,
     turn_id: &str,
-    user_prompt: Option<&str>,
+    _user_prompt: Option<&str>,
     manager: Option<Rc<CodexProfileManager>>,
 ) -> gtk::Box {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 4);
@@ -918,8 +950,6 @@ pub(super) fn create_checkpoint_strip_widget(
     restore_button.append(&restore_label);
     {
         let thread_id = thread_id.to_string();
-        let turn_id = turn_id.to_string();
-        let user_prompt = user_prompt.map(|value| value.to_string());
         let manager = manager.clone();
         let restore_button_weak = restore_button.downgrade();
         let click = gtk::GestureClick::new();
@@ -930,14 +960,22 @@ pub(super) fn create_checkpoint_strip_widget(
                     .root()
                     .and_then(|root| root.downcast::<gtk::Window>().ok())
             });
-            super::checkpoint_restore_popup::open_checkpoint_restore_popup(
+            let runtime = resolve_runtime_for_thread(&db, manager.as_ref(), &thread_id).ok();
+            let active_thread_id = Rc::new(RefCell::new(Some(thread_id.clone())));
+            let workspace_path = db
+                .workspace_path_for_remote_thread(&thread_id)
+                .ok()
+                .flatten()
+                .or_else(|| db.get_setting("last_active_workspace_path").ok().flatten())
+                .unwrap_or_default();
+            restore_preview::open_restore_preview_dialog(
                 parent_window,
                 db,
-                manager.clone(),
+                runtime,
                 thread_id.clone(),
-                checkpoint_id,
-                turn_id.clone(),
-                user_prompt.clone(),
+                active_thread_id,
+                workspace_path,
+                Some(checkpoint_id),
             );
         });
         restore_button.add_controller(click);

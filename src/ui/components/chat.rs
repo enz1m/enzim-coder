@@ -13,7 +13,6 @@ use std::thread;
 use std::time::Duration;
 use std::time::SystemTime;
 
-mod checkpoint_restore_popup;
 pub(crate) mod runtime_controls;
 mod codex_events;
 mod codex_history;
