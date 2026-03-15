@@ -158,7 +158,9 @@ window:backdrop .thread-listbox-custom row.thread-row > box.thread-row-content {
 }
 
 .thread-listbox-custom row.thread-row:selected .thread-profile-icon,
-.thread-listbox-custom row.thread-row.thread-row-selected .thread-profile-icon {
+.thread-listbox-custom row.thread-row.thread-row-selected .thread-profile-icon,
+.thread-listbox-custom row.thread-row:selected .thread-backend-revealer,
+.thread-listbox-custom row.thread-row.thread-row-selected .thread-backend-revealer {
   color: @accent_color;
 }
 
@@ -172,6 +174,14 @@ window:backdrop .thread-listbox-custom row.thread-row > box.thread-row-content {
 
 .thread-profile-icon {
   color: alpha(@window_fg_color, 0.7);
+}
+
+.thread-backend-revealer {
+  color: alpha(@window_fg_color, 0.7);
+}
+
+.thread-backend-icon {
+  color: inherit;
 }
 
 .thread-complete-icon {
@@ -189,9 +199,12 @@ window:backdrop .thread-listbox-custom row.thread-row > box.thread-row-content {
 }
 
 .thread-leading-icon.thread-wave-active,
+.thread-backend-revealer.thread-wave-active,
 .thread-time.thread-wave-active,
 .thread-listbox-custom row.thread-row:selected .thread-leading-icon.thread-wave-active,
+.thread-listbox-custom row.thread-row:selected .thread-backend-revealer.thread-wave-active,
 .thread-listbox-custom row.thread-row.thread-row-selected .thread-leading-icon.thread-wave-active,
+.thread-listbox-custom row.thread-row.thread-row-selected .thread-backend-revealer.thread-wave-active,
 .thread-listbox-custom row.thread-row:selected .thread-time.thread-wave-active,
 .thread-listbox-custom row.thread-row.thread-row-selected .thread-time.thread-wave-active {
   color: #f1f3f6;

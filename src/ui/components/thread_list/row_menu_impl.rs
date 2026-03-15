@@ -5,6 +5,7 @@ fn thread_row(
     active_workspace_path: Rc<RefCell<Option<String>>>,
     workspace_path: String,
     show_profile_icons: Rc<Cell<bool>>,
+    show_backend_icons: Rc<Cell<bool>>,
     thread: ThreadRecord,
 ) -> gtk::ListBoxRow {
     let row = gtk::ListBoxRow::new();
@@ -59,6 +60,20 @@ fn thread_row(
     completion_icon.add_css_class("thread-complete-icon");
     completion_icon.set_visible(false);
     inner.append(&completion_icon);
+
+    let backend_icon_name = backend_icon_name_for_thread(db.as_ref(), &thread);
+    let backend_revealer = gtk::Revealer::new();
+    backend_revealer.add_css_class("thread-backend-revealer");
+    backend_revealer.add_css_class("thread-leading-icon");
+    backend_revealer.set_transition_type(gtk::RevealerTransitionType::SlideRight);
+    backend_revealer.set_transition_duration(150);
+    backend_revealer.set_reveal_child(false);
+    backend_revealer.set_visible(show_backend_icons.get() && backend_icon_name.is_some());
+    let backend_icon = gtk::Image::from_icon_name(backend_icon_name.unwrap_or("provider-codex"));
+    backend_icon.set_pixel_size(11);
+    backend_icon.add_css_class("thread-backend-icon");
+    backend_revealer.set_child(Some(&backend_icon));
+    inner.append(&backend_revealer);
 
     let profile_icon = gtk::Image::from_icon_name(
         profile_icon_name_for_thread(db.as_ref(), &thread)

@@ -72,6 +72,8 @@ pub struct ThreadList {
     active_workspace_path: Rc<RefCell<Option<String>>>,
     workspace_path: String,
     show_profile_icons: Rc<Cell<bool>>,
+    show_backend_icons: Rc<Cell<bool>>,
+    backend_icons_hovered: Rc<Cell<bool>>,
 }
 
 pub fn update_thread_row_title(root: &gtk::Widget, thread_id: i64, title: &str) -> bool {
@@ -157,6 +159,42 @@ fn find_thread_profile_icon(root: &gtk::Widget) -> Option<gtk::Image> {
     None
 }
 
+fn find_thread_backend_revealer(root: &gtk::Widget) -> Option<gtk::Revealer> {
+    if let Ok(revealer) = root.clone().downcast::<gtk::Revealer>() {
+        if revealer.has_css_class("thread-backend-revealer") {
+            return Some(revealer);
+        }
+    }
+
+    let mut child = root.first_child();
+    while let Some(node) = child {
+        if let Some(found) = find_thread_backend_revealer(&node) {
+            return Some(found);
+        }
+        child = node.next_sibling();
+    }
+
+    None
+}
+
+fn find_thread_backend_icon(root: &gtk::Widget) -> Option<gtk::Image> {
+    if let Ok(image) = root.clone().downcast::<gtk::Image>() {
+        if image.has_css_class("thread-backend-icon") {
+            return Some(image);
+        }
+    }
+
+    let mut child = root.first_child();
+    while let Some(node) = child {
+        if let Some(found) = find_thread_backend_icon(&node) {
+            return Some(found);
+        }
+        child = node.next_sibling();
+    }
+
+    None
+}
+
 fn local_thread_id_from_row(row: &gtk::ListBoxRow) -> Option<i64> {
     row.widget_name()
         .strip_prefix("thread-")
@@ -177,6 +215,30 @@ fn thread_uses_codex_profile(db: &AppDb, thread: &ThreadRecord) -> bool {
         .ok()
         .flatten()
         .is_some_and(|profile| profile.backend_kind.eq_ignore_ascii_case("codex"))
+}
+
+fn thread_backend_kind(db: &AppDb, thread: &ThreadRecord) -> Option<String> {
+    db.get_codex_profile(thread.profile_id)
+        .ok()
+        .flatten()
+        .map(|profile| profile.backend_kind.trim().to_string())
+        .filter(|backend_kind| !backend_kind.is_empty())
+}
+
+fn backend_icon_name_for_kind(backend_kind: &str) -> Option<&'static str> {
+    if backend_kind.eq_ignore_ascii_case("opencode") {
+        Some("provider-opencode")
+    } else if backend_kind.eq_ignore_ascii_case("codex") {
+        Some("provider-codex")
+    } else {
+        None
+    }
+}
+
+fn backend_icon_name_for_thread(db: &AppDb, thread: &ThreadRecord) -> Option<&'static str> {
+    thread_backend_kind(db, thread)
+        .as_deref()
+        .and_then(backend_icon_name_for_kind)
 }
 
 fn thread_has_linked_profile(thread: &ThreadRecord) -> bool {
@@ -210,6 +272,27 @@ fn has_multiple_codex_profiles(db: &AppDb) -> bool {
                 > 1
         })
         .unwrap_or(true)
+}
+
+fn has_multiple_backends(db: &AppDb) -> bool {
+    db.list_codex_profiles()
+        .ok()
+        .map(|profiles| {
+            let mut has_codex = false;
+            let mut has_opencode = false;
+            for profile in profiles {
+                if profile.backend_kind.eq_ignore_ascii_case("codex") {
+                    has_codex = true;
+                } else if profile.backend_kind.eq_ignore_ascii_case("opencode") {
+                    has_opencode = true;
+                }
+                if has_codex && has_opencode {
+                    return true;
+                }
+            }
+            false
+        })
+        .unwrap_or(false)
 }
 
 pub fn set_thread_row_worktree_icon_visible(
@@ -356,6 +439,8 @@ impl ThreadList {
         listbox.set_widget_name("workspace-thread-listbox");
         listbox.set_selection_mode(gtk::SelectionMode::None);
         let show_profile_icons = Rc::new(Cell::new(false));
+        let show_backend_icons = Rc::new(Cell::new(false));
+        let backend_icons_hovered = Rc::new(Cell::new(false));
 
         let ordered_threads = ordered_threads_for_display(threads);
         for thread in ordered_threads {
@@ -366,6 +451,7 @@ impl ThreadList {
                 active_workspace_path.clone(),
                 workspace_path.clone(),
                 show_profile_icons.clone(),
+                show_backend_icons.clone(),
                 thread,
             ));
         }
@@ -381,9 +467,23 @@ impl ThreadList {
             active_workspace_path,
             workspace_path,
             show_profile_icons,
+            show_backend_icons,
+            backend_icons_hovered,
         };
         thread_list.refresh_profile_icon_visibility();
         register_thread_list(&thread_list.listbox, &thread_list);
+        {
+            let thread_list_for_enter = thread_list.clone();
+            let motion = gtk::EventControllerMotion::new();
+            motion.connect_enter(move |_, _, _| {
+                thread_list_for_enter.set_backend_icon_hovered(true);
+            });
+            let thread_list_for_leave = thread_list.clone();
+            motion.connect_leave(move |_| {
+                thread_list_for_leave.set_backend_icon_hovered(false);
+            });
+            thread_list.listbox.add_controller(motion);
+        }
         thread_list
     }
 
@@ -415,6 +515,7 @@ impl ThreadList {
             self.active_workspace_path.clone(),
             self.workspace_path.clone(),
             self.show_profile_icons.clone(),
+            self.show_backend_icons.clone(),
             thread.clone(),
         );
         if let Some(parent_id) = thread.parent_thread_id {
@@ -450,6 +551,7 @@ impl ThreadList {
             self.active_workspace_path.clone(),
             self.workspace_path.clone(),
             self.show_profile_icons.clone(),
+            self.show_backend_icons.clone(),
             thread.clone(),
         );
         if let Some(parent_id) = thread.parent_thread_id {
@@ -492,6 +594,8 @@ impl ThreadList {
 
         let show_icons = !profile_ids.is_empty() && has_multiple_codex_profiles(self.db.as_ref());
         self.show_profile_icons.set(show_icons);
+        self.show_backend_icons
+            .set(has_multiple_backends(self.db.as_ref()));
 
         let mut row_index = 0;
         loop {
@@ -516,6 +620,41 @@ impl ThreadList {
                     .is_some();
                 profile_icon.set_visible(show_icons && show_for_row);
             }
+
+            if let Some(backend_revealer) = find_thread_backend_revealer(&child) {
+                let backend_icon = find_thread_backend_icon(&child);
+                let backend_icon_name = local_thread_id_from_row(&row)
+                    .and_then(|local_thread_id| self.db.get_thread_record(local_thread_id).ok())
+                    .flatten()
+                    .and_then(|thread| backend_icon_name_for_thread(self.db.as_ref(), &thread));
+                if let Some(backend_icon) = backend_icon {
+                    backend_icon.set_icon_name(backend_icon_name);
+                }
+                let show_for_row = self.show_backend_icons.get() && backend_icon_name.is_some();
+                backend_revealer.set_visible(show_for_row);
+                backend_revealer.set_reveal_child(show_for_row && self.backend_icons_hovered.get());
+            }
+        }
+    }
+
+    fn set_backend_icon_hovered(&self, hovered: bool) {
+        self.backend_icons_hovered.set(hovered);
+
+        let mut row_index = 0;
+        loop {
+            let Some(row) = self.listbox.row_at_index(row_index) else {
+                break;
+            };
+            row_index += 1;
+            let Some(child) = row.child() else {
+                continue;
+            };
+            let Some(backend_revealer) = find_thread_backend_revealer(&child) else {
+                continue;
+            };
+            let should_reveal =
+                hovered && self.show_backend_icons.get() && backend_revealer.is_visible();
+            backend_revealer.set_reveal_child(should_reveal);
         }
     }
 }
