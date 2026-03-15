@@ -5,8 +5,14 @@
         let queued_merge_button = queued_merge_button.clone();
         let queue_summary_box = queue_summary_box.clone();
         let queue_summary_label = queue_summary_label.clone();
+        let queue_summary_sep_left = queue_summary_sep_left.clone();
+        let queue_summary_sep_right = queue_summary_sep_right.clone();
+        let queue_summary_steer = queue_summary_steer.clone();
         let queue_summary_toggle = queue_summary_toggle.clone();
         let queue_expanded = queue_expanded.clone();
+        let refresh_placeholder_text = refresh_placeholder_text.clone();
+        let active_thread_id = active_thread_id.clone();
+        let queue_steer_allowed_for_thread = queue_steer_allowed_for_thread.clone();
         Rc::new(move || {
             let len = queued_entries.borrow().len();
             let mut expanded = *queue_expanded.borrow();
@@ -26,10 +32,20 @@
             } else {
                 queue_summary_label.set_text("");
             }
+            let queued_thread_id = queued_entries
+                .borrow()
+                .front()
+                .and_then(|entry| entry.payload.borrow().expected_thread_id.clone())
+                .or_else(|| active_thread_id.borrow().clone());
+            let steer_visible = len > 0 && queue_steer_allowed_for_thread(queued_thread_id.as_deref());
+            queue_summary_steer.set_visible(steer_visible);
+            queue_summary_sep_left.set_visible(steer_visible);
+            queue_summary_sep_right.set_visible(steer_visible);
             queue_summary_toggle.set_text(if expanded { "↓" } else { "↑" });
 
             queued_box.set_visible(len > 0 && expanded);
             queued_merge_button.set_visible(len > 1 && expanded);
+            (refresh_placeholder_text)();
         })
     };
     (refresh_queue_ui)();
@@ -114,6 +130,7 @@
         let queued_dispatch_state = queued_dispatch_state.clone();
         let refresh_queue_ui = refresh_queue_ui.clone();
         let thread_locked = thread_locked.clone();
+        let queue_steer_allowed_for_thread = queue_steer_allowed_for_thread.clone();
         send.connect_clicked(move |_| {
             let skills_allowed_for_text = |text: &str| -> Result<(), String> {
                 if text.trim().is_empty() {
@@ -273,6 +290,9 @@
                     steer_button.add_css_class("app-flat-button");
                     steer_button.add_css_class("chat-queued-action");
                     steer_button.add_css_class("chat-queued-steer");
+                    steer_button.set_visible(
+                        queue_steer_allowed_for_thread(active_thread.as_deref()),
+                    );
                     queued_actions.append(&steer_button);
 
                     queued_row.append(&queued_actions);
@@ -952,6 +972,7 @@
                 steer_button.add_css_class("app-flat-button");
                 steer_button.add_css_class("chat-queued-action");
                 steer_button.add_css_class("chat-queued-steer");
+                steer_button.set_visible(queue_steer_allowed_for_thread(Some(&active_thread_id)));
                 queued_actions.append(&steer_button);
 
                 queued_row.append(&queued_actions);

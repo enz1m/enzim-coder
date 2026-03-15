@@ -448,12 +448,14 @@
         let selected_mentions = selected_mentions.clone();
         let selected_images = selected_images.clone();
         let thread_locked = thread_locked.clone();
+        let refresh_placeholder_text = refresh_placeholder_text.clone();
         buffer.connect_changed(move |buf| {
             let start = buf.start_iter();
             let end = buf.end_iter();
             let text = buf.text(&start, &end, true);
             let is_empty = text.is_empty();
             placeholder.set_visible(is_empty);
+            (refresh_placeholder_text)();
 
             if is_empty {
                 selected_mentions.borrow_mut().clear();
@@ -506,6 +508,9 @@
         let send_for_paste = send.clone();
         let input_view_for_paste = input_view.clone();
         let thread_locked_for_paste = thread_locked.clone();
+        let queued_entries = queued_entries.clone();
+        let active_thread_id = active_thread_id.clone();
+        let queue_steer_allowed_for_thread = queue_steer_allowed_for_thread.clone();
         key_controller.connect_key_pressed(move |_, key, _, state| {
             if mention_popover.is_visible() {
                 if key == gtk::gdk::Key::Down {
@@ -592,6 +597,32 @@
             }
 
             let is_enter = key == gtk::gdk::Key::Return || key == gtk::gdk::Key::KP_Enter;
+            if is_enter && state.contains(gtk::gdk::ModifierType::SHIFT_MASK) {
+                let buf = input_view_for_paste.buffer();
+                let start = buf.start_iter();
+                let end = buf.end_iter();
+                let text = buf.text(&start, &end, true);
+                let composer_is_empty =
+                    text.trim().is_empty() && selected_images.borrow().is_empty();
+                if composer_is_empty {
+                    let queued_thread_id = queued_entries
+                        .borrow()
+                        .front()
+                        .and_then(|entry| entry.payload.borrow().expected_thread_id.clone())
+                        .or_else(|| active_thread_id.borrow().clone());
+                    if !queue_steer_allowed_for_thread(queued_thread_id.as_deref()) {
+                        return gtk::glib::Propagation::Proceed;
+                    }
+                    let first_steer_button = queued_entries
+                        .borrow()
+                        .front()
+                        .map(|entry| entry.steer_button.clone());
+                    if let Some(button) = first_steer_button {
+                        button.emit_clicked();
+                        return gtk::glib::Propagation::Stop;
+                    }
+                }
+            }
             if is_enter && !state.contains(gtk::gdk::ModifierType::SHIFT_MASK) {
                 send.emit_clicked();
                 gtk::glib::Propagation::Stop

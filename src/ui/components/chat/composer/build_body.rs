@@ -51,6 +51,23 @@ fn build_inner(
             })
         })
     };
+    let queue_steer_allowed_for_thread: Rc<dyn Fn(Option<&str>) -> bool> = {
+        let db = db.clone();
+        let manager = manager.clone();
+        let resolve_client_for_thread = resolve_client_for_thread.clone();
+        Rc::new(move |thread_id: Option<&str>| {
+            thread_id
+                .and_then(|id| resolve_client_for_thread(id))
+                .or_else(|| {
+                    db.runtime_profile_id()
+                        .ok()
+                        .flatten()
+                        .and_then(|profile_id| manager.client_for_profile(profile_id))
+                })
+                .map(|client| !client.backend_kind().eq_ignore_ascii_case("opencode"))
+                .unwrap_or(true)
+        })
+    };
 
     install_turn_started_retagger(&messages_box, turn_started_ui_rx);
     install_send_error_poller(
@@ -410,8 +427,10 @@ fn build_inner(
     let overlay = gtk::Overlay::new();
     overlay.set_child(Some(&input_scroll));
 
-    let placeholder =
-        gtk::Label::new(Some("Ask anything, @ to add files, / for commands"));
+    const DEFAULT_COMPOSER_PLACEHOLDER: &str = "Ask anything, @ to add files, / for commands";
+    const STEER_QUEUE_PLACEHOLDER: &str = "Press Shift+Enter to steer queued message";
+
+    let placeholder = gtk::Label::new(Some(DEFAULT_COMPOSER_PLACEHOLDER));
     placeholder.add_css_class("composer-placeholder");
     placeholder.set_halign(gtk::Align::Start);
     placeholder.set_valign(gtk::Align::Start);
@@ -419,6 +438,34 @@ fn build_inner(
     placeholder.set_margin_top(10);
     placeholder.set_can_target(false);
     overlay.add_overlay(&placeholder);
+
+    let refresh_placeholder_text: Rc<dyn Fn()> = {
+        let input_view = input_view.clone();
+        let placeholder = placeholder.clone();
+        let queued_entries = queued_entries.clone();
+        let active_thread_id = active_thread_id.clone();
+        let queue_steer_allowed_for_thread = queue_steer_allowed_for_thread.clone();
+        Rc::new(move || {
+            let buf = input_view.buffer();
+            let start = buf.start_iter();
+            let end = buf.end_iter();
+            let text = buf.text(&start, &end, true);
+            let is_empty = text.trim().is_empty();
+            let queued_thread_id = queued_entries
+                .borrow()
+                .front()
+                .and_then(|entry| entry.payload.borrow().expected_thread_id.clone())
+                .or_else(|| active_thread_id.borrow().clone());
+            let can_steer_queue = !queued_entries.borrow().is_empty()
+                && queue_steer_allowed_for_thread(queued_thread_id.as_deref());
+            placeholder.set_text(if is_empty && can_steer_queue {
+                STEER_QUEUE_PLACEHOLDER
+            } else {
+                DEFAULT_COMPOSER_PLACEHOLDER
+            });
+        })
+    };
+    (refresh_placeholder_text)();
 
     let voice_activity_label = gtk::Label::new(None);
     voice_activity_label.add_css_class("composer-voice-activity");
