@@ -1,6 +1,6 @@
 use crate::backend::RuntimeClient;
-use crate::data::AppDb;
 use crate::codex_appserver::ModelInfo;
+use crate::data::AppDb;
 use serde_json::{Value, json};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -52,7 +52,10 @@ fn fetch_model_options(client: &Arc<RuntimeClient>) -> Vec<ModelInfo> {
     models
 }
 
-fn visible_models_for_client(client: &Arc<RuntimeClient>, models: Vec<ModelInfo>) -> Vec<ModelInfo> {
+fn visible_models_for_client(
+    client: &Arc<RuntimeClient>,
+    models: Vec<ModelInfo>,
+) -> Vec<ModelInfo> {
     let Some(profile_id) = client.profile_id() else {
         return models;
     };
@@ -226,7 +229,10 @@ fn truncate_label(text: &str, max_chars: usize) -> String {
     if max_chars <= 1 {
         return "…".to_string();
     }
-    let mut out = text.chars().take(max_chars.saturating_sub(1)).collect::<String>();
+    let mut out = text
+        .chars()
+        .take(max_chars.saturating_sub(1))
+        .collect::<String>();
     out.push('…');
     out
 }
@@ -296,8 +302,8 @@ pub(super) fn build_model_selector_with_state(
     on_change: Option<Rc<dyn Fn(String)>>,
 ) -> (gtk::Button, Rc<dyn Fn(&str)>) {
     let models = model_options(runtime_client);
-    let is_opencode = runtime_client
-        .is_some_and(|client| client.backend_kind().eq_ignore_ascii_case("opencode"));
+    let is_opencode =
+        runtime_client.is_some_and(|client| client.backend_kind().eq_ignore_ascii_case("opencode"));
     let selected_label = runtime_client
         .filter(|client| client.backend_kind().eq_ignore_ascii_case("opencode"))
         .map(|_| {
@@ -318,15 +324,14 @@ pub(super) fn build_model_selector_with_state(
         };
         selected.replace(selected_model.clone());
         let options = vec![(fallback_label.clone(), fallback_model.clone())];
-        let (selector, set_selected) =
-            super::create_selector_menu(
-                &fallback_label,
-                &options,
-                selected.clone(),
-                selected_label,
-                on_change,
-                gtk::PositionType::Top,
-            );
+        let (selector, set_selected) = super::create_selector_menu(
+            &fallback_label,
+            &options,
+            selected.clone(),
+            selected_label,
+            on_change,
+            gtk::PositionType::Top,
+        );
         set_selected(&selected_model);
         return (selector, set_selected);
     }
@@ -393,15 +398,14 @@ pub(super) fn build_mode_selector(
         ("Agent".to_string(), "default".to_string()),
         ("Plan".to_string(), "plan".to_string()),
     ];
-    let (selector, set_selected) =
-        super::create_selector_menu(
-            "Agent",
-            &options,
-            selected.clone(),
-            None,
-            on_change,
-            gtk::PositionType::Bottom,
-        );
+    let (selector, set_selected) = super::create_selector_menu(
+        "Agent",
+        &options,
+        selected.clone(),
+        None,
+        on_change,
+        gtk::PositionType::Bottom,
+    );
     set_selected(&selected_mode);
     (selector, selected, set_selected)
 }
@@ -418,15 +422,14 @@ pub(super) fn build_access_selector(
         ("Workspace write".to_string(), "workspaceWrite".to_string()),
         ("Read only".to_string(), "readOnly".to_string()),
     ];
-    let (selector, set_selected) =
-        super::create_selector_menu(
-            "Full access",
-            &options,
-            selected.clone(),
-            None,
-            on_change,
-            gtk::PositionType::Bottom,
-        );
+    let (selector, set_selected) = super::create_selector_menu(
+        "Full access",
+        &options,
+        selected.clone(),
+        None,
+        on_change,
+        gtk::PositionType::Bottom,
+    );
     set_selected(&selected_access_mode);
     (selector, selected, set_selected)
 }
@@ -435,22 +438,20 @@ pub(super) fn build_opencode_command_selector(
     initial_command_mode: Option<String>,
     on_change: Option<Rc<dyn Fn(String)>>,
 ) -> (gtk::Button, Rc<RefCell<String>>, Rc<dyn Fn(&str)>) {
-    let selected_command_mode =
-        initial_command_mode.unwrap_or_else(|| "allowAll".to_string());
+    let selected_command_mode = initial_command_mode.unwrap_or_else(|| "allowAll".to_string());
     let selected = Rc::new(RefCell::new(selected_command_mode.clone()));
     let options = vec![
         ("Allow all".to_string(), "allowAll".to_string()),
         ("Ask".to_string(), "ask".to_string()),
     ];
-    let (selector, set_selected) =
-        super::create_selector_menu(
-            "Allow all",
-            &options,
-            selected.clone(),
-            None,
-            on_change,
-            gtk::PositionType::Bottom,
-        );
+    let (selector, set_selected) = super::create_selector_menu(
+        "Allow all",
+        &options,
+        selected.clone(),
+        None,
+        on_change,
+        gtk::PositionType::Bottom,
+    );
     set_selected(&selected_command_mode);
     (selector, selected, set_selected)
 }
@@ -470,15 +471,14 @@ pub(super) fn build_effort_selector(
         .unwrap_or("Medium");
     let selected_effort = initial_effort.unwrap_or_else(|| default_value.clone());
     let selected = Rc::new(RefCell::new(selected_effort.clone()));
-    let (selector, set_selected) =
-        super::create_selector_menu(
-            default_label,
-            options,
-            selected.clone(),
-            None,
-            on_change,
-            gtk::PositionType::Bottom,
-        );
+    let (selector, set_selected) = super::create_selector_menu(
+        default_label,
+        options,
+        selected.clone(),
+        None,
+        on_change,
+        gtk::PositionType::Bottom,
+    );
     set_selected(&selected_effort);
     (selector, selected, set_selected)
 }
@@ -498,15 +498,14 @@ pub(super) fn build_variant_selector(
         .unwrap_or("Default");
     let selected_variant = initial_variant.unwrap_or_else(|| default_value.clone());
     let selected = Rc::new(RefCell::new(selected_variant.clone()));
-    let (selector, set_selected) =
-        super::create_selector_menu(
-            default_label,
-            options,
-            selected.clone(),
-            None,
-            on_change,
-            gtk::PositionType::Bottom,
-        );
+    let (selector, set_selected) = super::create_selector_menu(
+        default_label,
+        options,
+        selected.clone(),
+        None,
+        on_change,
+        gtk::PositionType::Bottom,
+    );
     set_selected(&selected_variant);
     (selector, selected, set_selected)
 }

@@ -89,8 +89,9 @@ pub(crate) fn run_with_opencode_reload_guard(
             if completed.get() {
                 return;
             }
-            status_label
-                .set_text(&waiting_message(active_opencode_turn_count(&manager, profile_id)));
+            status_label.set_text(&waiting_message(active_opencode_turn_count(
+                &manager, profile_id,
+            )));
             dialog.close();
         });
     }

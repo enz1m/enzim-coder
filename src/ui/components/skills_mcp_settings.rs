@@ -1139,9 +1139,8 @@ fn open_add_mcp_server_dialog(
                     let status_label = status_label.clone();
                     let on_saved = on_saved.clone();
                     let dialog = dialog.clone();
-                    gtk::glib::timeout_add_local(
-                        Duration::from_millis(60),
-                        move || match rx.try_recv() {
+                    gtk::glib::timeout_add_local(Duration::from_millis(60), move || {
+                        match rx.try_recv() {
                             Ok(Ok(())) => {
                                 status_label.set_text("MCP server saved.");
                                 on_saved();
@@ -1149,16 +1148,13 @@ fn open_add_mcp_server_dialog(
                                 gtk::glib::ControlFlow::Break
                             }
                             Ok(Err(err)) => {
-                                local_status
-                                    .set_text(&format!("Failed to save MCP config: {err}"));
+                                local_status.set_text(&format!("Failed to save MCP config: {err}"));
                                 gtk::glib::ControlFlow::Break
                             }
                             Err(mpsc::TryRecvError::Empty) => gtk::glib::ControlFlow::Continue,
-                            Err(mpsc::TryRecvError::Disconnected) => {
-                                gtk::glib::ControlFlow::Break
-                            }
-                        },
-                    );
+                            Err(mpsc::TryRecvError::Disconnected) => gtk::glib::ControlFlow::Break,
+                        }
+                    });
                 })
             };
 

@@ -7,10 +7,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-pub(crate) fn reload_opencode_runtime_after_auth(
-    manager: &CodexProfileManager,
-    profile_id: i64,
-) {
+pub(crate) fn reload_opencode_runtime_after_auth(manager: &CodexProfileManager, profile_id: i64) {
     if let Err(err) = manager.restart_profile(profile_id) {
         eprintln!(
             "[opencode-auth] failed to restart runtime for profile {} after auth update: {}",
@@ -406,9 +403,7 @@ pub(crate) fn start_opencode_api_key_flow_for_provider(
                         return gtk::glib::ControlFlow::Break;
                     }
                     status_label.set_visible(true);
-                    status_label.set_text(&format!(
-                        "Saved API key for {provider_name_for_done}."
-                    ));
+                    status_label.set_text(&format!("Saved API key for {provider_name_for_done}."));
                     reload_opencode_runtime_after_auth(&manager, profile_id);
                     trigger_button.set_sensitive(true);
                     on_success(account, provider_name_for_done.clone());

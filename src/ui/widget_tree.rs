@@ -60,9 +60,7 @@ pub(crate) fn find_listbox_row_by_widget_name(
     None
 }
 
-pub(crate) fn capture_ancestor_vscroll(
-    widget: &gtk::Widget,
-) -> Option<(gtk::ScrolledWindow, f64)> {
+pub(crate) fn capture_ancestor_vscroll(widget: &gtk::Widget) -> Option<(gtk::ScrolledWindow, f64)> {
     let mut current = widget.parent();
     while let Some(node) = current {
         if let Ok(scroll) = node.clone().downcast::<gtk::ScrolledWindow>() {

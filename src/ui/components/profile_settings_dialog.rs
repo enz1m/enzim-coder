@@ -70,10 +70,7 @@ fn open_uri_in_browser(uri: &str) {
     if trimmed.is_empty() {
         return;
     }
-    let _ = gtk::gio::AppInfo::launch_default_for_uri(
-        trimmed,
-        None::<&gtk::gio::AppLaunchContext>,
-    );
+    let _ = gtk::gio::AppInfo::launch_default_for_uri(trimmed, None::<&gtk::gio::AppLaunchContext>);
 }
 
 fn reload_profile_dropdown(
@@ -180,9 +177,7 @@ pub(crate) fn build_settings_page(
     root.set_margin_top(12);
     root.set_margin_bottom(12);
 
-    let intro_label = gtk::Label::new(Some(
-        intro_text,
-    ));
+    let intro_label = gtk::Label::new(Some(intro_text));
     intro_label.set_xalign(0.0);
     intro_label.set_wrap(true);
     intro_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
@@ -232,8 +227,8 @@ pub(crate) fn build_settings_page(
             )
         })
     };
-    let profile_ids: Rc<std::cell::RefCell<Vec<i64>>> = Rc::new(std::cell::RefCell::new(
-        reload_profile_dropdown(
+    let profile_ids: Rc<std::cell::RefCell<Vec<i64>>> =
+        Rc::new(std::cell::RefCell::new(reload_profile_dropdown(
             &profile_model,
             &profile_combo,
             &db,
@@ -241,8 +236,7 @@ pub(crate) fn build_settings_page(
             None,
             backend_filter,
             system_only,
-        ),
-    ));
+        )));
     profile_combo.set_hexpand(true);
     let profile_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     profile_row.add_css_class("profile-selector-row");
@@ -538,7 +532,8 @@ pub(crate) fn build_settings_page(
                 }
             }
             for provider in provider_items.borrow().iter().cloned() {
-                let row_button = gtk::Button::with_label(&opencode_provider_dropdown_label(&provider));
+                let row_button =
+                    gtk::Button::with_label(&opencode_provider_dropdown_label(&provider));
                 row_button.set_halign(gtk::Align::Fill);
                 row_button.set_hexpand(true);
                 row_button.add_css_class("app-flat-button");
@@ -591,7 +586,9 @@ pub(crate) fn build_settings_page(
                 logout_button.set_sensitive(false);
                 return;
             };
-            let Some(provider) = items.iter().find(|provider| provider.provider_id == selected_id)
+            let Some(provider) = items
+                .iter()
+                .find(|provider| provider.provider_id == selected_id)
             else {
                 provider_hint_label.set_text("Select a provider.");
                 provider_hint_label.set_visible(true);
@@ -696,7 +693,8 @@ pub(crate) fn build_settings_page(
             refresh_runtime_only_models_cache(profile_id);
             operation_label.set_visible(true);
             operation_label.set_text("Loading OpenCode providers...");
-            let (tx, rx) = mpsc::channel::<Result<Vec<crate::backend::AccountProviderInfo>, String>>();
+            let (tx, rx) =
+                mpsc::channel::<Result<Vec<crate::backend::AccountProviderInfo>, String>>();
             thread::spawn(move || {
                 let _ = tx.send(client.account_provider_list());
             });
@@ -733,7 +731,11 @@ pub(crate) fn build_settings_page(
                                 .position(|provider| provider.provider_id == provider_id)
                         })
                         .or_else(|| (!providers.is_empty()).then_some(0))
-                        .and_then(|index| providers.get(index).map(|provider| provider.provider_id.clone()));
+                        .and_then(|index| {
+                            providers
+                                .get(index)
+                                .map(|provider| provider.provider_id.clone())
+                        });
                     all_provider_items.replace(providers);
                     apply_provider_filter(next_selected);
                     if provider_items.borrow().is_empty()
@@ -826,8 +828,7 @@ pub(crate) fn build_settings_page(
             models_scroll.set_child(Some(&models_stack));
             models_root.append(&models_scroll);
             models_window.set_child(Some(&models_root));
-            let selected_provider_name: Rc<RefCell<Option<String>>> =
-                Rc::new(RefCell::new(None));
+            let selected_provider_name: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
 
             {
                 let models_back_button = models_back_button.clone();
@@ -881,15 +882,17 @@ pub(crate) fn build_settings_page(
                         crate::ui::components::chat::runtime_controls::hidden_opencode_model_ids(
                             profile_id,
                         );
-                    let (tx, rx) = mpsc::channel::<Result<
-                        (
-                            Vec<crate::backend::AccountProviderInfo>,
-                            Vec<crate::codex_appserver::ModelInfo>,
-                            HashSet<String>,
-                            usize,
-                        ),
-                        String,
-                    >>();
+                    let (tx, rx) = mpsc::channel::<
+                        Result<
+                            (
+                                Vec<crate::backend::AccountProviderInfo>,
+                                Vec<crate::codex_appserver::ModelInfo>,
+                                HashSet<String>,
+                                usize,
+                            ),
+                            String,
+                        >,
+                    >();
                     thread::spawn(move || {
                         let result = client.account_provider_list().map(|providers| {
                             (providers, all_models, hidden_models, visible_models.len())
@@ -904,9 +907,8 @@ pub(crate) fn build_settings_page(
                     let models_stack = models_stack.clone();
                     let provider_list = provider_list.clone();
                     let provider_models = provider_models.clone();
-                    gtk::glib::timeout_add_local(
-                        Duration::from_millis(40),
-                        move || match rx.try_recv() {
+                    gtk::glib::timeout_add_local(Duration::from_millis(40), move || {
+                        match rx.try_recv() {
                             Ok(Ok((providers, models, hidden_models, visible_count))) => {
                                 let mut authed_provider_names = BTreeMap::<String, String>::new();
                                 let mut provider_name_to_id = HashMap::<String, String>::new();
@@ -939,14 +941,13 @@ pub(crate) fn build_settings_page(
                                         .split_once(':')
                                         .map(|(provider_id, _)| provider_id.to_string())
                                         .or_else(|| {
-                                            model
-                                                .display_name
-                                                .split_once(" / ")
-                                                .and_then(|(provider_name, _)| {
+                                            model.display_name.split_once(" / ").and_then(
+                                                |(provider_name, _)| {
                                                     provider_name_to_id
                                                         .get(&provider_name.to_lowercase())
                                                         .cloned()
-                                                })
+                                                },
+                                            )
                                         });
                                     let Some(provider_id) = provider_id else {
                                         continue;
@@ -974,9 +975,8 @@ pub(crate) fn build_settings_page(
                                     total_models += model_names.len();
                                 }
                                 if total_models == 0 {
-                                    models_status.set_text(
-                                        "No models reported for providers with auth.",
-                                    );
+                                    models_status
+                                        .set_text("No models reported for providers with auth.");
                                 } else {
                                     models_status.set_text(&format!(
                                         "{visible_count} visible / {total_models} total across {} providers with auth.",
@@ -1097,8 +1097,8 @@ pub(crate) fn build_settings_page(
                                 models_status.set_text("Model loading was interrupted.");
                                 gtk::glib::ControlFlow::Break
                             }
-                        },
-                    );
+                        }
+                    });
                 })
             };
             {
@@ -1584,7 +1584,8 @@ pub(crate) fn build_settings_page(
                 };
                 let provider_id = flow.provider_id.clone();
                 let method_index = flow.method_index;
-                let (tx, rx) = mpsc::channel::<Result<Option<crate::codex_appserver::AccountInfo>, String>>();
+                let (tx, rx) =
+                    mpsc::channel::<Result<Option<crate::codex_appserver::AccountInfo>, String>>();
                 thread::spawn(move || {
                     let _ = tx.send(client.account_complete_oauth_for_provider(
                         &provider_id,
@@ -1612,68 +1613,71 @@ pub(crate) fn build_settings_page(
                 let login_waiting_row = login_waiting_row.clone();
                 let login_waiting_spinner = login_waiting_spinner.clone();
                 let pending_runtime_oauth_flow = pending_runtime_oauth_flow.clone();
-                gtk::glib::timeout_add_local(Duration::from_millis(120), move || match rx.try_recv()
-                {
-                    Ok(Ok(account)) => {
-                        pending_runtime_oauth_flow.replace(None);
-                        login_link_section.set_visible(false);
-                        login_code_row.set_visible(false);
-                        login_code_entry.set_text("");
-                        login_code_button.set_sensitive(true);
-                        login_device_code_row.set_visible(false);
-                        login_device_code_value.set_text("");
-                        copy_device_code_button.set_sensitive(false);
-                        login_link_hint.set_visible(false);
-                        login_waiting_spinner.stop();
-                        login_waiting_row.set_visible(false);
-                        if let Some(account) = account {
-                            let account_text = account
-                                .email
-                                .clone()
-                                .unwrap_or_else(|| account.account_type.clone());
-                            status_label.set_text("Runtime status: running");
-                            let connected = account_text
-                                .strip_prefix("OpenCode [")
-                                .and_then(|value| value.strip_suffix(']'))
-                                .map(str::trim)
-                                .filter(|value| !value.is_empty())
-                                .unwrap_or(account_text.as_str());
-                            account_label.set_text(&format!("Providers with auth: {connected}"));
-                            operation_label.set_text("Login completed.");
-                            let _ = db.update_codex_profile_status(profile_id, "running");
-                            let _ = crate::ui::components::runtime_auth_dialog::sync_runtime_account_to_db(
+                gtk::glib::timeout_add_local(Duration::from_millis(120), move || {
+                    match rx.try_recv() {
+                        Ok(Ok(account)) => {
+                            pending_runtime_oauth_flow.replace(None);
+                            login_link_section.set_visible(false);
+                            login_code_row.set_visible(false);
+                            login_code_entry.set_text("");
+                            login_code_button.set_sensitive(true);
+                            login_device_code_row.set_visible(false);
+                            login_device_code_value.set_text("");
+                            copy_device_code_button.set_sensitive(false);
+                            login_link_hint.set_visible(false);
+                            login_waiting_spinner.stop();
+                            login_waiting_row.set_visible(false);
+                            if let Some(account) = account {
+                                let account_text = account
+                                    .email
+                                    .clone()
+                                    .unwrap_or_else(|| account.account_type.clone());
+                                status_label.set_text("Runtime status: running");
+                                let connected = account_text
+                                    .strip_prefix("OpenCode [")
+                                    .and_then(|value| value.strip_suffix(']'))
+                                    .map(str::trim)
+                                    .filter(|value| !value.is_empty())
+                                    .unwrap_or(account_text.as_str());
+                                account_label
+                                    .set_text(&format!("Providers with auth: {connected}"));
+                                operation_label.set_text("Login completed.");
+                                let _ = db.update_codex_profile_status(profile_id, "running");
+                                let _ = crate::ui::components::runtime_auth_dialog::sync_runtime_account_to_db(
                                 &db,
                                 profile_id,
                                 Some(account),
                             );
-                            crate::ui::components::runtime_auth_dialog::reload_opencode_runtime_after_auth(
+                                crate::ui::components::runtime_auth_dialog::reload_opencode_runtime_after_auth(
                                 &manager,
                                 profile_id,
                             );
-                            let next_ids = sync_profile_dropdown(Some(profile_id));
-                            profile_ids.replace(next_ids);
-                            refresh_ui();
-                            reload_runtime_only_providers();
-                        } else {
-                            operation_label
-                                .set_text("Login completed but no account details were returned.");
+                                let next_ids = sync_profile_dropdown(Some(profile_id));
+                                profile_ids.replace(next_ids);
+                                refresh_ui();
+                                reload_runtime_only_providers();
+                            } else {
+                                operation_label.set_text(
+                                    "Login completed but no account details were returned.",
+                                );
+                            }
+                            gtk::glib::ControlFlow::Break
                         }
-                        gtk::glib::ControlFlow::Break
-                    }
-                    Ok(Err(err)) => {
-                        operation_label.set_text(&format!("OAuth login failed: {err}"));
-                        login_code_button.set_sensitive(true);
-                        login_waiting_spinner.stop();
-                        login_waiting_row.set_visible(false);
-                        gtk::glib::ControlFlow::Break
-                    }
-                    Err(mpsc::TryRecvError::Empty) => gtk::glib::ControlFlow::Continue,
-                    Err(mpsc::TryRecvError::Disconnected) => {
-                        operation_label.set_text("OAuth login stopped unexpectedly.");
-                        login_code_button.set_sensitive(true);
-                        login_waiting_spinner.stop();
-                        login_waiting_row.set_visible(false);
-                        gtk::glib::ControlFlow::Break
+                        Ok(Err(err)) => {
+                            operation_label.set_text(&format!("OAuth login failed: {err}"));
+                            login_code_button.set_sensitive(true);
+                            login_waiting_spinner.stop();
+                            login_waiting_row.set_visible(false);
+                            gtk::glib::ControlFlow::Break
+                        }
+                        Err(mpsc::TryRecvError::Empty) => gtk::glib::ControlFlow::Continue,
+                        Err(mpsc::TryRecvError::Disconnected) => {
+                            operation_label.set_text("OAuth login stopped unexpectedly.");
+                            login_code_button.set_sensitive(true);
+                            login_waiting_spinner.stop();
+                            login_waiting_row.set_visible(false);
+                            gtk::glib::ControlFlow::Break
+                        }
                     }
                 });
             },
@@ -1759,8 +1763,7 @@ pub(crate) fn build_settings_page(
             login_waiting_label.set_text("Waiting for authorization...");
             if runtime_only {
                 let provider_for_thread = provider.clone();
-                let (tx, rx) =
-                    mpsc::channel::<Result<crate::backend::OAuthFlowInfo, String>>();
+                let (tx, rx) = mpsc::channel::<Result<crate::backend::OAuthFlowInfo, String>>();
                 thread::spawn(move || {
                     let result = match provider_for_thread {
                         Some((provider_id, _)) => {
@@ -1786,11 +1789,9 @@ pub(crate) fn build_settings_page(
                 let login_waiting_label_after_start = login_waiting_label.clone();
                 let provider_name = provider.as_ref().map(|(_, name)| name.clone());
                 let pending_runtime_oauth_flow_after_start = pending_runtime_oauth_flow.clone();
-                let complete_runtime_oauth_flow_after_start =
-                    complete_runtime_oauth_flow.clone();
-                gtk::glib::timeout_add_local(
-                    Duration::from_millis(40),
-                    move || match rx.try_recv() {
+                let complete_runtime_oauth_flow_after_start = complete_runtime_oauth_flow.clone();
+                gtk::glib::timeout_add_local(Duration::from_millis(40), move || {
+                    match rx.try_recv() {
                         Ok(Ok(flow)) => {
                             login_link_section_after_start.set_visible(true);
                             login_link_entry_after_start.set_text(&flow.url);
@@ -1841,9 +1842,8 @@ pub(crate) fn build_settings_page(
                                 }
                             } else {
                                 login_code_row_after_start.set_visible(false);
-                                login_waiting_label_after_start.set_text(
-                                    "Waiting for authorization...",
-                                );
+                                login_waiting_label_after_start
+                                    .set_text("Waiting for authorization...");
                                 login_waiting_row_after_start.set_visible(true);
                                 login_waiting_spinner_after_start.start();
                                 if let Some(provider_name) = provider_name.as_ref() {
@@ -1873,21 +1873,22 @@ pub(crate) fn build_settings_page(
                         }
                         Ok(Err(err)) => {
                             operation_label_after_start.set_visible(true);
-                            operation_label_after_start
-                                .set_text(&format!("Login failed: {err}"));
+                            operation_label_after_start.set_text(&format!("Login failed: {err}"));
                             gtk::glib::ControlFlow::Break
                         }
                         Err(mpsc::TryRecvError::Empty) => gtk::glib::ControlFlow::Continue,
                         Err(mpsc::TryRecvError::Disconnected) => gtk::glib::ControlFlow::Break,
-                    },
-                );
+                    }
+                });
                 return;
             }
             let (tx, rx) = mpsc::channel::<Result<(String, String), String>>();
             let provider_for_thread = provider.clone();
             thread::spawn(move || {
                 let result = match provider_for_thread {
-                    Some((provider_id, _)) => client.account_login_start_oauth_for_provider(&provider_id),
+                    Some((provider_id, _)) => {
+                        client.account_login_start_oauth_for_provider(&provider_id)
+                    }
                     None => client.account_login_start_chatgpt(),
                 };
                 let _ = tx.send(result);
@@ -1942,9 +1943,10 @@ pub(crate) fn build_settings_page(
                                 }
                             }
                         }
-                        let _ = poll_tx.send(Err(
-                            "Timed out waiting for login completion. Try again.".to_string()
-                        ));
+                        let _ =
+                            poll_tx
+                                .send(Err("Timed out waiting for login completion. Try again."
+                                    .to_string()));
                     });
                     let operation_label_poll = operation_label_after_start.clone();
                     let status_label_poll = status_label_after_start.clone();
@@ -2235,17 +2237,19 @@ pub(crate) fn build_settings_page(
                     &db, profile_id, account,
                 );
                 crate::ui::components::runtime_auth_dialog::reload_opencode_runtime_after_auth(
-                    &manager,
-                    profile_id,
+                    &manager, profile_id,
                 );
                 operation_label.set_visible(true);
-                operation_label
-                    .set_text(&format!("Removed {} from OpenCode.", provider.provider_name));
+                operation_label.set_text(&format!(
+                    "Removed {} from OpenCode.",
+                    provider.provider_name
+                ));
             } else {
                 let _ = client.account_logout();
-                let _ = crate::ui::components::runtime_auth_dialog::clear_runtime_account_for_profile(
-                    &db, profile_id,
-                );
+                let _ =
+                    crate::ui::components::runtime_auth_dialog::clear_runtime_account_for_profile(
+                        &db, profile_id,
+                    );
                 operation_label.set_visible(true);
                 operation_label.set_text("Logged out from this profile.");
             }

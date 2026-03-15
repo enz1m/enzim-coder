@@ -99,7 +99,9 @@ fn open_confirmation_dialog(
                         selected.push(path.clone());
                     }
                 } else {
-                    selected_force_paths.borrow_mut().retain(|existing| existing != &path);
+                    selected_force_paths
+                        .borrow_mut()
+                        .retain(|existing| existing != &path);
                 }
             });
             conflict_list.append(&toggle);
@@ -455,7 +457,11 @@ fn resolve_visible_restore_checkpoints(
     local_turns: &[LocalChatTurnRecord],
 ) -> Vec<(RestoreCheckpoint, LocalChatTurnRecord)> {
     let mut ordered_checkpoints = checkpoints.to_vec();
-    ordered_checkpoints.sort_by(|a, b| a.created_at.cmp(&b.created_at).then_with(|| a.id.cmp(&b.id)));
+    ordered_checkpoints.sort_by(|a, b| {
+        a.created_at
+            .cmp(&b.created_at)
+            .then_with(|| a.id.cmp(&b.id))
+    });
 
     let mut ordered_turns = local_turns.to_vec();
     ordered_turns.sort_by(|a, b| {
@@ -521,8 +527,10 @@ fn refresh_checkpoint_dropdown_model(
     let latest_local_turns = db
         .list_local_chat_turns_for_remote_thread(remote_thread_id)
         .unwrap_or_default();
-    let total_checkpoints = crate::restore::list_checkpoints_for_remote_thread(db, remote_thread_id);
-    let visible_pairs = resolve_visible_restore_checkpoints(&total_checkpoints, &latest_local_turns);
+    let total_checkpoints =
+        crate::restore::list_checkpoints_for_remote_thread(db, remote_thread_id);
+    let visible_pairs =
+        resolve_visible_restore_checkpoints(&total_checkpoints, &latest_local_turns);
     let hidden_count = total_checkpoints.len().saturating_sub(visible_pairs.len());
 
     local_turns.replace(latest_local_turns);
@@ -540,7 +548,11 @@ fn refresh_checkpoint_dropdown_model(
     let mut checkpoint_rows = Vec::with_capacity(visible_pairs.len());
     let mut checkpoint_turn_map = HashMap::with_capacity(visible_pairs.len());
     let mut visible_pairs = visible_pairs;
-    visible_pairs.sort_by(|(a, _), (b, _)| b.created_at.cmp(&a.created_at).then_with(|| b.id.cmp(&a.id)));
+    visible_pairs.sort_by(|(a, _), (b, _)| {
+        b.created_at
+            .cmp(&a.created_at)
+            .then_with(|| b.id.cmp(&a.id))
+    });
     for (checkpoint, turn) in visible_pairs {
         let label = format!(
             "Turn {} • {}",
@@ -875,8 +887,8 @@ pub fn open_restore_preview_dialog(
     root.append(&heading);
 
     let backend_kind = backend_kind_for_restore_thread(&db, &codex_thread_id, codex.as_ref());
-    let native_opencode_available = backend_kind.eq_ignore_ascii_case("opencode")
-        && workspace_is_git_backed(&workspace_path);
+    let native_opencode_available =
+        backend_kind.eq_ignore_ascii_case("opencode") && workspace_is_git_backed(&workspace_path);
 
     let turn_texts: Rc<RefCell<HashMap<String, (String, String)>>> = Rc::new(RefCell::new(
         codex
@@ -1150,7 +1162,12 @@ pub fn open_restore_preview_dialog(
                 }
                 native_summary.set_text("Pick a checkpoint to inspect OpenCode restore.");
                 set_metric_pills(&native_files_summary, &[("Files", 0)]);
-                refresh_native_restore_list(&[], &native_files_listbox, &native_files_summary, false);
+                refresh_native_restore_list(
+                    &[],
+                    &native_files_listbox,
+                    &native_files_summary,
+                    false,
+                );
                 native_restore_btn.set_sensitive(*native_restore_active.borrow());
                 selected_user_preview.set_text("");
                 selected_assistant_preview.set_text("");
@@ -1188,10 +1205,7 @@ pub fn open_restore_preview_dialog(
             if let Some(turn) = resolved_turn.as_ref() {
                 eprintln!(
                     "[restore] checkpoint.resolve checkpoint_id={} checkpoint_turn_id={} matched_turn_id={} matched_completed_at={:?}",
-                    checkpoint_id,
-                    turn_id,
-                    turn.external_turn_id,
-                    turn.completed_at
+                    checkpoint_id, turn_id, turn.external_turn_id, turn.completed_at
                 );
                 selected_turn_id.replace(Some(turn.external_turn_id.clone()));
                 selected_user_prompt.replace(Some(turn.user_text.clone()));
@@ -1212,9 +1226,7 @@ pub fn open_restore_preview_dialog(
             {
                 eprintln!(
                     "[restore] checkpoint.resolve checkpoint_id={} checkpoint_turn_id={} matched_remote_turn_id={} fallback=thread_read",
-                    checkpoint_id,
-                    turn_id,
-                    turn_id
+                    checkpoint_id, turn_id, turn_id
                 );
                 selected_turn_id.replace(Some(turn_id.clone()));
                 selected_user_prompt.replace(Some(user.clone()));
@@ -1248,10 +1260,10 @@ pub fn open_restore_preview_dialog(
             apply_btn.set_sensitive(preview.is_some());
             let target_turn_id_for_native = selected_turn_id.borrow().clone();
             let native_restore_info = if native_opencode_available {
-                target_turn_id_for_native.as_deref().and_then(|target_turn_id| {
-                    codex_for_loader
-                        .as_ref()
-                        .and_then(|client| {
+                target_turn_id_for_native
+                    .as_deref()
+                    .and_then(|target_turn_id| {
+                        codex_for_loader.as_ref().and_then(|client| {
                             client
                                 .thread_native_restore_info(
                                     &codex_thread_id_for_loader,
@@ -1259,7 +1271,7 @@ pub fn open_restore_preview_dialog(
                                 )
                                 .ok()
                         })
-                })
+                    })
             } else {
                 None
             };
@@ -1273,7 +1285,8 @@ pub fn open_restore_preview_dialog(
                 .and_then(|info| info.get("patchFiles"))
                 .and_then(Value::as_array)
                 .map(|items| {
-                    items.iter()
+                    items
+                        .iter()
                         .filter_map(Value::as_str)
                         .map(|value| value.to_string())
                         .collect::<Vec<_>>()
@@ -1322,7 +1335,12 @@ pub fn open_restore_preview_dialog(
                 native_summary.set_text(
                     "OpenCode restore is unavailable for this checkpoint because no preview could be loaded.",
                 );
-                refresh_native_restore_list(&[], &native_files_listbox, &native_files_summary, false);
+                refresh_native_restore_list(
+                    &[],
+                    &native_files_listbox,
+                    &native_files_summary,
+                    false,
+                );
             }
             undo_btn.set_sensitive(last_backup_checkpoint_id.borrow().is_some());
             refresh_preview_list(
@@ -1697,14 +1715,9 @@ pub fn open_restore_preview_dialog(
         let workspace_path = workspace_path.clone();
         let parent_window = parent_window.clone();
         undo_btn.connect_clicked(move |_| {
-            let backup_checkpoint_id = last_backup_checkpoint_id
-                .borrow()
-                .or_else(|| {
-                    crate::restore::last_backup_checkpoint_for_remote_thread(
-                        &db,
-                        &codex_thread_id,
-                    )
-                });
+            let backup_checkpoint_id = last_backup_checkpoint_id.borrow().or_else(|| {
+                crate::restore::last_backup_checkpoint_for_remote_thread(&db, &codex_thread_id)
+            });
             let Some(backup_checkpoint_id) = backup_checkpoint_id else {
                 status.set_text("No backup checkpoint found for undo.");
                 return;
@@ -1752,10 +1765,9 @@ pub fn open_restore_preview_dialog(
                 let parent_window = parent_window.clone();
                 Rc::new(move |undo_forced_paths| {
                     let mut chat_restore_status = String::new();
-                    if codex
-                        .as_ref()
-                        .is_some_and(|client| client.backend_kind().eq_ignore_ascii_case("opencode"))
-                    {
+                    if codex.as_ref().is_some_and(|client| {
+                        client.backend_kind().eq_ignore_ascii_case("opencode")
+                    }) {
                         match undo_opencode_restore_with_chat_sync(
                             &db,
                             codex.clone(),
@@ -1769,8 +1781,7 @@ pub fn open_restore_preview_dialog(
                                     "[restore] warning: opencode chat undo failed thread_id={}: {}",
                                     codex_thread_id, err
                                 );
-                                chat_restore_status =
-                                    format!(" • Chat restore skipped ({err})");
+                                chat_restore_status = format!(" • Chat restore skipped ({err})");
                             }
                         }
                     }
@@ -1800,11 +1811,12 @@ pub fn open_restore_preview_dialog(
                             if let Some(reload) = reload_checkpoint_choices.borrow().as_ref() {
                                 reload(*selected_checkpoint_id.borrow());
                             } else if let Some(current_id) = *selected_checkpoint_id.borrow() {
-                                let preview = crate::restore::preview_restore_to_checkpoint_by_remote_id(
-                                    &db,
-                                    &codex_thread_id,
-                                    current_id,
-                                );
+                                let preview =
+                                    crate::restore::preview_restore_to_checkpoint_by_remote_id(
+                                        &db,
+                                        &codex_thread_id,
+                                        current_id,
+                                    );
                                 refresh_preview_list(
                                     preview,
                                     &listbox,
@@ -1815,18 +1827,20 @@ pub fn open_restore_preview_dialog(
                                 );
                             } else {
                                 let idx = checkpoint_dropdown.selected() as usize;
-                                if let Some(id) = crate::restore::list_checkpoints_for_remote_thread(
-                                    &db,
-                                    &codex_thread_id,
-                                )
-                                .get(idx)
-                                .map(|cp| cp.id)
-                                {
-                                    let preview = crate::restore::preview_restore_to_checkpoint_by_remote_id(
+                                if let Some(id) =
+                                    crate::restore::list_checkpoints_for_remote_thread(
                                         &db,
                                         &codex_thread_id,
-                                        id,
-                                    );
+                                    )
+                                    .get(idx)
+                                    .map(|cp| cp.id)
+                                {
+                                    let preview =
+                                        crate::restore::preview_restore_to_checkpoint_by_remote_id(
+                                            &db,
+                                            &codex_thread_id,
+                                            id,
+                                        );
                                     refresh_preview_list(
                                         preview,
                                         &listbox,

@@ -1725,10 +1725,9 @@ pub(super) fn set_active_action_section_wave(body_box: &gtk::Box, running: bool)
         if let Ok(section) = node.clone().downcast::<gtk::Box>() {
             if section.has_css_class("chat-action-section") {
                 if let Some(action_ui) = action_section_parts(&section) {
-                    let should_run =
-                        running
-                            && Some(action_summary_registry_key(&action_ui.summary_label))
-                                == active_key;
+                    let should_run = running
+                        && Some(action_summary_registry_key(&action_ui.summary_label))
+                            == active_key;
                     set_action_summary_running(&action_ui.summary_label, should_run);
                 }
             }
@@ -2503,7 +2502,9 @@ pub(super) fn create_reasoning_widget() -> (gtk::Box, GenericItemUi) {
     generic_ui.section_label.set_visible(false);
     generic_ui.status_label.set_visible(false);
     generic_ui.output_scroll.set_max_content_height(170);
-    generic_ui.output_scroll.set_widget_name("chat-thinking-output-scroll");
+    generic_ui
+        .output_scroll
+        .set_widget_name("chat-thinking-output-scroll");
     generic_ui.output_scroll.set_overlay_scrolling(true);
     generic_ui
         .output_scroll

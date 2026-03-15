@@ -178,7 +178,10 @@ fn resolve_checkpoint_map_for_turns(
             .then_with(|| a.id.cmp(&b.id))
     });
 
-    for (turn, checkpoint) in unmatched_turns.into_iter().zip(unmatched_checkpoints.into_iter()) {
+    for (turn, checkpoint) in unmatched_turns
+        .into_iter()
+        .zip(unmatched_checkpoints.into_iter())
+    {
         resolved.insert(turn.external_turn_id, checkpoint.id);
     }
 

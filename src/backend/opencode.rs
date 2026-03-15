@@ -1,7 +1,7 @@
+use crate::backend::{AccountProviderInfo, OAuthFlowInfo};
 use crate::codex_appserver::{
     AccountInfo, AppServerNotification, McpServerInfo, ModelInfo, SkillInfo,
 };
-use crate::backend::{AccountProviderInfo, OAuthFlowInfo};
 use crate::data::CodexProfileRecord;
 use reqwest::blocking::{Client, RequestBuilder};
 use reqwest::header::{ACCEPT, CONTENT_TYPE};
@@ -40,7 +40,11 @@ fn os_user_home_dir() -> Option<PathBuf> {
         let mut pwd: libc::passwd = std::mem::zeroed();
         let mut result: *mut libc::passwd = std::ptr::null_mut();
         let buf_len = libc::sysconf(libc::_SC_GETPW_R_SIZE_MAX);
-        let buf_len = if buf_len <= 0 { 16_384 } else { buf_len as usize };
+        let buf_len = if buf_len <= 0 {
+            16_384
+        } else {
+            buf_len as usize
+        };
         let mut buf = vec![0u8; buf_len];
         let status = libc::getpwuid_r(
             uid,
@@ -52,7 +56,10 @@ fn os_user_home_dir() -> Option<PathBuf> {
         if status != 0 || result.is_null() || pwd.pw_dir.is_null() {
             return None;
         }
-        let home = CStr::from_ptr(pwd.pw_dir).to_string_lossy().trim().to_string();
+        let home = CStr::from_ptr(pwd.pw_dir)
+            .to_string_lossy()
+            .trim()
+            .to_string();
         if home.is_empty() {
             None
         } else {
@@ -144,7 +151,8 @@ fn prompt_body_log_summary(body: &Value) -> String {
         .get("parts")
         .and_then(Value::as_array)
         .map(|parts| {
-            parts.iter()
+            parts
+                .iter()
                 .filter_map(|part| part.get("type").and_then(Value::as_str))
                 .collect::<Vec<_>>()
                 .join(",")
@@ -1188,7 +1196,8 @@ impl OpenCodeAppServer {
         let Ok(value) = serde_json::from_str::<Value>(&contents) else {
             return HashSet::new();
         };
-        value.as_object()
+        value
+            .as_object()
             .map(|items| items.keys().cloned().collect::<HashSet<_>>())
             .unwrap_or_default()
     }
@@ -1203,7 +1212,11 @@ impl OpenCodeAppServer {
         let mut out = HashSet::new();
         let home_path = PathBuf::from(home);
         let mut candidates = vec![
-            home_path.join(".local").join("share").join("opencode").join("auth.json"),
+            home_path
+                .join(".local")
+                .join("share")
+                .join("opencode")
+                .join("auth.json"),
         ];
         if let Some(state) = paths.get("state").and_then(Value::as_str) {
             candidates.push(PathBuf::from(state).join("auth.json"));
@@ -1283,18 +1296,12 @@ impl OpenCodeAppServer {
                 "[opencode:{}] runtime_ready profile={} home={} config={} state={}",
                 log_label,
                 profile.id,
-                path_info
-                    .get("home")
-                    .and_then(Value::as_str)
-                    .unwrap_or(""),
+                path_info.get("home").and_then(Value::as_str).unwrap_or(""),
                 path_info
                     .get("config")
                     .and_then(Value::as_str)
                     .unwrap_or(""),
-                path_info
-                    .get("state")
-                    .and_then(Value::as_str)
-                    .unwrap_or(""),
+                path_info.get("state").and_then(Value::as_str).unwrap_or(""),
             );
         }
         if let Ok(provider_info) = client
@@ -1471,10 +1478,7 @@ impl OpenCodeAppServer {
     }
 
     pub fn active_turn_count(&self) -> usize {
-        self.active_turns
-            .lock()
-            .map(|map| map.len())
-            .unwrap_or(0)
+        self.active_turns.lock().map(|map| map.len()).unwrap_or(0)
     }
 
     fn remember_session_directory(&self, session_id: &str, directory: Option<&str>) {
@@ -1616,7 +1620,10 @@ impl OpenCodeAppServer {
             .filter(|value| !value.trim().is_empty())
     }
 
-    fn opencode_mcp_config_from_generic(server_name: &str, config: &Value) -> Result<Value, String> {
+    fn opencode_mcp_config_from_generic(
+        server_name: &str,
+        config: &Value,
+    ) -> Result<Value, String> {
         let Some(config_object) = config.as_object() else {
             return Err(format!(
                 "OpenCode MCP config for `{server_name}` must be an object."
@@ -1728,13 +1735,10 @@ impl OpenCodeAppServer {
     }
 
     fn enable_mcp_server(&self, server_name: &str, config: Value) -> Result<(), String> {
-        let mut config_object =
-            Self::opencode_mcp_config_from_generic(server_name, &config)?
-                .as_object()
-                .cloned()
-                .ok_or_else(|| {
-                    format!("OpenCode MCP config for `{server_name}` must be an object.")
-                })?;
+        let mut config_object = Self::opencode_mcp_config_from_generic(server_name, &config)?
+            .as_object()
+            .cloned()
+            .ok_or_else(|| format!("OpenCode MCP config for `{server_name}` must be an object."))?;
         config_object.insert("enabled".to_string(), Value::Bool(true));
 
         let _ = self.patch_json(
@@ -1774,7 +1778,9 @@ impl OpenCodeAppServer {
             }),
             None,
         )?;
-        if let Err(err) = self.post_no_content(&format!("/mcp/{server_name}/disconnect"), Value::Null, None) {
+        if let Err(err) =
+            self.post_no_content(&format!("/mcp/{server_name}/disconnect"), Value::Null, None)
+        {
             eprintln!(
                 "[opencode:{}] failed to disconnect MCP server `{server_name}` after disable: {err}",
                 self.log_label
@@ -1847,7 +1853,10 @@ impl OpenCodeAppServer {
                 )
                 .or_else(|| {
                     tool_part.as_ref().and_then(|part| {
-                        nested_string_for_keys(part, &["command", "cmd", "argv", "arguments", "script"])
+                        nested_string_for_keys(
+                            part,
+                            &["command", "cmd", "argv", "arguments", "script"],
+                        )
                     })
                 })
                 .or_else(|| {
@@ -1857,24 +1866,25 @@ impl OpenCodeAppServer {
                     )
                 })
                 .unwrap_or_else(|| "<command unavailable>".to_string());
-                let cwd = nested_string_for_keys(&metadata, &["cwd", "directory", "workdir", "worktree"])
-                    .or_else(|| {
-                        tool_part.as_ref().and_then(|part| {
-                            nested_string_for_keys(part, &["cwd", "directory", "workdir", "worktree"])
+                let cwd =
+                    nested_string_for_keys(&metadata, &["cwd", "directory", "workdir", "worktree"])
+                        .or_else(|| {
+                            tool_part.as_ref().and_then(|part| {
+                                nested_string_for_keys(
+                                    part,
+                                    &["cwd", "directory", "workdir", "worktree"],
+                                )
+                            })
                         })
-                    })
-                    .or_else(|| {
-                        nested_string_for_keys(request, &["cwd", "directory", "workdir", "worktree"])
-                    })
-                    .unwrap_or_else(|| "<cwd unavailable>".to_string());
-                params.insert(
-                    "command".to_string(),
-                    json!(command),
-                );
-                params.insert(
-                    "cwd".to_string(),
-                    json!(cwd),
-                );
+                        .or_else(|| {
+                            nested_string_for_keys(
+                                request,
+                                &["cwd", "directory", "workdir", "worktree"],
+                            )
+                        })
+                        .unwrap_or_else(|| "<cwd unavailable>".to_string());
+                params.insert("command".to_string(), json!(command));
+                params.insert("cwd".to_string(), json!(cwd));
                 params.insert(
                     "reason".to_string(),
                     json!(format!("OpenCode requested `{permission}` permission.")),
@@ -2584,19 +2594,15 @@ impl OpenCodeAppServer {
             });
         if let Some(method) = method {
             if state.started_items.insert(item_id.to_string()) {
-                let item_kind = state
-                    .item_kinds
-                    .get(item_id)
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        if method == "item/reasoning/textDelta" {
-                            "reasoning".to_string()
-                        } else if method == "item/dynamicToolCall/outputDelta" {
-                            "dynamicToolCall".to_string()
-                        } else {
-                            "agentMessage".to_string()
-                        }
-                    });
+                let item_kind = state.item_kinds.get(item_id).cloned().unwrap_or_else(|| {
+                    if method == "item/reasoning/textDelta" {
+                        "reasoning".to_string()
+                    } else if method == "item/dynamicToolCall/outputDelta" {
+                        "dynamicToolCall".to_string()
+                    } else {
+                        "agentMessage".to_string()
+                    }
+                });
                 state
                     .item_kinds
                     .entry(item_id.to_string())
@@ -2648,12 +2654,20 @@ impl OpenCodeAppServer {
             request
                 .get("patterns")
                 .and_then(Value::as_array)
-                .map(|items| items.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(","))
+                .map(|items| items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(","))
                 .unwrap_or_default(),
             request
                 .get("always")
                 .and_then(Value::as_array)
-                .map(|items| items.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(","))
+                .map(|items| items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(","))
                 .unwrap_or_default(),
             compact_json_string(&request.get("metadata").cloned().unwrap_or(Value::Null)),
             compact_json_string(&request.get("tool").cloned().unwrap_or(Value::Null)),
@@ -2698,11 +2712,11 @@ impl OpenCodeAppServer {
             if let (Some(turn_id), Some(item_id), Some(command)) = (
                 self.active_turn_id_for_thread(session_id),
                 approval_item_id.as_deref().or_else(|| {
-                        request
-                            .get("tool")
-                            .and_then(|tool| tool.get("callID"))
-                            .and_then(Value::as_str)
-                    }),
+                    request
+                        .get("tool")
+                        .and_then(|tool| tool.get("callID"))
+                        .and_then(Value::as_str)
+                }),
                 command_preview.as_deref(),
             ) {
                 self.emit_item_started(
@@ -2850,7 +2864,8 @@ impl OpenCodeAppServer {
                                 .and_then(|value| value.get("status"))
                                 .cloned()
                                 .unwrap_or(Value::Null);
-                            if let Some(active_turn_id) = self.active_turn_id_for_thread(thread_id) {
+                            if let Some(active_turn_id) = self.active_turn_id_for_thread(thread_id)
+                            {
                                 let status_text = status
                                     .get("message")
                                     .and_then(Value::as_str)
@@ -2882,7 +2897,8 @@ impl OpenCodeAppServer {
                                 .and_then(|value| value.get("error"))
                                 .cloned()
                                 .unwrap_or(Value::Null);
-                            if let Some(active_turn_id) = self.active_turn_id_for_thread(thread_id) {
+                            if let Some(active_turn_id) = self.active_turn_id_for_thread(thread_id)
+                            {
                                 self.emit_turn_error(thread_id, &active_turn_id, error.clone());
                             }
                             eprintln!(
@@ -3002,14 +3018,13 @@ impl OpenCodeAppServer {
             }
         }
 
-        let watch_result = self
-            .watch_session_turn_sse(
-                &thread_id,
-                &turn_id,
-                &mut state,
-                directory.as_deref(),
-                ready_tx,
-            );
+        let watch_result = self.watch_session_turn_sse(
+            &thread_id,
+            &turn_id,
+            &mut state,
+            directory.as_deref(),
+            ready_tx,
+        );
 
         if let Err(err) = watch_result {
             eprintln!(
@@ -3059,7 +3074,9 @@ impl OpenCodeAppServer {
         limit: usize,
     ) -> Result<Vec<ModelInfo>, String> {
         let provider_response = self.get_json("/provider", None)?;
-        let config_response = self.get_json("/config/providers", None).unwrap_or(Value::Null);
+        let config_response = self
+            .get_json("/config/providers", None)
+            .unwrap_or(Value::Null);
         let mut providers = provider_response
             .get("all")
             .and_then(Value::as_array)
@@ -3302,9 +3319,9 @@ impl OpenCodeAppServer {
                     .and_then(Value::as_array)
                     .cloned()
                     .unwrap_or_default();
-                let supports_oauth = auth_methods.iter().any(|method| {
-                    method.get("type").and_then(Value::as_str) == Some("oauth")
-                });
+                let supports_oauth = auth_methods
+                    .iter()
+                    .any(|method| method.get("type").and_then(Value::as_str) == Some("oauth"));
                 let supports_api_key = auth_methods.iter().any(|method| {
                     matches!(
                         method.get("type").and_then(Value::as_str),
@@ -3618,7 +3635,11 @@ impl OpenCodeAppServer {
         Ok(())
     }
 
-    pub fn thread_set_command_mode(&self, thread_id: &str, command_mode: &str) -> Result<(), String> {
+    pub fn thread_set_command_mode(
+        &self,
+        thread_id: &str,
+        command_mode: &str,
+    ) -> Result<(), String> {
         self.remember_session_command_mode(thread_id, Some(command_mode));
         eprintln!(
             "[opencode:{}] thread.command_mode thread={} mode={}",
@@ -3652,10 +3673,7 @@ impl OpenCodeAppServer {
             .to_string();
         self.remember_session_directory(
             &thread_id,
-            session
-                .get("directory")
-                .and_then(Value::as_str)
-                .or(cwd),
+            session.get("directory").and_then(Value::as_str).or(cwd),
         );
         self.remember_session_command_mode(
             &thread_id,
@@ -3676,10 +3694,7 @@ impl OpenCodeAppServer {
         let session = self.get_json(&format!("/session/{thread_id}"), cwd)?;
         self.remember_session_directory(
             thread_id,
-            session
-                .get("directory")
-                .and_then(Value::as_str)
-                .or(cwd),
+            session.get("directory").and_then(Value::as_str).or(cwd),
         );
         session
             .get("id")
@@ -3713,7 +3728,10 @@ impl OpenCodeAppServer {
             directory.as_deref(),
         )?;
         self.remember_session_directory(
-            session.get("id").and_then(Value::as_str).unwrap_or_default(),
+            session
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
             session
                 .get("directory")
                 .and_then(Value::as_str)
@@ -3743,9 +3761,8 @@ impl OpenCodeAppServer {
         if turn_bounds.len() < count {
             return Err("OpenCode rollback target was not found".to_string());
         }
-        let Some((target_message_id, target_turn_id)) = turn_bounds
-            .get(turn_bounds.len() - count)
-            .cloned()
+        let Some((target_message_id, target_turn_id)) =
+            turn_bounds.get(turn_bounds.len() - count).cloned()
         else {
             return Err("OpenCode rollback target was not found".to_string());
         };
@@ -3780,10 +3797,7 @@ impl OpenCodeAppServer {
         let messages = self.session_messages(thread_id, directory.as_deref())?;
         let turns = grouped_turn_records(&messages);
         let Some(target_index) = turns.iter().position(|(_, assistants)| {
-            assistants
-                .last()
-                .map(|assistant| assistant.id.as_str())
-                == Some(target_turn_id)
+            assistants.last().map(|assistant| assistant.id.as_str()) == Some(target_turn_id)
         }) else {
             return Err("OpenCode restore target was not found".to_string());
         };
@@ -4157,7 +4171,8 @@ impl OpenCodeAppServer {
             "Previous response was interrupted. Follow this updated instruction instead:\n\n{}",
             trimmed
         );
-        let body = self.build_prompt_body(&steer_prompt, local_image_paths, mentions, None, None, None);
+        let body =
+            self.build_prompt_body(&steer_prompt, local_image_paths, mentions, None, None, None);
         self.dispatch_prompt(thread_id, steer_turn_id.clone(), body, None);
         Ok(steer_turn_id)
     }

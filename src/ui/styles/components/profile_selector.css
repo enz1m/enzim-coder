@@ -1,106 +1,206 @@
 .chat-profile-selector {
-  min-width: 500px;
-  padding: 14px;
-  border-radius: 14px;
-  background: alpha(@window_fg_color, 0.03);
+  min-width: 560px;
+  padding: 10px;
+  border-radius: 12px;
+  background: alpha(@window_fg_color, 0.02);
   border: 1px solid alpha(@window_fg_color, 0.08);
 }
 
+.chat-profile-selector-header {
+  padding: 0 2px;
+}
+
 .chat-profile-selector-title {
-  font-size: 1.06rem;
+  font-size: 1rem;
   font-weight: 700;
 }
 
 .chat-profile-selector-subtitle {
-  color: alpha(@window_fg_color, 0.72);
+  color: alpha(@window_fg_color, 0.68);
+  font-size: 0.82rem;
 }
 
-.chat-profile-card {
+.chat-profile-selector-grid {
+  background: transparent;
+}
+
+.chat-profile-section {
   border-radius: 10px;
-  padding: 10px 12px;
-  background: alpha(@window_fg_color, 0.045);
   border: 1px solid alpha(@window_fg_color, 0.08);
+  background: alpha(@window_fg_color, 0.025);
+  padding: 8px;
 }
 
-.chat-profile-card-access-row {
-  margin-top: 4px;
+.chat-profile-section-header {
+  min-height: 24px;
 }
 
-.chat-profile-card-access-label {
-  color: alpha(@window_fg_color, 0.72);
-  font-size: 0.78rem;
+.chat-profile-section-icon-wrap {
+  min-width: 20px;
+  min-height: 20px;
+  color: alpha(@window_fg_color, 0.8);
+}
+
+.chat-profile-section-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.chat-profile-section-badge {
+  color: alpha(@window_fg_color, 0.58);
+  font-size: 0.72rem;
   font-weight: 600;
 }
 
-.chat-profile-card-avatar {
-  min-width: 18px;
+.chat-profile-section-toolbar {
+  border-radius: 8px;
+  border: 1px solid alpha(@window_fg_color, 0.06);
+  background: alpha(@window_fg_color, 0.03);
+  padding: 4px 6px;
+}
+
+.chat-profile-section-toolbar-intro {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: alpha(@window_fg_color, 0.54);
+}
+
+.chat-profile-section-toolbar-controls {
+  margin-top: 0;
+}
+
+.chat-profile-section-control-group {
+  border-radius: 7px;
+  border: 1px solid alpha(@window_fg_color, 0.06);
+  background: transparent;
+  padding: 1px 3px 1px 5px;
+}
+
+.chat-profile-card-access-label {
+  color: alpha(@window_fg_color, 0.66);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.chat-profile-section-toolbar .compact-selector {
+  margin: 0;
+}
+
+.chat-profile-section-toolbar button.composer-selector-button,
+.chat-profile-section-toolbar button#composer-selector-button,
+.chat-profile-section-toolbar menubutton.composer-selector-button,
+.chat-profile-section-toolbar menubutton.composer-selector-button > button,
+.chat-profile-section-toolbar menubutton.composer-selector-button > button.toggle {
   min-height: 18px;
+  padding: 0 3px;
+  border-radius: 5px;
+}
+
+.chat-profile-section-toolbar .compact-selector-label,
+.chat-profile-section-toolbar label#compact-selector-label {
+  font-size: 0.7rem;
+}
+
+.chat-profile-section-toolbar .compact-selector-arrow,
+.chat-profile-section-toolbar image#compact-selector-arrow {
+  color: alpha(@window_fg_color, 0.48);
+}
+
+.chat-profile-card {
+  border-radius: 8px;
+  padding: 8px;
+  background: alpha(@window_fg_color, 0.03);
+  border: 1px solid alpha(@window_fg_color, 0.06);
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.chat-profile-card-selectable:hover {
+  background: alpha(@window_fg_color, 0.05);
+  border-color: alpha(@window_fg_color, 0.1);
+}
+
+.chat-profile-card-selectable:active {
+  background: alpha(@window_fg_color, 0.07);
+  border-color: alpha(@window_fg_color, 0.14);
+}
+
+.chat-profile-card-top {
+  min-height: 24px;
+}
+
+.chat-profile-card-avatar {
+  min-width: 22px;
+  min-height: 22px;
   background: transparent;
   border: none;
 }
 
 .chat-profile-card-avatar-image {
-  color: alpha(@window_fg_color, 0.88);
+  color: alpha(@window_fg_color, 0.82);
+}
+
+.chat-profile-card-title {
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.chat-profile-card-email,
+.chat-profile-card-subtitle {
+  color: alpha(@window_fg_color, 0.62);
+  font-size: 0.76rem;
 }
 
 .chat-profile-card-state-pill {
   padding: 0;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 600;
   border: none;
   background: transparent;
-  color: alpha(@window_fg_color, 0.68);
+  color: alpha(@window_fg_color, 0.55);
 }
 
 .chat-profile-card-state-pill.is-running {
-  color: alpha(#82d48a, 0.95);
+  color: alpha(#7cc58b, 0.92);
 }
 
 .chat-profile-card-state-pill.is-stopped {
-  color: alpha(#dd8f8f, 0.9);
+  color: alpha(#d48d8d, 0.88);
 }
 
 .chat-profile-card-actions {
-  min-height: 24px;
+  min-height: 0;
 }
 
-button.chat-profile-card-start,
-button.chat-profile-card-select {
-  border-radius: 8px;
+.chat-profile-card-action-buttons {
+  margin-left: auto;
+}
+
+button.chat-profile-card-start {
   min-height: 24px;
   padding: 0 10px;
-  font-size: 0.8rem;
-  border: 1px solid alpha(@window_fg_color, 0.16);
+  border-radius: 7px;
+  border: 1px solid alpha(@window_fg_color, 0.12);
+  background: alpha(@window_fg_color, 0.04);
+  color: alpha(@window_fg_color, 0.88);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+button.chat-profile-card-start:hover {
   background: alpha(@window_fg_color, 0.07);
-  color: alpha(@window_fg_color, 0.92);
+  border-color: alpha(@window_fg_color, 0.16);
 }
 
-button.chat-profile-card-start:hover,
-button.chat-profile-card-select:hover {
-  background: alpha(@window_fg_color, 0.11);
-  border-color: alpha(@window_fg_color, 0.24);
-}
-
-button.chat-profile-card-start:active,
-button.chat-profile-card-select:active {
-  background: alpha(@window_fg_color, 0.14);
+button.chat-profile-card-start:active {
+  background: alpha(@window_fg_color, 0.09);
 }
 
 .chat-profile-card-hint {
-  color: alpha(@window_fg_color, 0.64);
-  font-size: 0.8rem;
-}
-
-.chat-profile-card-title {
-  font-size: 0.9rem;
-  font-weight: 700;
-}
-
-.chat-profile-card-email {
-  color: alpha(@window_fg_color, 0.72);
-  font-size: 0.82rem;
+  color: alpha(@window_fg_color, 0.56);
+  font-size: 0.74rem;
 }
 
 .chat-profile-selector-status {
-  color: alpha(@window_fg_color, 0.8);
+  color: alpha(@window_fg_color, 0.76);
+  font-size: 0.8rem;
 }

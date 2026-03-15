@@ -89,7 +89,11 @@ fn os_user_home_dir() -> Option<PathBuf> {
         let mut pwd: libc::passwd = std::mem::zeroed();
         let mut result: *mut libc::passwd = std::ptr::null_mut();
         let buf_len = libc::sysconf(libc::_SC_GETPW_R_SIZE_MAX);
-        let buf_len = if buf_len <= 0 { 16_384 } else { buf_len as usize };
+        let buf_len = if buf_len <= 0 {
+            16_384
+        } else {
+            buf_len as usize
+        };
         let mut buf = vec![0u8; buf_len];
         let status = libc::getpwuid_r(
             uid,
@@ -101,7 +105,10 @@ fn os_user_home_dir() -> Option<PathBuf> {
         if status != 0 || result.is_null() || pwd.pw_dir.is_null() {
             return None;
         }
-        let home = CStr::from_ptr(pwd.pw_dir).to_string_lossy().trim().to_string();
+        let home = CStr::from_ptr(pwd.pw_dir)
+            .to_string_lossy()
+            .trim()
+            .to_string();
         if home.is_empty() {
             None
         } else {

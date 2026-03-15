@@ -218,7 +218,9 @@ impl RuntimeClient {
                     method_index: 0,
                 })
             }
-            Self::OpenCode(client) => client.account_login_start_oauth_for_provider_info(provider_id),
+            Self::OpenCode(client) => {
+                client.account_login_start_oauth_for_provider_info(provider_id)
+            }
         }
     }
 
@@ -230,8 +232,7 @@ impl RuntimeClient {
     ) -> Result<Option<AccountInfo>, String> {
         match self {
             Self::Codex(_) => Err(
-                "Codex OAuth completion is handled outside the OpenCode provider flow."
-                    .to_string(),
+                "Codex OAuth completion is handled outside the OpenCode provider flow.".to_string(),
             ),
             Self::OpenCode(client) => {
                 client.account_complete_oauth_for_provider(provider_id, method_index, code)
@@ -380,7 +381,11 @@ impl RuntimeClient {
         }
     }
 
-    pub fn thread_set_command_mode(&self, thread_id: &str, command_mode: &str) -> Result<(), String> {
+    pub fn thread_set_command_mode(
+        &self,
+        thread_id: &str,
+        command_mode: &str,
+    ) -> Result<(), String> {
         match self {
             Self::Codex(_) => Ok(()),
             Self::OpenCode(client) => client.thread_set_command_mode(thread_id, command_mode),
@@ -421,7 +426,9 @@ impl RuntimeClient {
         target_turn_id: &str,
     ) -> Result<Value, String> {
         match self {
-            Self::Codex(_) => Err("Codex does not support native restore introspection.".to_string()),
+            Self::Codex(_) => {
+                Err("Codex does not support native restore introspection.".to_string())
+            }
             Self::OpenCode(client) => client.thread_native_restore_info(thread_id, target_turn_id),
         }
     }
