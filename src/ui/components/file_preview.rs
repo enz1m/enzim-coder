@@ -120,6 +120,7 @@ pub fn open_git_diff_preview(repo_root: &Path, file_path: &Path, status: &str) {
                 file_path,
                 status,
                 &preview_window.source_buffer,
+                &preview_window.source_view,
                 &preview_window.preview_stack,
                 &preview_window.title_label,
                 &preview_window.meta_label,
@@ -591,6 +592,8 @@ fn set_preview_file(
     target_line: Option<u32>,
     target_column: Option<u32>,
 ) {
+    source_view.set_show_line_numbers(true);
+
     let name = file_path
         .file_name()
         .and_then(|n| n.to_str())
@@ -767,6 +770,7 @@ fn set_preview_git_diff(
     file_path: &Path,
     status: &str,
     source_buffer: &SourceBuffer,
+    source_view: &SourceView,
     preview_stack: &gtk::Stack,
     title_label: &gtk::Label,
     meta_label: &gtk::Label,
@@ -799,7 +803,8 @@ fn set_preview_git_diff(
 
     let manager = LanguageManager::default();
     source_buffer.set_language(manager.language("diff").as_ref());
-    source_buffer.set_text(&diff_text);
+    source_view.set_show_line_numbers(false);
+    source_buffer.set_text(&render_git_diff_with_actual_line_numbers(&diff_text));
 }
 
 fn refresh_diff_sources_for_file(
@@ -1197,8 +1202,9 @@ fn build_untracked_diff_preview(file_path: &Path, relative_path: &str) -> String
             );
 
             if text.is_empty() {
-                diff.push_str("@@ -0,0 +1 @@\n+\n");
+                diff.push_str("@@ -0,0 +1,1 @@\n+\n");
             } else {
+                diff.push_str(&format!("@@ -0,0 +1,{} @@\n", text.lines().count().max(1)));
                 for line in text.lines() {
                     diff.push('+');
                     diff.push_str(line);
@@ -1209,6 +1215,85 @@ fn build_untracked_diff_preview(file_path: &Path, relative_path: &str) -> String
         }
         Err(_) => "No diff available for this file.".to_string(),
     }
+}
+
+fn render_git_diff_with_actual_line_numbers(diff_text: &str) -> String {
+    let mut rendered = String::new();
+    let mut old_line = 0usize;
+    let mut new_line = 0usize;
+    let mut in_hunk = false;
+
+    for line in diff_text.lines() {
+        if let Some((old_start, new_start)) = parse_diff_hunk_starts(line) {
+            old_line = old_start;
+            new_line = new_start;
+            in_hunk = true;
+            rendered.push_str(&format!("{:>6} {:>6}  {}\n", "", "", line));
+            continue;
+        }
+
+        if !in_hunk
+            || line.starts_with("diff --git")
+            || line.starts_with("index ")
+            || line.starts_with("--- ")
+            || line.starts_with("+++ ")
+            || line.starts_with("new file mode ")
+            || line.starts_with("deleted file mode ")
+            || line.starts_with("similarity index ")
+            || line.starts_with("rename from ")
+            || line.starts_with("rename to ")
+        {
+            rendered.push_str(&format!("{:>6} {:>6}  {}\n", "", "", line));
+            continue;
+        }
+
+        let (old_display, new_display) = if line.starts_with('+') && !line.starts_with("+++") {
+            let current = (None, Some(new_line));
+            new_line = new_line.saturating_add(1);
+            current
+        } else if line.starts_with('-') && !line.starts_with("---") {
+            let current = (Some(old_line), None);
+            old_line = old_line.saturating_add(1);
+            current
+        } else {
+            let current = (Some(old_line), Some(new_line));
+            old_line = old_line.saturating_add(1);
+            new_line = new_line.saturating_add(1);
+            current
+        };
+
+        rendered.push_str(&format!(
+            "{:>6} {:>6}  {}\n",
+            format_diff_line_number(old_display),
+            format_diff_line_number(new_display),
+            line
+        ));
+    }
+
+    if rendered.is_empty() {
+        diff_text.to_string()
+    } else {
+        rendered
+    }
+}
+
+fn format_diff_line_number(value: Option<usize>) -> String {
+    value.map(|line| line.to_string()).unwrap_or_default()
+}
+
+fn parse_diff_hunk_starts(line: &str) -> Option<(usize, usize)> {
+    let body = line.strip_prefix("@@ -")?;
+    let (old_part, remainder) = body.split_once(" +")?;
+    let (new_part, _) = remainder.split_once(" @@")?;
+    Some((
+        parse_diff_hunk_start_value(old_part)?,
+        parse_diff_hunk_start_value(new_part)?,
+    ))
+}
+
+fn parse_diff_hunk_start_value(part: &str) -> Option<usize> {
+    let start = part.split_once(',').map(|(value, _)| value).unwrap_or(part);
+    start.parse::<usize>().ok()
 }
 
 fn compact_turn_label(turn_id: &str) -> String {
@@ -1339,5 +1424,50 @@ fn register_preview_style_scheme(scheme_manager: &StyleSchemeManager) {
         if !already_registered {
             scheme_manager.prepend_search_path(&preview_scheme_dir);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_diff_hunk_starts, render_git_diff_with_actual_line_numbers};
+
+    #[test]
+    fn parses_unified_diff_hunk_headers() {
+        assert_eq!(parse_diff_hunk_starts("@@ -12,3 +40,5 @@"), Some((12, 40)));
+        assert_eq!(parse_diff_hunk_starts("@@ -1 +9 @@"), Some((1, 9)));
+        assert_eq!(parse_diff_hunk_starts("not a hunk"), None);
+    }
+
+    #[test]
+    fn renders_actual_old_and_new_line_numbers_for_diff_lines() {
+        let diff = "\
+diff --git a/sample.rs b/sample.rs
+@@ -10,3 +20,4 @@
+ context
+-old line
++new line
++newer line
+";
+        let rendered = render_git_diff_with_actual_line_numbers(diff);
+        assert!(
+            rendered.lines().any(|line| line.contains("10")
+                && line.contains("20")
+                && line.ends_with(" context"))
+        );
+        assert!(
+            rendered
+                .lines()
+                .any(|line| line.contains("11") && line.ends_with("-old line"))
+        );
+        assert!(
+            rendered
+                .lines()
+                .any(|line| line.contains("21") && line.ends_with("+new line"))
+        );
+        assert!(
+            rendered
+                .lines()
+                .any(|line| line.contains("22") && line.ends_with("+newer line"))
+        );
     }
 }
