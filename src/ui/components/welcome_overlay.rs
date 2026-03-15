@@ -1,5 +1,5 @@
 use crate::codex_profiles::CodexProfileManager;
-use crate::data::AppDb;
+use crate::data::{AppDb, CodexProfileRecord};
 use adw::prelude::*;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -16,13 +16,19 @@ pub(crate) fn is_visible() -> bool {
 
 #[derive(Clone, Default, PartialEq, Eq)]
 struct WelcomeState {
-    installed: bool,
+    codex_installed: bool,
+    opencode_installed: bool,
+    profile_id: Option<i64>,
     backend_kind: Option<String>,
     account_type: Option<String>,
     email: Option<String>,
 }
 
 impl WelcomeState {
+    fn any_installed(&self) -> bool {
+        self.codex_installed || self.opencode_installed
+    }
+
     fn is_logged_in(&self) -> bool {
         self.email
             .as_deref()
@@ -53,15 +59,7 @@ impl WelcomeState {
 }
 
 enum PollResult {
-    NotInstalled {
-        profile_id: i64,
-    },
-    Installed {
-        profile_id: i64,
-        backend_kind: String,
-        account_type: Option<String>,
-        email: Option<String>,
-    },
+    State(WelcomeState),
 }
 
 fn normalize_optional(value: Option<String>) -> Option<String> {
@@ -79,7 +77,7 @@ fn copy_to_clipboard(text: &str) {
     }
 }
 
-fn set_codex_badge_state(label: &gtk::Label, installed: bool) {
+fn set_provider_badge_state(label: &gtk::Label, installed: bool) {
     label.remove_css_class("welcome-status-installed");
     label.remove_css_class("welcome-status-not-installed");
     if installed {
@@ -89,6 +87,36 @@ fn set_codex_badge_state(label: &gtk::Label, installed: bool) {
         label.set_text("Not installed");
         label.add_css_class("welcome-status-not-installed");
     }
+}
+
+fn profile_has_account_identity(profile: &CodexProfileRecord) -> bool {
+    profile
+        .last_email
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty())
+        || profile
+            .last_account_type
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|value| !value.is_empty())
+}
+
+fn select_welcome_profile<'a>(
+    profiles: &'a [CodexProfileRecord],
+    active_profile_id: Option<i64>,
+    runtime_profile_id: Option<i64>,
+) -> Option<&'a CodexProfileRecord> {
+    profiles
+        .iter()
+        .filter(|profile| crate::backend::runtime_cli_available_for_backend(&profile.backend_kind))
+        .max_by_key(|profile| {
+            (
+                profile_has_account_identity(profile),
+                Some(profile.id) == active_profile_id,
+                Some(profile.id) == runtime_profile_id,
+            )
+        })
 }
 
 fn start_brand_reveal_animation(title: &gtk::Label, details_revealer: &gtk::Revealer) {
@@ -293,13 +321,25 @@ pub fn attach(
     codex_row.append(&codex_badge);
     provider_rows.append(&codex_row);
 
+    let opencode_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    opencode_row.add_css_class("welcome-provider-row");
+    let opencode_icon = gtk::Image::from_icon_name("provider-opencode");
+    opencode_icon.add_css_class("welcome-provider-icon");
+    opencode_icon.set_pixel_size(16);
+    let opencode_name = gtk::Label::new(Some("OpenCode"));
+    opencode_name.add_css_class("welcome-provider-name");
+    opencode_name.set_xalign(0.0);
+    opencode_name.set_hexpand(true);
+    let opencode_badge = gtk::Label::new(Some("Not installed"));
+    opencode_badge.add_css_class("welcome-pill-badge");
+    opencode_badge.add_css_class("welcome-status-not-installed");
+    opencode_badge.set_halign(gtk::Align::End);
+    opencode_row.append(&opencode_icon);
+    opencode_row.append(&opencode_name);
+    opencode_row.append(&opencode_badge);
+    provider_rows.append(&opencode_row);
+
     for (name, icon_name, badge_text, badge_class) in [
-        (
-            "OpenCode",
-            "provider-opencode",
-            "Available",
-            "welcome-status-installed",
-        ),
         (
             "Claude Code",
             "provider-claude",
@@ -438,7 +478,7 @@ pub fn attach(
     let install_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
     install_box.add_css_class("welcome-section");
 
-    let install_hint = gtk::Label::new(Some("Install a supported runtime CLI first:"));
+    let install_hint = gtk::Label::new(Some("Install at least one supported runtime CLI first:"));
     install_hint.set_xalign(0.0);
     install_hint.add_css_class("welcome-muted");
 
@@ -626,9 +666,12 @@ pub fn attach(
     }
 
     let current_state = Rc::new(RefCell::new(WelcomeState::default()));
+    let welcome_profile_id = Rc::new(RefCell::new(None::<i64>));
     let apply_state: Rc<dyn Fn(WelcomeState)> = {
         let current_state = current_state.clone();
+        let welcome_profile_id = welcome_profile_id.clone();
         let codex_badge = codex_badge.clone();
+        let opencode_badge = opencode_badge.clone();
         let install_revealer = install_revealer.clone();
         let login_revealer = login_revealer.clone();
         let logged_revealer = logged_revealer.clone();
@@ -638,28 +681,66 @@ pub fn attach(
         let login_status = login_status.clone();
         let login_button = login_button.clone();
         let api_key_button = api_key_button.clone();
+        let login_hint = login_hint.clone();
         Rc::new(move |next: WelcomeState| {
             current_state.replace(next.clone());
-            set_codex_badge_state(&codex_badge, next.installed);
+            welcome_profile_id.replace(next.profile_id);
+            set_provider_badge_state(&codex_badge, next.codex_installed);
+            set_provider_badge_state(&opencode_badge, next.opencode_installed);
 
             let logged_in = next.is_logged_in();
-            install_revealer.set_reveal_child(!next.installed);
-            login_revealer.set_reveal_child(next.installed && !logged_in);
-            logged_revealer.set_reveal_child(next.installed && logged_in);
-            next_revealer.set_reveal_child(next.installed && logged_in);
+            let installed = next.any_installed();
+            let backend_display = next
+                .backend_kind
+                .as_deref()
+                .map(crate::backend::backend_display_name)
+                .unwrap_or("runtime");
+            let has_profile_target = next.profile_id.is_some();
+
+            install_revealer.set_reveal_child(!installed);
+            login_revealer.set_reveal_child(installed && !logged_in);
+            logged_revealer.set_reveal_child(installed && logged_in);
+            next_revealer.set_reveal_child(installed && logged_in);
 
             if logged_in {
                 login_url_revealer.set_reveal_child(false);
                 login_status.set_visible(false);
                 login_status.set_text("");
                 login_button.set_sensitive(true);
+                login_button.set_visible(true);
+                login_button.set_label(&format!("Start {backend_display} Login"));
                 api_key_button.set_visible(false);
                 let value = next
                     .account_display()
                     .unwrap_or_else(|| "unknown".to_string());
-                logged_label.set_text(&format!("Runtime profile detected with account: {value}"));
+                logged_label.set_text(&format!(
+                    "{backend_display} runtime ready with account: {value}"
+                ));
+                login_hint.set_text("A supported runtime is authenticated and ready.");
             } else {
-                let show_api_key = next.installed
+                login_url_revealer.set_reveal_child(false);
+                if installed && has_profile_target {
+                    login_hint.set_text(&format!(
+                        "Authenticate {backend_display} before using Enzim Coder."
+                    ));
+                    login_button.set_label(&format!("Start {backend_display} Login"));
+                    login_button.set_visible(true);
+                    login_button.set_sensitive(true);
+                } else if installed {
+                    login_hint.set_text(
+                        "A supported runtime is installed, but no matching profile is ready yet. Open Settings to add or select one.",
+                    );
+                    login_button.set_visible(false);
+                } else {
+                    login_hint.set_text(
+                        "You need to install a supported runtime before using Enzim Coder.",
+                    );
+                    login_button.set_label("Start Login");
+                    login_button.set_visible(true);
+                    login_button.set_sensitive(false);
+                }
+                let show_api_key = installed
+                    && has_profile_target
                     && next
                         .backend_kind
                         .as_deref()
@@ -674,6 +755,7 @@ pub fn attach(
     {
         let db = db.clone();
         let manager = manager.clone();
+        let welcome_profile_id = welcome_profile_id.clone();
         let login_button_for_signal = login_button.clone();
         let login_button = login_button.clone();
         let login_status = login_status.clone();
@@ -681,11 +763,19 @@ pub fn attach(
         let login_url_entry = login_url_entry.clone();
         let copy_login_url_button = copy_login_url_button.clone();
         login_button_for_signal.connect_clicked(move |_| {
-            let profile_id = db
-                .active_profile_id()
-                .ok()
-                .flatten()
-                .unwrap_or(runtime_profile_id);
+            let Some(profile_id) = (*welcome_profile_id.borrow())
+                .or_else(|| db.active_profile_id().ok().flatten())
+                .or_else(|| db.runtime_profile_id().ok().flatten())
+                .or(Some(runtime_profile_id))
+            else {
+                login_status.set_visible(true);
+                login_status.set_text(
+                    "No supported profile is ready yet. Open Settings and add or select a runtime profile first.",
+                );
+                return;
+            };
+            let _ = db.set_active_profile_id(profile_id);
+            let _ = db.set_runtime_profile_id(profile_id);
             let client = match manager.ensure_started(profile_id) {
                 Ok(client) => client,
                 Err(err) => {
@@ -742,15 +832,24 @@ pub fn attach(
         let db = db.clone();
         let manager = manager.clone();
         let apply_state = apply_state.clone();
+        let welcome_profile_id = welcome_profile_id.clone();
         let api_key_button_for_signal = api_key_button.clone();
         let api_key_button = api_key_button.clone();
         let login_status = login_status.clone();
         api_key_button_for_signal.connect_clicked(move |_| {
-            let profile_id = db
-                .active_profile_id()
-                .ok()
-                .flatten()
-                .unwrap_or(runtime_profile_id);
+            let Some(profile_id) = (*welcome_profile_id.borrow())
+                .or_else(|| db.active_profile_id().ok().flatten())
+                .or_else(|| db.runtime_profile_id().ok().flatten())
+                .or(Some(runtime_profile_id))
+            else {
+                login_status.set_visible(true);
+                login_status.set_text(
+                    "No OpenCode profile is ready yet. Open Settings and select an OpenCode profile first.",
+                );
+                return;
+            };
+            let _ = db.set_active_profile_id(profile_id);
+            let _ = db.set_runtime_profile_id(profile_id);
             let db_for_success = db.clone();
             let apply_state_for_success = apply_state.clone();
             let login_status_for_success = login_status.clone();
@@ -767,7 +866,11 @@ pub fn attach(
                     let email = account.as_ref().and_then(|a| a.email.clone());
                     let _ = db_for_success.update_codex_profile_status(profile_id, "running");
                     (apply_state_for_success)(WelcomeState {
-                        installed: true,
+                        codex_installed: crate::backend::runtime_cli_available_for_backend("codex"),
+                        opencode_installed: crate::backend::runtime_cli_available_for_backend(
+                            "opencode",
+                        ),
+                        profile_id: Some(profile_id),
                         backend_kind: Some("opencode".to_string()),
                         account_type: normalize_optional(account_type),
                         email: normalize_optional(email),
@@ -1223,40 +1326,51 @@ pub fn attach(
             }
             poll_in_flight.replace(true);
 
-            let profile_id = db
-                .active_profile_id()
+            let codex_installed = crate::backend::runtime_cli_available_for_backend("codex");
+            let opencode_installed = crate::backend::runtime_cli_available_for_backend("opencode");
+            let active_profile_id = db.active_profile_id().ok().flatten();
+            let current_runtime_profile_id = db
+                .runtime_profile_id()
                 .ok()
                 .flatten()
-                .unwrap_or(runtime_profile_id);
-
-            if !crate::backend::any_runtime_cli_available() {
-                let _ = poll_tx.send(PollResult::NotInstalled { profile_id });
+                .or(Some(runtime_profile_id));
+            let profiles = db.list_codex_profiles().unwrap_or_default();
+            let Some(profile) =
+                select_welcome_profile(&profiles, active_profile_id, current_runtime_profile_id)
+            else {
+                let _ = poll_tx.send(PollResult::State(WelcomeState {
+                    codex_installed,
+                    opencode_installed,
+                    ..WelcomeState::default()
+                }));
                 return gtk::glib::ControlFlow::Continue;
-            }
+            };
 
-            match manager.ensure_started(profile_id) {
+            let base_state = WelcomeState {
+                codex_installed,
+                opencode_installed,
+                profile_id: Some(profile.id),
+                backend_kind: Some(profile.backend_kind.clone()),
+                account_type: normalize_optional(profile.last_account_type.clone()),
+                email: normalize_optional(profile.last_email.clone()),
+            };
+
+            match manager.ensure_started(profile.id) {
                 Ok(client) => {
                     let poll_tx = poll_tx.clone();
+                    let mut next_state = base_state.clone();
                     thread::spawn(move || {
                         let account = client.account_read(true).ok().flatten();
-                        let backend_kind = client.backend_kind().to_string();
-                        let account_type = account.as_ref().map(|info| info.account_type.clone());
-                        let email = account.and_then(|info| info.email);
-                        let _ = poll_tx.send(PollResult::Installed {
-                            profile_id,
-                            backend_kind,
-                            account_type: normalize_optional(account_type),
-                            email: normalize_optional(email),
-                        });
+                        next_state.backend_kind = Some(client.backend_kind().to_string());
+                        next_state.account_type = normalize_optional(
+                            account.as_ref().map(|info| info.account_type.clone()),
+                        );
+                        next_state.email = normalize_optional(account.and_then(|info| info.email));
+                        let _ = poll_tx.send(PollResult::State(next_state));
                     });
                 }
                 Err(_) => {
-                    let _ = poll_tx.send(PollResult::Installed {
-                        profile_id,
-                        backend_kind: "codex".to_string(),
-                        account_type: None,
-                        email: None,
-                    });
+                    let _ = poll_tx.send(PollResult::State(base_state));
                 }
             }
             gtk::glib::ControlFlow::Continue
@@ -1275,29 +1389,29 @@ pub fn attach(
             while let Ok(result) = poll_rx.try_recv() {
                 poll_in_flight.replace(false);
                 match result {
-                    PollResult::NotInstalled { profile_id } => {
-                        let _ = db.update_codex_profile_status(profile_id, "stopped");
-                        (apply_state)(WelcomeState::default());
-                    }
-                    PollResult::Installed {
-                        profile_id,
-                        backend_kind,
-                        account_type,
-                        email,
-                    } => {
-                        let _ = db.update_codex_profile_status(profile_id, "running");
-                        let _ = crate::ui::components::runtime_auth_dialog::sync_runtime_account_fields_to_db(
-                            &db,
-                            profile_id,
-                            account_type.as_deref(),
-                            email.as_deref(),
-                        );
-                        (apply_state)(WelcomeState {
-                            installed: true,
-                            backend_kind: Some(backend_kind),
-                            account_type,
-                            email,
-                        });
+                    PollResult::State(state) => {
+                        if let Some(profile_id) = state.profile_id {
+                            let profile_running = state.any_installed()
+                                && state
+                                    .backend_kind
+                                    .as_deref()
+                                    .is_some_and(crate::backend::runtime_cli_available_for_backend);
+                            let _ = db.update_codex_profile_status(
+                                profile_id,
+                                if profile_running {
+                                    "running"
+                                } else {
+                                    "stopped"
+                                },
+                            );
+                            let _ = crate::ui::components::runtime_auth_dialog::sync_runtime_account_fields_to_db(
+                                &db,
+                                profile_id,
+                                state.account_type.as_deref(),
+                                state.email.as_deref(),
+                            );
+                        }
+                        (apply_state)(state);
                     }
                 }
             }

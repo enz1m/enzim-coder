@@ -14,6 +14,14 @@ pub fn any_runtime_cli_available() -> bool {
     crate::codex_appserver::cli_available() || opencode::opencode_cli_available()
 }
 
+pub fn runtime_cli_available_for_backend(backend_kind: &str) -> bool {
+    if backend_kind.eq_ignore_ascii_case("opencode") {
+        opencode::opencode_cli_available()
+    } else {
+        crate::codex_appserver::cli_available()
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BackendCapabilities {
     pub supports_oauth_login: bool,
