@@ -393,6 +393,8 @@ impl ThreadList {
     }
 
     pub fn append_thread(&self, thread: ThreadRecord) -> gtk::ListBoxRow {
+        let listbox_widget: gtk::Widget = self.listbox.clone().upcast();
+        let scroll_state = widget_tree::capture_ancestor_vscroll(&listbox_widget);
         let runtime_workspace_path = thread_runtime_workspace_path(&thread, &self.workspace_path);
         self.active_workspace_path
             .replace(Some(runtime_workspace_path.clone()));
@@ -424,11 +426,16 @@ impl ThreadList {
             clear_thread_list_selections(&root_widget);
         }
         set_listbox_selected_row(&self.listbox, Some(&row.widget_name()));
+        if let Some((scroll, value)) = scroll_state {
+            widget_tree::restore_vscroll_position(&scroll, value);
+        }
         self.refresh_profile_icon_visibility();
         row
     }
 
     pub fn append_thread_passive(&self, thread: ThreadRecord) -> gtk::ListBoxRow {
+        let listbox_widget: gtk::Widget = self.listbox.clone().upcast();
+        let scroll_state = widget_tree::capture_ancestor_vscroll(&listbox_widget);
         let row = thread_row(
             self.db.clone(),
             self.manager.clone(),
@@ -448,6 +455,9 @@ impl ThreadList {
             }
         } else {
             self.listbox.prepend(&row);
+        }
+        if let Some((scroll, value)) = scroll_state {
+            widget_tree::restore_vscroll_position(&scroll, value);
         }
         self.refresh_profile_icon_visibility();
         row

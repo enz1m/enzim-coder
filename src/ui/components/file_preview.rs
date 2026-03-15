@@ -25,6 +25,7 @@ struct FilePreviewWindow {
     meta_label: gtk::Label,
     current_preview_file: Rc<RefCell<Option<PathBuf>>>,
     diff_toggle: gtk::ToggleButton,
+    diff_source_stack: gtk::Stack,
     checkpoint_list: gtk::ListBox,
     git_list: gtk::ListBox,
     diff_buffer: SourceBuffer,
@@ -133,6 +134,57 @@ pub fn open_git_diff_preview(repo_root: &Path, file_path: &Path, status: &str) {
                     &preview_window.diff_buffer,
                     &preview_window.diff_meta_label,
                 );
+            }
+            preview_window.window.present();
+        }
+    });
+}
+
+pub fn open_checkpoint_diff_preview(file_path: &Path, checkpoint_id: i64) {
+    FILE_PREVIEW_WINDOW.with(|slot| {
+        if slot.borrow().is_none() {
+            slot.replace(Some(build_preview_window()));
+        }
+
+        if let Some(preview_window) = slot.borrow().as_ref() {
+            attach_to_active_app_window(&preview_window.window);
+            preview_window
+                .current_preview_file
+                .replace(Some(file_path.to_path_buf()));
+            set_preview_file(
+                file_path,
+                &preview_window.source_buffer,
+                &preview_window.source_view,
+                &preview_window.image_view,
+                &preview_window.preview_stack,
+                &preview_window.title_label,
+                &preview_window.meta_label,
+                None,
+                None,
+            );
+            if !preview_window.diff_toggle.is_active() {
+                preview_window.diff_toggle.set_active(true);
+            }
+            preview_window
+                .diff_source_stack
+                .set_visible_child_name("checkpoints");
+            refresh_diff_sources_for_file(
+                file_path,
+                &preview_window.checkpoint_list,
+                &preview_window.git_list,
+                &preview_window.checkpoint_entries,
+                &preview_window.git_entries,
+                &preview_window.diff_buffer,
+                &preview_window.diff_meta_label,
+            );
+            let target_row = preview_window
+                .checkpoint_entries
+                .borrow()
+                .iter()
+                .position(|entry| entry.checkpoint_id == checkpoint_id)
+                .and_then(|idx| preview_window.checkpoint_list.row_at_index(idx as i32));
+            if let Some(row) = target_row {
+                preview_window.checkpoint_list.select_row(Some(&row));
             }
             preview_window.window.present();
         }
@@ -511,6 +563,7 @@ fn build_preview_window() -> FilePreviewWindow {
         meta_label: preview_meta,
         current_preview_file,
         diff_toggle,
+        diff_source_stack,
         checkpoint_list,
         git_list,
         diff_buffer,

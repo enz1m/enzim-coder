@@ -406,6 +406,24 @@ impl RuntimeClient {
         }
     }
 
+    pub fn thread_unrollback(&self, thread_id: &str) -> Result<Value, String> {
+        match self {
+            Self::Codex(_) => Err("Codex does not support undoing runtime rollback.".to_string()),
+            Self::OpenCode(client) => client.thread_unrollback(thread_id),
+        }
+    }
+
+    pub fn thread_native_restore_info(
+        &self,
+        thread_id: &str,
+        target_turn_id: &str,
+    ) -> Result<Value, String> {
+        match self {
+            Self::Codex(_) => Err("Codex does not support native restore introspection.".to_string()),
+            Self::OpenCode(client) => client.thread_native_restore_info(thread_id, target_turn_id),
+        }
+    }
+
     pub fn thread_archive(&self, thread_id: &str) -> Result<(), String> {
         match self {
             Self::Codex(client) => client.thread_archive(thread_id),

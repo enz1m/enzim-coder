@@ -60,6 +60,38 @@ pub(crate) fn find_listbox_row_by_widget_name(
     None
 }
 
+pub(crate) fn capture_ancestor_vscroll(
+    widget: &gtk::Widget,
+) -> Option<(gtk::ScrolledWindow, f64)> {
+    let mut current = widget.parent();
+    while let Some(node) = current {
+        if let Ok(scroll) = node.clone().downcast::<gtk::ScrolledWindow>() {
+            let value = scroll.vadjustment().value();
+            return Some((scroll, value));
+        }
+        current = node.parent();
+    }
+    None
+}
+
+pub(crate) fn restore_vscroll_position(scroll: &gtk::ScrolledWindow, value: f64) {
+    let apply_value = move |scroll: &gtk::ScrolledWindow| {
+        let adjustment = scroll.vadjustment();
+        let lower = adjustment.lower();
+        let upper = adjustment.upper();
+        let page_size = adjustment.page_size();
+        let max_value = (upper - page_size).max(lower);
+        adjustment.set_value(value.clamp(lower, max_value));
+    };
+
+    apply_value(scroll);
+
+    let scroll = scroll.clone();
+    gtk::glib::idle_add_local_once(move || {
+        apply_value(&scroll);
+    });
+}
+
 fn clear_thread_listbox_selections(root: &gtk::Widget) {
     if let Some(listbox) = root.downcast_ref::<gtk::ListBox>() {
         if listbox.has_css_class("thread-listbox") {

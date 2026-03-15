@@ -52,6 +52,7 @@
     <file alias="target-symbolic.svg">icons/target.svg</file>
     <file alias="shield-symbolic.svg">icons/shield.svg</file>
     <file alias="globe-symbolic.svg">icons/globe.svg</file>
+    <file alias="info-outline-symbolic.svg">icons/info-outline.svg</file>
     <file alias="file-code-symbolic.svg">icons/file-code.svg</file>
     <file alias="user-trash-symbolic.svg">icons/user-trash.svg</file>
     <file alias="github-symbolic.svg">icons/github.svg</file>

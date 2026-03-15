@@ -1,5 +1,6 @@
 use crate::codex_profiles::CodexProfileManager;
 use crate::data::{AppDb, LocalChatTurnInput, LocalChatTurnRecord};
+use crate::restore::RestoreCheckpoint;
 use gtk::prelude::*;
 use rusqlite::{Connection, params};
 use serde_json::Value;
@@ -95,6 +96,61 @@ fn group_cached_entries_by_turn_id(entries: Vec<Value>) -> HashMap<String, Vec<V
         }
     }
     grouped
+}
+
+fn turn_sort_timestamp(turn: &LocalChatTurnRecord) -> i64 {
+    turn.completed_at.unwrap_or(turn.created_at)
+}
+
+fn checkpoint_sort_timestamp(checkpoint: &RestoreCheckpoint) -> i64 {
+    checkpoint.created_at
+}
+
+fn resolve_checkpoint_map_for_turns(
+    turns: &[LocalChatTurnRecord],
+    checkpoints: Vec<RestoreCheckpoint>,
+) -> HashMap<String, i64> {
+    let turn_ids = turns
+        .iter()
+        .map(|turn| turn.external_turn_id.as_str())
+        .collect::<HashSet<_>>();
+
+    let mut resolved = HashMap::new();
+    let mut unmatched_checkpoints = Vec::new();
+    for checkpoint in checkpoints {
+        if turn_ids.contains(checkpoint.turn_id.as_str()) {
+            resolved.insert(checkpoint.turn_id.clone(), checkpoint.id);
+        } else {
+            unmatched_checkpoints.push(checkpoint);
+        }
+    }
+
+    if unmatched_checkpoints.is_empty() {
+        return resolved;
+    }
+
+    let mut unmatched_turns = turns
+        .iter()
+        .filter(|turn| !resolved.contains_key(turn.external_turn_id.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    unmatched_turns.sort_by(|a, b| {
+        turn_sort_timestamp(a)
+            .cmp(&turn_sort_timestamp(b))
+            .then_with(|| a.created_at.cmp(&b.created_at))
+            .then_with(|| a.external_turn_id.cmp(&b.external_turn_id))
+    });
+    unmatched_checkpoints.sort_by(|a, b| {
+        checkpoint_sort_timestamp(a)
+            .cmp(&checkpoint_sort_timestamp(b))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+
+    for (turn, checkpoint) in unmatched_turns.into_iter().zip(unmatched_checkpoints.into_iter()) {
+        resolved.insert(turn.external_turn_id, checkpoint.id);
+    }
+
+    resolved
 }
 
 fn map_cached_turn_errors_by_turn_id(entries: Vec<Value>) -> HashMap<String, String> {
@@ -1257,10 +1313,7 @@ pub(super) fn render_local_thread_history_from_db(
             .list_local_chat_turns_for_remote_thread(thread_id)
             .unwrap_or_default();
         let checkpoints = crate::restore::list_checkpoints_for_remote_thread(db, thread_id);
-        let checkpoint_by_turn: HashMap<String, i64> = checkpoints
-            .into_iter()
-            .map(|checkpoint| (checkpoint.turn_id, checkpoint.id))
-            .collect();
+        let checkpoint_by_turn = resolve_checkpoint_map_for_turns(&turns, checkpoints);
         (
             turns,
             checkpoint_by_turn,
@@ -1457,24 +1510,29 @@ pub(super) fn load_thread_history_render_snapshot_detached(
     };
 
     let checkpoint_by_turn = {
-        let mut map = HashMap::new();
+        let mut checkpoints = Vec::new();
         if let Ok(mut stmt) = conn.prepare(
-            "SELECT c.turn_id, c.id
+            "SELECT c.id, c.local_thread_id, c.codex_thread_id, c.turn_id, c.created_at
              FROM restore_checkpoints c
              WHERE c.local_thread_id = ?1
                AND c.turn_id NOT LIKE 'restore-%'
              ORDER BY c.created_at DESC, c.id DESC",
         ) {
             if let Ok(rows) = stmt.query_map(params![local_thread_id], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+                Ok(RestoreCheckpoint {
+                    id: row.get(0)?,
+                    local_thread_id: row.get(1)?,
+                    codex_thread_id: row.get(2)?,
+                    turn_id: row.get(3)?,
+                    created_at: row.get(4)?,
+                })
             }) {
                 for row in rows.flatten() {
-                    let (turn_id, checkpoint_id) = row;
-                    map.insert(turn_id, checkpoint_id);
+                    checkpoints.push(row);
                 }
             }
         }
-        map
+        resolve_checkpoint_map_for_turns(&turns, checkpoints)
     };
 
     let commands = load_cached_entries_from_connection(&conn, &command_cache_key(thread_id));

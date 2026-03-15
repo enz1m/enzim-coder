@@ -192,6 +192,7 @@
                         super::create_turn_ui(&messages_box, &messages_scroll, &conversation_stack)
                     });
                     turn_ui.in_progress = true;
+                    turn_ui.runtime_status_text = None;
 
                     turn_ui
                         .pending_items

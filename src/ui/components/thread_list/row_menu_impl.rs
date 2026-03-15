@@ -672,6 +672,10 @@ fn build_thread_context_menu(
         let thread_has_worktree = thread.worktree_active;
         let current_thread_id = current_thread_id.clone();
         close_button.connect_clicked(move |_| {
+            let scroll_state = row.parent().and_then(|parent| {
+                let widget: gtk::Widget = parent.upcast();
+                crate::ui::widget_tree::capture_ancestor_vscroll(&widget)
+            });
             let remote_thread_id = current_thread_id.borrow().clone();
             if let Some(thread_id) = remote_thread_id.as_deref() {
                 if let Some(client) = manager.resolve_client_for_thread_id(thread_id) {
@@ -719,6 +723,9 @@ fn build_thread_context_menu(
                         active_thread_id.replace(None);
                     }
                 }
+                if let Some((scroll, value)) = scroll_state {
+                    crate::ui::widget_tree::restore_vscroll_position(&scroll, value);
+                }
             }
             popover.popdown();
         });
@@ -749,6 +756,7 @@ fn build_thread_context_menu(
                 thread_id,
                 active_thread_id.clone(),
                 workspace_path.clone(),
+                None,
             );
             popover.popdown();
         });

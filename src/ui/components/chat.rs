@@ -26,6 +26,7 @@ struct TurnUi {
     bubble: gtk::Box,
     status_row: gtk::Box,
     status_label: gtk::Label,
+    runtime_status_text: Option<String>,
     timestamp_label: gtk::Label,
     timestamp_revealer: gtk::Revealer,
     in_progress: bool,
@@ -456,6 +457,7 @@ fn refresh_turn_status(turn_ui: &mut TurnUi) {
     turn_ui.body_box.set_visible(has_content);
 
     if !turn_ui.in_progress {
+        turn_ui.runtime_status_text = None;
         turn_ui.status_row.set_visible(false);
         turn_ui.bubble.remove_css_class("chat-turn-bubble-initial");
         return;
@@ -465,6 +467,15 @@ fn refresh_turn_status(turn_ui: &mut TurnUi) {
         turn_ui.bubble.remove_css_class("chat-turn-bubble-initial");
     } else {
         turn_ui.bubble.add_css_class("chat-turn-bubble-initial");
+    }
+
+    if let Some(status_text) = turn_ui.runtime_status_text.as_deref() {
+        let status_text = status_text.trim();
+        if !status_text.is_empty() {
+            turn_ui.status_row.set_visible(true);
+            turn_ui.status_label.set_text(status_text);
+            return;
+        }
     }
 
     if turn_ui
@@ -683,6 +694,7 @@ fn create_turn_ui(
         bubble,
         status_row,
         status_label,
+        runtime_status_text: None,
         timestamp_label,
         timestamp_revealer,
         in_progress: false,

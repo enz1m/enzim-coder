@@ -793,6 +793,8 @@ fn open_workspace_picker(
         Some(window),
         None::<&gtk::gio::Cancellable>,
         move |result| {
+            let list_container_widget: gtk::Widget = list_container.clone().upcast();
+            let scroll_state = widget_tree::capture_ancestor_vscroll(&list_container_widget);
             let folder = match result {
                 Ok(folder) => folder,
                 Err(err) => {
@@ -863,6 +865,9 @@ fn open_workspace_picker(
                     gtk::glib::idle_add_local_once(move || {
                         let widget: gtk::Widget = list_container_for_select.upcast();
                         let _ = widget_tree::select_thread_row(&widget, first_thread_id);
+                        if let Some((scroll, value)) = scroll_state {
+                            widget_tree::restore_vscroll_position(&scroll, value);
+                        }
                     });
                 }
                 Ok(None) => {}

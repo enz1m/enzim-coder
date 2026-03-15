@@ -2155,6 +2155,41 @@ impl OpenCodeAppServer {
         );
     }
 
+    fn emit_turn_status(&self, thread_id: &str, turn_id: &str, status: &Value, status_text: &str) {
+        let status_text = status_text.trim();
+        if status_text.is_empty() {
+            return;
+        }
+        push_subscriber_event(
+            &self.subscribers,
+            AppServerNotification {
+                request_id: None,
+                method: "turn/status".to_string(),
+                params: json!({
+                    "threadId": thread_id,
+                    "turnId": turn_id,
+                    "statusText": status_text,
+                    "status": status,
+                }),
+            },
+        );
+    }
+
+    fn emit_turn_error(&self, thread_id: &str, turn_id: &str, error: Value) {
+        push_subscriber_event(
+            &self.subscribers,
+            AppServerNotification {
+                request_id: None,
+                method: "error".to_string(),
+                params: json!({
+                    "threadId": thread_id,
+                    "turnId": turn_id,
+                    "error": error,
+                }),
+            },
+        );
+    }
+
     fn emit_item_started(&self, thread_id: &str, turn_id: &str, item: Value) {
         push_subscriber_event(
             &self.subscribers,
@@ -2806,6 +2841,19 @@ impl OpenCodeAppServer {
                                 .and_then(|value| value.get("status"))
                                 .cloned()
                                 .unwrap_or(Value::Null);
+                            if let Some(active_turn_id) = self.active_turn_id_for_thread(thread_id) {
+                                let status_text = status
+                                    .get("message")
+                                    .and_then(Value::as_str)
+                                    .or_else(|| status.get("type").and_then(Value::as_str))
+                                    .unwrap_or("");
+                                self.emit_turn_status(
+                                    thread_id,
+                                    &active_turn_id,
+                                    &status,
+                                    status_text,
+                                );
+                            }
                             eprintln!(
                                 "[opencode:{}] session.status thread={} status={}",
                                 self.log_label,
@@ -2825,6 +2873,9 @@ impl OpenCodeAppServer {
                                 .and_then(|value| value.get("error"))
                                 .cloned()
                                 .unwrap_or(Value::Null);
+                            if let Some(active_turn_id) = self.active_turn_id_for_thread(thread_id) {
+                                self.emit_turn_error(thread_id, &active_turn_id, error.clone());
+                            }
                             eprintln!(
                                 "[opencode:{}] session.error thread={} error={}",
                                 self.log_label,
@@ -2956,6 +3007,7 @@ impl OpenCodeAppServer {
                 "[opencode:{}] SSE turn watch failed for {}: {}",
                 self.log_label, thread_id, err
             );
+            self.emit_turn_error(&thread_id, &turn_id, json!({ "message": err.clone() }));
             if let Ok(mut active_turns) = self.active_turns.lock() {
                 if active_turns
                     .get(&thread_id)
@@ -3663,28 +3715,101 @@ impl OpenCodeAppServer {
     }
 
     pub fn thread_rollback(&self, thread_id: &str, count: usize) -> Result<Value, String> {
+        if count == 0 {
+            return self.thread_read(thread_id, true);
+        }
         let directory = self.session_directory(thread_id);
         let messages = self.session_messages(thread_id, directory.as_deref())?;
-        let assistant_ids = grouped_turn_records(&messages)
+        let turn_bounds = grouped_turn_records(&messages)
             .into_iter()
-            .filter_map(|(_, assistants)| assistants.last().map(|assistant| assistant.id.clone()))
+            .filter_map(|(_, assistants)| {
+                let first_id = assistants.first().map(|assistant| assistant.id.clone())?;
+                let last_id = assistants.last().map(|assistant| assistant.id.clone())?;
+                Some((first_id, last_id))
+            })
             .collect::<Vec<_>>();
-        let to_revert = assistant_ids
-            .into_iter()
-            .rev()
-            .take(count)
-            .collect::<Vec<_>>();
-        if to_revert.len() < count {
+        if turn_bounds.len() < count {
             return Err("OpenCode rollback target was not found".to_string());
         }
-        for message_id in to_revert {
-            let _ = self.post_json(
-                &format!("/session/{thread_id}/revert"),
-                json!({ "messageID": message_id }),
-                directory.as_deref(),
-            )?;
-        }
+        let Some((target_message_id, target_turn_id)) = turn_bounds
+            .get(turn_bounds.len() - count)
+            .cloned()
+        else {
+            return Err("OpenCode rollback target was not found".to_string());
+        };
+        eprintln!(
+            "[opencode:{}] thread.rollback thread={} count={} target_turn_id={} target_message_id={}",
+            self.log_label, thread_id, count, target_turn_id, target_message_id
+        );
+        let _ = self.post_json(
+            &format!("/session/{thread_id}/revert"),
+            json!({ "messageID": target_message_id }),
+            directory.as_deref(),
+        )?;
         self.thread_read(thread_id, true)
+    }
+
+    pub fn thread_unrollback(&self, thread_id: &str) -> Result<Value, String> {
+        let directory = self.session_directory(thread_id);
+        let _ = self.post_json(
+            &format!("/session/{thread_id}/unrevert"),
+            json!({}),
+            directory.as_deref(),
+        )?;
+        self.thread_read(thread_id, true)
+    }
+
+    pub fn thread_native_restore_info(
+        &self,
+        thread_id: &str,
+        target_turn_id: &str,
+    ) -> Result<Value, String> {
+        let directory = self.session_directory(thread_id);
+        let messages = self.session_messages(thread_id, directory.as_deref())?;
+        let turns = grouped_turn_records(&messages);
+        let Some(target_index) = turns.iter().position(|(_, assistants)| {
+            assistants
+                .last()
+                .map(|assistant| assistant.id.as_str())
+                == Some(target_turn_id)
+        }) else {
+            return Err("OpenCode restore target was not found".to_string());
+        };
+
+        let mut patch_files = HashSet::new();
+        let mut tool_file_change_count = 0usize;
+        for (_, assistants) in turns.into_iter().skip(target_index) {
+            for assistant in assistants {
+                for part in assistant.parts {
+                    match part.get("type").and_then(Value::as_str) {
+                        Some("patch") => {
+                            if let Some(files) = part.get("files").and_then(Value::as_array) {
+                                for file in files.iter().filter_map(Value::as_str) {
+                                    patch_files.insert(file.to_string());
+                                }
+                            }
+                        }
+                        Some("tool")
+                            if opencode_tool_item_kind(
+                                part.get("tool").and_then(Value::as_str).unwrap_or("tool"),
+                            ) == "fileChange" =>
+                        {
+                            tool_file_change_count += 1;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        let mut patch_files = patch_files.into_iter().collect::<Vec<_>>();
+        patch_files.sort();
+
+        Ok(json!({
+            "hasNativeFileRestore": !patch_files.is_empty(),
+            "patchFileCount": patch_files.len(),
+            "patchFiles": patch_files,
+            "toolFileChangeCount": tool_file_change_count,
+        }))
     }
 
     pub fn thread_archive(&self, thread_id: &str) -> Result<(), String> {
@@ -3882,6 +4007,11 @@ impl OpenCodeAppServer {
                             } else {
                                 format!("{async_err}; fallback send failed: {err}")
                             };
+                            client.emit_turn_error(
+                                &thread_id_owned,
+                                &turn_id_owned,
+                                json!({ "message": combined.clone() }),
+                            );
                             push_subscriber_event(
                                 &client.subscribers,
                                 AppServerNotification {

@@ -26,10 +26,52 @@
                                 )
                             });
                             turn_ui.in_progress = true;
+                            turn_ui.runtime_status_text = None;
                             super::refresh_turn_status(turn_ui);
                             super::message_render::scroll_to_bottom(&messages_scroll);
                         }
                     }
+                }
+                "turn/status" => {
+                    let Some(turn_id) = super::codex_events::extract_turn_id(&event.params) else {
+                        continue;
+                    };
+                    let status_text = event
+                        .params
+                        .get("statusText")
+                        .and_then(Value::as_str)
+                        .or_else(|| {
+                            event.params
+                                .get("status")
+                                .and_then(|status| status.get("message"))
+                                .and_then(Value::as_str)
+                        })
+                        .map(super::codex_events::sanitize_stream_status_text)
+                        .unwrap_or_default();
+                    if status_text.trim().is_empty() {
+                        continue;
+                    }
+
+                    let resolved_thread_id = thread_id
+                        .or_else(|| turn_threads.borrow().get(&turn_id).cloned())
+                        .or_else(|| active_turn_thread.borrow().clone())
+                        .or_else(|| active_thread_id.clone());
+                    let should_render_active = super::codex_events::should_render_for_active(
+                        resolved_thread_id.as_deref(),
+                        active_thread_id.as_deref(),
+                    );
+                    if !should_render_active {
+                        continue;
+                    }
+
+                    let mut turns = turn_uis.borrow_mut();
+                    let turn_ui = turns.entry(turn_id).or_insert_with(|| {
+                        super::create_turn_ui(&messages_box, &messages_scroll, &conversation_stack)
+                    });
+                    turn_ui.in_progress = true;
+                    turn_ui.runtime_status_text = Some(status_text);
+                    super::refresh_turn_status(turn_ui);
+                    super::message_render::scroll_to_bottom(&messages_scroll);
                 }
                 "turn/plan/updated" => {
                     let Some(turn_id) = super::codex_events::extract_turn_id(&event.params) else {
@@ -93,6 +135,7 @@
                         let mut remote_other_action_count = 0usize;
                         if let Some(turn_ui) = turn_uis.borrow_mut().get_mut(&turn_id) {
                             turn_ui.in_progress = false;
+                            turn_ui.runtime_status_text = None;
                             turn_ui.pending_items.clear();
                             super::message_render::set_active_action_section_wave(
                                 &turn_ui.body_box,
