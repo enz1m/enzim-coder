@@ -334,8 +334,8 @@ pub fn build_ui(app: &adw::Application) {
         active_thread_id.clone(),
         active_workspace_path.clone(),
     );
-    sidebar.set_width_request(180);
-    sidebar.set_size_request(180, -1);
+    sidebar.set_width_request(sidebar::SIDEBAR_WIDTH);
+    sidebar.set_size_request(sidebar::SIDEBAR_WIDTH, -1);
 
     let content = content::build_content(
         db.clone(),
@@ -351,6 +351,9 @@ pub fn build_ui(app: &adw::Application) {
     let sidebar_container = gtk::Box::new(gtk::Orientation::Vertical, 0);
     sidebar_container.add_css_class("sidebar-host");
     sidebar_container.set_hexpand(false);
+    sidebar_container.set_halign(gtk::Align::Start);
+    sidebar_container.set_width_request(sidebar::SIDEBAR_WIDTH);
+    sidebar_container.set_size_request(sidebar::SIDEBAR_WIDTH, -1);
     sidebar_container.append(&sidebar);
 
     content.set_hexpand(true);

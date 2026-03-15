@@ -9,6 +9,7 @@
 .sidebar-host,
 .sidebar-body,
 .sidebar-scroll-overlay {
+  min-width: 0;
   background: transparent;
   background-color: transparent;
   background-image: none;
@@ -119,6 +120,7 @@ window:backdrop .preview-badge {
 }
 
 .workspace-container {
+  min-width: 0;
   margin-bottom: 2px;
   background: transparent;
   background-color: transparent;
@@ -127,6 +129,7 @@ window:backdrop .preview-badge {
 }
 
 .workspace-name {
+  min-width: 0;
   font-size: 0.85rem;
   font-weight: 700;
 }

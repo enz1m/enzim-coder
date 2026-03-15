@@ -23,6 +23,8 @@ fn thread_row(
 
     let inner = gtk::Box::new(gtk::Orientation::Horizontal, 4);
     inner.add_css_class("thread-row-content");
+    inner.set_hexpand(true);
+    inner.set_halign(gtk::Align::Fill);
     let is_fork = thread.parent_thread_id.is_some();
     inner.set_margin_start(if is_fork { 12 } else { 8 });
     inner.set_margin_end(0);
@@ -74,6 +76,9 @@ fn thread_row(
     let label = gtk::Label::new(Some(&thread.title));
     label.set_xalign(0.0);
     label.set_hexpand(true);
+    label.set_halign(gtk::Align::Fill);
+    label.set_width_chars(1);
+    label.set_max_width_chars(30);
     label.set_ellipsize(gtk::pango::EllipsizeMode::End);
     label.add_css_class("thread-title");
     inner.append(&label);
@@ -82,6 +87,7 @@ fn thread_row(
     let time_label = gtk::Label::new(Some(
         &db.thread_relative_time_by_id(thread.id, thread.created_at),
     ));
+    time_label.set_halign(gtk::Align::End);
     time_label.add_css_class("thread-time");
     inner.append(&time_label);
 
@@ -173,9 +179,7 @@ fn thread_row(
 
             // Keep cached title in sync with direct UI title updates (e.g. first-message rename).
             let observed_title = label.text().to_string();
-            if !observed_title.trim().is_empty()
-                && observed_title != *thread_title_text.borrow()
-            {
+            if !observed_title.trim().is_empty() && observed_title != *thread_title_text.borrow() {
                 thread_title_text.replace(observed_title);
             }
             let text = thread_title_text.borrow().clone();

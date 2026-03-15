@@ -1,5 +1,6 @@
 .threads-list {
   margin-top: 0px;
+  min-width: 0;
   background: transparent;
   background-color: transparent;
   background-image: none;
@@ -25,6 +26,7 @@
 .thread-listbox-custom,
 .thread-listbox-custom > row,
 .thread-listbox-custom > row > box {
+  min-width: 0;
   background: transparent;
   background-color: transparent;
   background-image: none;
@@ -75,6 +77,7 @@ window:backdrop listbox.thread-listbox-custom row.thread-row:focus-visible {
 
 .thread-listbox-custom row.thread-row {
   min-height: 0;
+  min-width: 0;
   margin: 1px 0;
   padding: 0;
   border: none;
@@ -97,6 +100,7 @@ window:backdrop listbox.thread-listbox-custom row.thread-row:focus-visible {
 
 .thread-listbox-custom row.thread-row > box.thread-row-content {
   min-height: 20px;
+  min-width: 0;
   margin: 0 1px;
   padding: 1px 7px;
   border-radius: 7px;
@@ -140,6 +144,7 @@ window:backdrop .thread-listbox-custom row.thread-row > box.thread-row-content {
 }
 
 .thread-title {
+  min-width: 0;
   font-size: 0.82rem;
   font-weight: 460;
   line-height: 1.05;

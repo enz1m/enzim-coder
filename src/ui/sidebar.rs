@@ -13,6 +13,7 @@ use std::thread;
 use std::time::Duration;
 
 static ONBOARDING_GUIDE_STEP: AtomicU8 = AtomicU8::new(0);
+pub(crate) const SIDEBAR_WIDTH: i32 = 180;
 
 pub(crate) fn set_onboarding_guide_step(step: u8) {
     ONBOARDING_GUIDE_STEP.store(step, Ordering::Relaxed);
@@ -123,6 +124,10 @@ pub fn build_sidebar(
     let toolbar = adw::ToolbarView::new();
     toolbar.set_top_bar_style(adw::ToolbarStyle::Flat);
     toolbar.add_css_class("sidebar-content");
+    toolbar.set_hexpand(false);
+    toolbar.set_halign(gtk::Align::Start);
+    toolbar.set_width_request(SIDEBAR_WIDTH);
+    toolbar.set_size_request(SIDEBAR_WIDTH, -1);
 
     let header = adw::HeaderBar::new();
     header.set_show_start_title_buttons(false);
@@ -150,6 +155,8 @@ pub fn build_sidebar(
 
     let root = gtk::Box::new(gtk::Orientation::Vertical, 8);
     root.add_css_class("sidebar-body");
+    root.set_hexpand(false);
+    root.set_halign(gtk::Align::Fill);
 
     let workspaces_header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     workspaces_header.set_margin_start(4);
@@ -166,6 +173,8 @@ pub fn build_sidebar(
 
     let list_container = gtk::Box::new(gtk::Orientation::Vertical, 2);
     list_container.add_css_class("sidebar-frame");
+    list_container.set_hexpand(false);
+    list_container.set_halign(gtk::Align::Fill);
     let onboarding_mock_box = build_onboarding_mock_workspaces();
 
     let workspace_rows = db.list_workspaces_with_threads().unwrap_or_default();
@@ -187,6 +196,7 @@ pub fn build_sidebar(
         .child(&list_container)
         .build();
     scroll.add_css_class("sidebar-scroll");
+    scroll.set_propagate_natural_width(false);
 
     let scroll_overlay = gtk::Overlay::new();
     scroll_overlay.add_css_class("sidebar-scroll-overlay");
@@ -359,16 +369,22 @@ fn build_workspace(
     let workspace_path = workspace.workspace.path.clone();
     let workspace_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
     workspace_box.add_css_class("workspace-container");
+    workspace_box.set_hexpand(false);
+    workspace_box.set_halign(gtk::Align::Fill);
 
     let header_row = gtk::Box::new(gtk::Orientation::Horizontal, 2);
     header_row.set_margin_start(2);
     header_row.set_margin_end(2);
+    header_row.set_hexpand(true);
 
     let header_click_area = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     header_click_area.add_css_class("workspace-header");
     header_click_area.set_hexpand(true);
+    header_click_area.set_halign(gtk::Align::Fill);
 
     let header_content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    header_content.set_hexpand(true);
+    header_content.set_halign(gtk::Align::Fill);
     header_content.set_margin_start(4);
     header_content.set_margin_end(4);
     header_content.set_margin_top(1);
@@ -385,6 +401,8 @@ fn build_workspace(
     let workspace_label = gtk::Label::new(Some(&truncate_label_text(&workspace_name, 30)));
     workspace_label.set_xalign(0.0);
     workspace_label.set_hexpand(true);
+    workspace_label.set_halign(gtk::Align::Fill);
+    workspace_label.set_width_chars(1);
     workspace_label.set_max_width_chars(30);
     workspace_label.set_ellipsize(gtk::pango::EllipsizeMode::End);
     workspace_label.add_css_class("workspace-name");

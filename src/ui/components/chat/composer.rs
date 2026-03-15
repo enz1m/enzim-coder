@@ -1086,19 +1086,59 @@ fn save_default_composer_setting(db: &AppDb, suffix: &str, value: &str) {
     save_default_composer_setting_value(db, suffix, value);
 }
 
+const FIRST_PROMPT_TITLE_PREVIEW_CHARS: usize = 30;
+
 fn title_from_first_prompt(prompt: &str) -> Option<String> {
-    let normalized = prompt.split_whitespace().collect::<Vec<_>>().join(" ");
-    let normalized = normalized.trim();
-    if normalized.is_empty() {
-        return None;
+    let mut preview = String::with_capacity(FIRST_PROMPT_TITLE_PREVIEW_CHARS);
+    let mut preview_len = 0usize;
+    let mut pending_space = false;
+
+    for ch in prompt.chars() {
+        if ch.is_whitespace() {
+            pending_space = preview_len > 0;
+            continue;
+        }
+
+        if pending_space && preview_len < FIRST_PROMPT_TITLE_PREVIEW_CHARS {
+            preview.push(' ');
+            preview_len += 1;
+        }
+        pending_space = false;
+
+        if preview_len >= FIRST_PROMPT_TITLE_PREVIEW_CHARS {
+            break;
+        }
+
+        preview.push(ch);
+        preview_len += 1;
+        if preview_len >= FIRST_PROMPT_TITLE_PREVIEW_CHARS {
+            break;
+        }
     }
 
-    let mut chars = normalized.chars();
-    let preview: String = chars.by_ref().take(20).collect();
-    if chars.next().is_some() {
-        Some(format!("{preview}..."))
+    if preview.is_empty() {
+        None
     } else {
         Some(preview)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::title_from_first_prompt;
+
+    #[test]
+    fn first_prompt_title_collapses_whitespace_without_scanning_full_prompt() {
+        assert_eq!(
+            title_from_first_prompt("   hello    from\t\tcomposer\npreview   "),
+            Some("hello from composer preview".to_string())
+        );
+    }
+
+    #[test]
+    fn first_prompt_title_is_bounded_to_thirty_chars() {
+        let prompt = format!("{} trailing text that should not matter", "a".repeat(64));
+        assert_eq!(title_from_first_prompt(&prompt), Some("a".repeat(30)));
     }
 }
 pub(crate) mod voice;
