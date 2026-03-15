@@ -2,9 +2,11 @@
 
 > Enzim Coder is a GTK4/libadwaita desktop app for working with coding threads, workspaces, Git context, file browsing, and local agent sessions in one place.
 
-Today it supports <img src="icons/provider_codex.svg" alt="Codex" width="14" height="14"> Codex.
+Today it supports
+<img src="icons/provider_codex.svg" alt="Codex" width="14" height="14"> Codex and
+<img src="icons/provider_opencode.svg" alt="OpenCode" width="14" height="14"> OpenCode.
 <br>
-<sub>Soon: <img src="icons/provider_claude.svg" alt="Claude Code" width="13" height="13"> Claude Code, <img src="icons/provider_gemini.svg" alt="Google CLI" width="13" height="13"> Google CLI, <img src="icons/provider_opencode.svg" alt="OpenCode" width="13" height="13"> OpenCode</sub>
+<sub>Soon: <img src="icons/provider_claude.svg" alt="Claude Code" width="13" height="13"> Claude Code, <img src="icons/provider_gemini.svg" alt="Google CLI" width="13" height="13"> Google CLI</sub>
 
 <p align="center">
   <a href="screenshots/main.png"><img src="screenshots/main.png" alt="Main chat view" width="96%" /></a>
@@ -84,17 +86,18 @@ Flatpak is coming soon.
 
 For now, use the AppImage release.
 
-## ⚙️ Runtime Requirement
+## ⚙️ Runtime Requirements
 
-Enzim Coder currently expects the Codex CLI to be available on the machine.
+Enzim Coder currently supports either the Codex CLI or the OpenCode CLI on the machine.
 
-Install it with:
+Install one or both:
 
 ```bash
 npm i -g @openai/codex
+curl -fsSL https://opencode.ai/install | bash
 ```
 
-If Codex is missing, the app will prompt for installation in the UI.
+You can then create Codex and OpenCode profiles inside the app and authenticate the runtime you want to use. If neither supported CLI is available, the app will prompt for installation in the UI.
 
 ## 🖥️ Platform
 
@@ -121,6 +124,12 @@ Build and run:
 
 ```bash
 cargo run --release
+```
+
+For local testing with isolated app data:
+
+```bash
+ENZIMCODER_PROFILE_HOME_DIR=/path/to/testdir cargo run --release
 ```
 
 ## 🗂️ Project Layout
