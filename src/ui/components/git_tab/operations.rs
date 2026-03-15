@@ -531,14 +531,23 @@ fn stage_path_for_commit(repo_root: &str, path: &str) -> Result<bool, String> {
     match run_git_command(repo_root, &["add", "--", path], &[]) {
         Ok(_) => {}
         Err(err) => {
-            if !err.to_ascii_lowercase().contains("did not match any files") {
+            let lower = err.to_ascii_lowercase();
+            let is_missing = lower.contains("did not match any files");
+            let is_ignored = lower.contains("ignored by one of your .gitignore files");
+
+            if !is_missing && !is_ignored {
                 return Err(err);
             }
-            let _ = run_git_command(
-                repo_root,
-                &["rm", "--cached", "--ignore-unmatch", "--", path],
-                &[],
-            );
+
+            // Deleted tracked files can become ignored after adding a new .gitignore rule.
+            // Fall back to update/remove staging instead of failing on `git add -- path`.
+            let _ = run_git_command(repo_root, &["add", "-u", "--", path], &[]).or_else(|_| {
+                run_git_command(
+                    repo_root,
+                    &["rm", "--cached", "--ignore-unmatch", "--", path],
+                    &[],
+                )
+            });
         }
     }
 
