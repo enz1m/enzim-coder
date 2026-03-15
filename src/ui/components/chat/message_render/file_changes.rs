@@ -83,6 +83,25 @@ fn short_file_name(path: &str) -> String {
         .unwrap_or_else(|| path.to_string())
 }
 
+fn is_created_kind(kind: &str) -> bool {
+    matches!(kind, "add" | "added" | "create" | "created")
+}
+
+fn single_change_is_new_file(changes: &[Value], operation: &str) -> bool {
+    if changes.len() != 1 {
+        return false;
+    }
+
+    if operation == "create" {
+        return true;
+    }
+
+    changes
+        .first()
+        .and_then(|change| change.get("kind").and_then(Value::as_str))
+        .is_some_and(is_created_kind)
+}
+
 fn create_file_change_row(path: &str, kind: &str, diff: Option<&str>) -> gtk::Box {
     let row = gtk::Box::new(gtk::Orientation::Vertical, 0);
     row.add_css_class("chat-filechange-row");
@@ -258,7 +277,8 @@ pub(super) fn create_file_change_widget(item: &Value) -> gtk::Box {
         .get("operation")
         .and_then(Value::as_str)
         .unwrap_or("edit");
-    let section = if changes.len() == 1 && operation == "create" {
+    let is_new_file = single_change_is_new_file(changes, operation);
+    let section = if is_new_file {
         "New File".to_string()
     } else if changes.len() == 1 && operation == "write" {
         "File Write".to_string()
@@ -271,7 +291,10 @@ pub(super) fn create_file_change_widget(item: &Value) -> gtk::Box {
     let mut total_added = 0usize;
     let mut total_removed = 0usize;
     for change in changes {
-        let diff = change.get("diff").and_then(Value::as_str).unwrap_or_default();
+        let diff = change
+            .get("diff")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
         let (added, removed) = diff_line_counts(diff);
         total_added += added;
         total_removed += removed;
@@ -283,6 +306,8 @@ pub(super) fn create_file_change_widget(item: &Value) -> gtk::Box {
         .unwrap_or_else(|| "No file".to_string());
     let files_summary = if changes.is_empty() {
         "No file".to_string()
+    } else if changes.len() == 1 && total_added == 0 && total_removed == 0 {
+        gtk::glib::markup_escape_text(&lead_file_name).to_string()
     } else if changes.len() == 1 {
         format!(
             "{}  <span foreground=\"#8CCF8C\">+{}</span> <span foreground=\"#E28E8E\">-{}</span>",
