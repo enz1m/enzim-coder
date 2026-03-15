@@ -1,7 +1,7 @@
 {
         while let Ok((event_profile_id, event)) = event_rx.try_recv() {
             let event_client = manager.client_for_profile(event_profile_id);
-            let active_thread_id = active_codex_thread_id.borrow().clone();
+            let active_thread_id = active_thread_id.borrow().clone();
             let event_turn_id = super::codex_events::extract_turn_id(&event.params);
             let event_item_id = super::codex_events::extract_item_id(&event.params);
             let thread_id = super::codex_events::extract_thread_id(&event.params, None)

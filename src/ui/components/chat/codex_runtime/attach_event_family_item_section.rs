@@ -210,11 +210,47 @@
                                     .insert(item_id.clone(), String::new());
                             }
                         }
+                        "reasoning" => {
+                            if event_client
+                                .as_ref()
+                                .map(|client| client.backend_kind() == "opencode")
+                                .unwrap_or(false)
+                            {
+                                if !turn_ui.generic_item_widgets.contains_key(&item_id) {
+                                    let (widget, generic_ui) =
+                                        super::message_render::create_reasoning_widget();
+                                    super::message_render::append_reasoning_widget_with_reveal(
+                                        &turn_ui.body_box,
+                                        &widget,
+                                    );
+                                    turn_ui
+                                        .generic_item_widgets
+                                        .insert(item_id.clone(), generic_ui);
+                                }
+                                turn_ui.reasoning_item_ids.insert(item_id.clone());
+                                if let Some(generic_ui) =
+                                    turn_ui.generic_item_widgets.get_mut(&item_id)
+                                {
+                                    generic_ui.set_title("Thinking... 00:00");
+                                    generic_ui.set_status("");
+                                    generic_ui.set_details("", "");
+                                    generic_ui.set_running(true);
+                                    generic_ui.set_expanded(false);
+                                }
+                                turn_ui
+                                    .reasoning_started_micros
+                                    .insert(item_id.clone(), gtk::glib::monotonic_time());
+                            }
+                        }
                         "commandExecution" => {
                             let command = item
                                 .get("command")
                                 .and_then(Value::as_str)
                                 .unwrap_or("command");
+                            let status = item
+                                .get("status")
+                                .and_then(Value::as_str)
+                                .unwrap_or("running");
                             let command_paths = extract_write_paths_from_command(command);
                             if !command_paths.is_empty() {
                                 staged_command_paths_by_item
@@ -249,6 +285,14 @@
                                     &widget,
                                 );
                                 turn_ui.command_widgets.insert(item_id.clone(), command_ui);
+                            }
+                            if let Some(command_ui) = turn_ui.command_widgets.get_mut(&item_id) {
+                                command_ui.set_command_headline(command);
+                                command_ui.set_command_status_label(
+                                    &super::codex_events::format_command_status_label(
+                                        status, None, None,
+                                    ),
+                                );
                             }
                         }
                         "fileChange" => {}
@@ -312,6 +356,22 @@
                 | "item/dynamicToolCall/textDelta"
                 | "item/webSearch/outputDelta"
                 | "item/webSearch/textDelta"
+                | "item/webFetch/outputDelta"
+                | "item/webFetch/textDelta"
+                | "item/fileRead/outputDelta"
+                | "item/fileRead/textDelta"
+                | "item/fileSearch/outputDelta"
+                | "item/fileSearch/textDelta"
+                | "item/directoryList/outputDelta"
+                | "item/directoryList/textDelta"
+                | "item/codeSearch/outputDelta"
+                | "item/codeSearch/textDelta"
+                | "item/skillCall/outputDelta"
+                | "item/skillCall/textDelta"
+                | "item/todoList/outputDelta"
+                | "item/todoList/textDelta"
+                | "item/questionTool/outputDelta"
+                | "item/questionTool/textDelta"
                 | "item/mcpToolCall/outputDelta"
                 | "item/mcpToolCall/textDelta"
                 | "item/collabToolCall/outputDelta"
@@ -441,6 +501,13 @@
                                 turn_ui.command_widgets.insert(item_id.clone(), command_ui);
                             }
                             if let Some(command_ui) = turn_ui.command_widgets.get_mut(&item_id) {
+                                command_ui.set_command_status_label(
+                                    &super::codex_events::format_command_status_label(
+                                        "running",
+                                        None,
+                                        None,
+                                    ),
+                                );
                                 command_ui.output_text.borrow_mut().push_str(&delta);
                                 let full_output = command_ui.output_text.borrow().clone();
                                 command_ui.set_command_output(&full_output);
@@ -491,32 +558,50 @@
                         "reasoning" => {
                             let status_buffer = turn_ui.status_buffers.entry(item_id.clone()).or_default();
                             status_buffer.push_str(&delta);
-                            let latest_line = status_buffer
-                                .lines()
-                                .rev()
-                                .find(|line| !line.trim().is_empty())
-                                .map(str::trim)
-                                .unwrap_or("");
-                            let status_text = if latest_line.is_empty() {
-                                "Thinking...".to_string()
-                            } else {
-                                super::codex_events::sanitize_stream_status_text(latest_line)
-                            };
-                            let status_text = if status_text.trim().is_empty() {
-                                "Thinking...".to_string()
-                            } else {
-                                status_text
-                            };
-                            let now_micros = gtk::glib::monotonic_time();
-                            let can_replace = turn_ui.status_last_text.is_empty()
-                                || turn_ui.status_last_text == status_text
-                                || (now_micros - turn_ui.status_last_updated_micros) >= 500_000;
-                            if can_replace {
-                                turn_ui.status_row.set_visible(true);
-                                turn_ui.status_label.set_text(&status_text);
-                                turn_ui.status_last_text = status_text;
-                                turn_ui.status_last_updated_micros = now_micros;
+                            if event_client
+                                .as_ref()
+                                .map(|client| client.backend_kind() == "opencode")
+                                .unwrap_or(false)
+                            {
+                                let reasoning_text = status_buffer.clone();
+                                if !turn_ui.generic_item_widgets.contains_key(&item_id) {
+                                    let (widget, generic_ui) =
+                                        super::message_render::create_reasoning_widget();
+                                    super::message_render::append_reasoning_widget_with_reveal(
+                                        &turn_ui.body_box,
+                                        &widget,
+                                    );
+                                    turn_ui
+                                        .generic_item_widgets
+                                        .insert(item_id.clone(), generic_ui);
+                                }
+                                turn_ui.reasoning_item_ids.insert(item_id.clone());
+                                if let Some(generic_ui) =
+                                    turn_ui.generic_item_widgets.get_mut(&item_id)
+                                {
+                                    let started_micros = turn_ui
+                                        .reasoning_started_micros
+                                        .get(&item_id)
+                                        .copied()
+                                        .unwrap_or_else(gtk::glib::monotonic_time);
+                                    let elapsed_secs = ((gtk::glib::monotonic_time()
+                                        - started_micros)
+                                        .max(0)
+                                        / 1_000_000) as u64;
+                                    let elapsed_label =
+                                        super::codex_events::format_elapsed_clock(elapsed_secs);
+                                    generic_ui.set_title(&format!(
+                                        "Thinking... {elapsed_label}"
+                                    ));
+                                    generic_ui.set_status("");
+                                    generic_ui.set_details("", &reasoning_text);
+                                    generic_ui.set_running(true);
+                                }
                             }
+                            turn_ui.status_row.set_visible(true);
+                            turn_ui.status_label.set_text("Thinking...");
+                            turn_ui.status_last_text = "Thinking...".to_string();
+                            turn_ui.status_last_updated_micros = gtk::glib::monotonic_time();
                         }
                         "plan" => {
                             let status_buffer = turn_ui.status_buffers.entry(item_id.clone()).or_default();
@@ -633,6 +718,56 @@
                             turn_ui
                                 .text_buffers
                                 .insert(item_id.clone(), final_text.clone());
+                        }
+                        "reasoning" => {
+                            let completed_text = item
+                                .get("text")
+                                .and_then(Value::as_str)
+                                .unwrap_or("")
+                                .to_string();
+                            let streamed_text =
+                                turn_ui.status_buffers.get(&item_id).cloned().unwrap_or_default();
+                            let final_text = if streamed_text.trim().is_empty() {
+                                completed_text
+                            } else if completed_text.trim().is_empty() {
+                                streamed_text
+                            } else if completed_text.len() >= streamed_text.len() {
+                                completed_text
+                            } else {
+                                streamed_text
+                            };
+                            let summary =
+                                super::codex_events::reasoning_duration_summary(item)
+                                    .unwrap_or_else(|| {
+                                        super::codex_events::summarize_reasoning_text(&final_text)
+                                    });
+                            if event_client
+                                .as_ref()
+                                .map(|client| client.backend_kind() == "opencode")
+                                .unwrap_or(false)
+                            {
+                                if !turn_ui.generic_item_widgets.contains_key(&item_id) {
+                                    let (widget, generic_ui) =
+                                        super::message_render::create_reasoning_widget();
+                                    super::message_render::append_reasoning_widget_with_reveal(
+                                        &turn_ui.body_box,
+                                        &widget,
+                                    );
+                                    turn_ui
+                                        .generic_item_widgets
+                                        .insert(item_id.clone(), generic_ui);
+                                }
+                                turn_ui.reasoning_item_ids.insert(item_id.clone());
+                                if let Some(generic_ui) =
+                                    turn_ui.generic_item_widgets.get_mut(&item_id)
+                                {
+                                    generic_ui.set_title(&summary);
+                                    generic_ui.set_status("");
+                                    generic_ui.set_details("", &final_text);
+                                    generic_ui.set_running(false);
+                                }
+                            }
+                            turn_ui.reasoning_started_micros.remove(&item_id);
                         }
                         "commandExecution" => {
                             let command = item
@@ -786,6 +921,10 @@
                                     "turnId": turn_id,
                                     "itemId": item_id,
                                     "status": status,
+                                    "operation": item
+                                        .get("operation")
+                                        .and_then(Value::as_str)
+                                        .unwrap_or("edit"),
                                     "changes": changes,
                                     "preimages": preimages,
                                     "afterTextCount": after_text_count,

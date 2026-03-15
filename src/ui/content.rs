@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::codex_appserver::CodexAppServer;
+use crate::backend::RuntimeClient;
 use crate::codex_profiles::CodexProfileManager;
 use crate::data::AppDb;
 use crate::ui::settings::{
@@ -18,22 +18,23 @@ use crate::ui::components::{
 
 fn parse_thread_drop_payload(raw: &str) -> Option<(Option<String>, Option<String>)> {
     let parsed: Value = serde_json::from_str(raw).ok()?;
-    let codex_thread_id = parsed
-        .get("codexThreadId")
+    let thread_id = parsed
+        .get("threadId")
+        .or_else(|| parsed.get("codexThreadId"))
         .and_then(Value::as_str)
         .map(|value| value.to_string());
     let workspace_path = parsed
         .get("workspacePath")
         .and_then(Value::as_str)
         .map(|value| value.to_string());
-    Some((codex_thread_id, workspace_path))
+    Some((thread_id, workspace_path))
 }
 
 fn build_multiview_content(
     db: Rc<AppDb>,
     profile_manager: Rc<CodexProfileManager>,
-    codex: Option<Arc<CodexAppServer>>,
-    active_codex_thread_id: Rc<RefCell<Option<String>>>,
+    codex: Option<Arc<RuntimeClient>>,
+    active_thread_id: Rc<RefCell<Option<String>>>,
     active_workspace_path: Rc<RefCell<Option<String>>>,
 ) -> gtk::Box {
     let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -49,7 +50,7 @@ fn build_multiview_content(
         db,
         profile_manager,
         codex,
-        active_codex_thread_id,
+        active_thread_id,
         active_workspace_path,
     ));
     root
@@ -58,8 +59,8 @@ fn build_multiview_content(
 fn build_classic_content(
     db: Rc<AppDb>,
     profile_manager: Rc<CodexProfileManager>,
-    codex: Option<Arc<CodexAppServer>>,
-    active_codex_thread_id: Rc<RefCell<Option<String>>>,
+    codex: Option<Arc<RuntimeClient>>,
+    active_thread_id: Rc<RefCell<Option<String>>>,
     active_workspace_path: Rc<RefCell<Option<String>>>,
 ) -> gtk::Box {
     let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -73,7 +74,7 @@ fn build_classic_content(
             db.clone(),
             profile_manager.clone(),
             codex.clone(),
-            active_codex_thread_id.clone(),
+            active_thread_id.clone(),
             active_workspace_path.clone(),
         ),
         Some("chat"),
@@ -99,7 +100,7 @@ fn build_classic_content(
 
     let handle_drop_payload: Rc<dyn Fn(String) -> bool> = Rc::new({
         let db = db.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         let active_workspace_path = active_workspace_path.clone();
         move |raw: String| {
             let Some((pane_two_thread, pane_two_workspace)) = parse_thread_drop_payload(&raw)
@@ -109,7 +110,7 @@ fn build_classic_content(
             let Some(pane_two_thread) = pane_two_thread.filter(|id| !id.trim().is_empty()) else {
                 return false;
             };
-            let pane_one_thread = active_codex_thread_id.borrow().clone();
+            let pane_one_thread = active_thread_id.borrow().clone();
             let pane_one_workspace = active_workspace_path.borrow().clone();
             let pane_two_workspace =
                 pane_two_workspace.or_else(|| active_workspace_path.borrow().clone());
@@ -119,12 +120,14 @@ fn build_classic_content(
                 "panes": [
                     {
                         "id": 1,
+                        "threadId": pane_one_thread,
                         "codexThreadId": pane_one_thread,
                         "workspacePath": pane_one_workspace,
                         "tab": "chat"
                     },
                     {
                         "id": 2,
+                        "threadId": pane_two_thread,
                         "codexThreadId": pane_two_thread,
                         "workspacePath": pane_two_workspace,
                         "tab": "chat"
@@ -168,8 +171,8 @@ fn build_classic_content(
 pub fn build_content(
     db: Rc<AppDb>,
     profile_manager: Rc<CodexProfileManager>,
-    codex: Option<Arc<CodexAppServer>>,
-    active_codex_thread_id: Rc<RefCell<Option<String>>>,
+    codex: Option<Arc<RuntimeClient>>,
+    active_thread_id: Rc<RefCell<Option<String>>>,
     active_workspace_path: Rc<RefCell<Option<String>>>,
 ) -> adw::ToolbarView {
     let toolbar = adw::ToolbarView::new();
@@ -198,7 +201,7 @@ pub fn build_content(
         let db = db.clone();
         let profile_manager = profile_manager.clone();
         let codex = codex.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         let active_workspace_path = active_workspace_path.clone();
         let classic_view = classic_view.clone();
         let multiview_view = multiview_view.clone();
@@ -209,7 +212,7 @@ pub fn build_content(
                         db.clone(),
                         profile_manager.clone(),
                         codex.clone(),
-                        active_codex_thread_id.clone(),
+                        active_thread_id.clone(),
                         active_workspace_path.clone(),
                     );
                     mode_stack.add_named(&view, Some("multi"));
@@ -220,7 +223,7 @@ pub fn build_content(
                     db.clone(),
                     profile_manager.clone(),
                     codex.clone(),
-                    active_codex_thread_id.clone(),
+                    active_thread_id.clone(),
                     active_workspace_path.clone(),
                 );
                 mode_stack.add_named(&view, Some("classic"));

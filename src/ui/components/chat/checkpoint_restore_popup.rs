@@ -1,11 +1,10 @@
-use crate::codex_appserver::CodexAppServer;
+use crate::backend::RuntimeClient;
 use crate::codex_profiles::CodexProfileManager;
 use crate::data::AppDb;
 use crate::restore::RestoreAction;
 use gtk::prelude::*;
 use std::cell::RefCell;
 use std::collections::HashSet;
-use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -18,37 +17,33 @@ fn action_label(action: &RestoreAction) -> &'static str {
     }
 }
 
-fn connect_codex_for_thread(
+fn connect_runtime_for_thread(
     db: &AppDb,
-    codex_thread_id: &str,
-) -> Result<Arc<CodexAppServer>, String> {
+    remote_thread_id: &str,
+) -> Result<Arc<RuntimeClient>, String> {
     let profile = db
-        .get_thread_profile_id_by_codex_thread_id(codex_thread_id)
+        .get_thread_profile_id_by_remote_thread_id(remote_thread_id)
         .ok()
         .flatten()
         .and_then(|profile_id| db.get_codex_profile(profile_id).ok().flatten());
 
-    match profile {
-        Some(profile) if profile.name.eq_ignore_ascii_case("system") => CodexAppServer::connect(),
-        Some(profile) => CodexAppServer::connect_with_home(Some(Path::new(&profile.home_dir))),
-        None => CodexAppServer::connect(),
-    }
+    RuntimeClient::connect_for_profile(profile.as_ref(), "checkpoint-restore")
 }
 
-fn resolve_codex_for_thread(
+fn resolve_runtime_for_thread(
     db: &AppDb,
     manager: Option<&Rc<CodexProfileManager>>,
-    codex_thread_id: &str,
-) -> Result<Arc<CodexAppServer>, String> {
+    remote_thread_id: &str,
+) -> Result<Arc<RuntimeClient>, String> {
     if let Some(manager) = manager {
-        if let Some(client) = manager.resolve_running_client_for_thread_id(codex_thread_id) {
+        if let Some(client) = manager.resolve_running_client_for_thread_id(remote_thread_id) {
             return Ok(client);
         }
-        if let Some(client) = manager.resolve_client_for_thread_id(codex_thread_id) {
+        if let Some(client) = manager.resolve_client_for_thread_id(remote_thread_id) {
             return Ok(client);
         }
     }
-    connect_codex_for_thread(db, codex_thread_id)
+    connect_runtime_for_thread(db, remote_thread_id)
 }
 
 fn update_selection_summary(
@@ -188,8 +183,11 @@ pub(super) fn open_checkpoint_restore_popup(
     actions.append(&restore);
     root.append(&actions);
 
-    let preview =
-        crate::restore::preview_restore_to_checkpoint(&db, &codex_thread_id, checkpoint_id);
+    let preview = crate::restore::preview_restore_to_checkpoint_by_remote_id(
+        &db,
+        &codex_thread_id,
+        checkpoint_id,
+    );
     if let Some(preview) = preview {
         let selected_paths: Rc<RefCell<HashSet<String>>> = Rc::new(RefCell::new(HashSet::new()));
         let toggles: Rc<RefCell<Vec<(String, gtk::CheckButton)>>> =
@@ -281,25 +279,25 @@ pub(super) fn open_checkpoint_restore_popup(
         let selected_paths = selected_paths.clone();
         restore.connect_clicked(move |_| {
             let selected: Vec<String> = selected_paths.borrow().iter().cloned().collect();
-            let codex = match resolve_codex_for_thread(&db, manager.as_ref(), &codex_thread_id) {
+            let codex = match resolve_runtime_for_thread(&db, manager.as_ref(), &codex_thread_id) {
                 Ok(client) => Some(client),
                 Err(err) => {
                     status_detail_label.set_text(&format!(
-                        "Restore applied, but chat trim failed: unable to connect Codex ({err})"
+                        "Restore applied, but chat trim failed: unable to connect the runtime ({err})"
                     ));
                     return;
                 }
             };
-            let active_codex_thread_id = Rc::new(RefCell::new(Some(codex_thread_id.clone())));
+            let active_thread_id = Rc::new(RefCell::new(Some(codex_thread_id.clone())));
             let workspace_path = db
-                .workspace_path_for_codex_thread(&codex_thread_id)
+                .workspace_path_for_remote_thread(&codex_thread_id)
                 .ok()
                 .flatten()
                 .or_else(|| db.get_setting("last_active_workspace_path").ok().flatten());
             match crate::ui::components::restore_preview::apply_restore_with_chat_sync(
                 &db,
                 codex,
-                Some(active_codex_thread_id),
+                Some(active_thread_id),
                 workspace_path.as_deref(),
                 &codex_thread_id,
                 checkpoint_id,

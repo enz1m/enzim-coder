@@ -43,7 +43,7 @@
             };
             if codex_thread
                 .as_deref()
-                .map(|id| !codex_thread_exists(db.as_ref(), id))
+                .map(|id| !thread_exists(db.as_ref(), id))
                 .unwrap_or(true)
             {
                 show_drop_slot_drop.replace(false);

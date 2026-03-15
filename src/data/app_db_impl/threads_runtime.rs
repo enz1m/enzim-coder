@@ -115,6 +115,27 @@ impl AppDb {
         })
     }
 
+    pub fn create_thread_with_remote_identity(
+        &self,
+        workspace_id: i64,
+        profile_id: i64,
+        parent_thread_id: Option<i64>,
+        title: &str,
+        remote_thread_id: Option<&str>,
+        remote_account_type: Option<&str>,
+        remote_account_email: Option<&str>,
+    ) -> rusqlite::Result<ThreadRecord> {
+        self.create_thread(
+            workspace_id,
+            profile_id,
+            parent_thread_id,
+            title,
+            remote_thread_id,
+            remote_account_type,
+            remote_account_email,
+        )
+    }
+
     pub fn rename_thread(&self, thread_id: i64, title: &str) -> rusqlite::Result<()> {
         let now = unix_now();
         self.conn.borrow_mut().execute(
@@ -158,6 +179,14 @@ impl AppDb {
             params![trimmed, now, thread_id],
         )?;
         Ok(Some(thread_id))
+    }
+
+    pub fn rename_thread_if_new_by_remote_id(
+        &self,
+        remote_thread_id: &str,
+        title: &str,
+    ) -> rusqlite::Result<Option<i64>> {
+        self.rename_thread_if_new_by_codex_id(remote_thread_id, title)
     }
 
     pub fn close_thread(&self, thread_id: i64) -> rusqlite::Result<()> {
@@ -307,6 +336,22 @@ impl AppDb {
         Ok(())
     }
 
+    #[allow(dead_code)]
+    pub fn set_thread_remote_id_with_account(
+        &self,
+        thread_id: i64,
+        remote_thread_id: &str,
+        remote_account_type: Option<&str>,
+        remote_account_email: Option<&str>,
+    ) -> rusqlite::Result<()> {
+        self.set_thread_codex_id_with_account(
+            thread_id,
+            remote_thread_id,
+            remote_account_type,
+            remote_account_email,
+        )
+    }
+
     pub fn set_thread_account_identity(
         &self,
         thread_id: i64,
@@ -323,9 +368,9 @@ impl AppDb {
         Ok(())
     }
 
-    pub fn get_thread_profile_id_by_codex_thread_id(
+    pub fn get_thread_profile_id_by_remote_thread_id(
         &self,
-        codex_thread_id: &str,
+        remote_thread_id: &str,
     ) -> rusqlite::Result<Option<i64>> {
         let conn = self.conn.borrow();
         let mut stmt = conn.prepare(
@@ -334,7 +379,7 @@ impl AppDb {
              WHERE codex_thread_id = ?1
              LIMIT 1",
         )?;
-        let mut rows = stmt.query(params![codex_thread_id])?;
+        let mut rows = stmt.query(params![remote_thread_id])?;
         if let Some(row) = rows.next()? {
             Ok(Some(row.get(0)?))
         } else {
@@ -342,9 +387,17 @@ impl AppDb {
         }
     }
 
-    pub fn get_thread_record_by_codex_thread_id(
+    #[allow(dead_code)]
+    pub fn get_thread_profile_id_by_codex_thread_id(
         &self,
         codex_thread_id: &str,
+    ) -> rusqlite::Result<Option<i64>> {
+        self.get_thread_profile_id_by_remote_thread_id(codex_thread_id)
+    }
+
+    pub fn get_thread_record_by_remote_thread_id(
+        &self,
+        remote_thread_id: &str,
     ) -> rusqlite::Result<Option<ThreadRecord>> {
         let conn = self.conn.borrow();
         let mut stmt = conn.prepare(
@@ -353,7 +406,7 @@ impl AppDb {
              WHERE codex_thread_id = ?1
              LIMIT 1",
         )?;
-        let mut rows = stmt.query(params![codex_thread_id])?;
+        let mut rows = stmt.query(params![remote_thread_id])?;
         if let Some(row) = rows.next()? {
             Ok(Some(ThreadRecord {
                 id: row.get(0)?,
@@ -375,9 +428,17 @@ impl AppDb {
         }
     }
 
-    pub fn has_open_thread_for_codex_thread_id(
+    #[allow(dead_code)]
+    pub fn get_thread_record_by_codex_thread_id(
         &self,
         codex_thread_id: &str,
+    ) -> rusqlite::Result<Option<ThreadRecord>> {
+        self.get_thread_record_by_remote_thread_id(codex_thread_id)
+    }
+
+    pub fn has_open_thread_for_remote_thread_id(
+        &self,
+        remote_thread_id: &str,
     ) -> rusqlite::Result<bool> {
         let conn = self.conn.borrow();
         let mut stmt = conn.prepare(
@@ -387,8 +448,16 @@ impl AppDb {
                AND is_closed = 0
              LIMIT 1",
         )?;
-        let mut rows = stmt.query(params![codex_thread_id])?;
+        let mut rows = stmt.query(params![remote_thread_id])?;
         Ok(rows.next()?.is_some())
+    }
+
+    #[allow(dead_code)]
+    pub fn has_open_thread_for_codex_thread_id(
+        &self,
+        codex_thread_id: &str,
+    ) -> rusqlite::Result<bool> {
+        self.has_open_thread_for_remote_thread_id(codex_thread_id)
     }
 
     pub fn get_thread_record(&self, thread_id: i64) -> rusqlite::Result<Option<ThreadRecord>> {
@@ -484,6 +553,24 @@ impl AppDb {
             ],
         )?;
         Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub fn assign_thread_profile_and_remote(
+        &self,
+        thread_id: i64,
+        profile_id: i64,
+        remote_thread_id: &str,
+        remote_account_type: Option<&str>,
+        remote_account_email: Option<&str>,
+    ) -> rusqlite::Result<()> {
+        self.assign_thread_profile_and_codex(
+            thread_id,
+            profile_id,
+            remote_thread_id,
+            remote_account_type,
+            remote_account_email,
+        )
     }
 
     pub fn set_thread_worktree_info(

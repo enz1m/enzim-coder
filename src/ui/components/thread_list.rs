@@ -14,8 +14,13 @@ use crate::data::{AppDb, ThreadRecord};
 
 mod layout;
 
+pub fn remove_thread_from_multiview_layout(db: &AppDb, remote_thread_id: &str) {
+    layout::remove_thread_from_multiview_layout(db, remote_thread_id);
+}
+
+#[allow(dead_code)]
 pub fn remove_codex_thread_from_multiview_layout(db: &AppDb, codex_thread_id: &str) {
-    layout::remove_thread_from_multiview_layout(db, codex_thread_id);
+    remove_thread_from_multiview_layout(db, codex_thread_id);
 }
 
 thread_local! {
@@ -63,7 +68,7 @@ pub struct ThreadList {
     listbox: gtk::ListBox,
     db: Rc<AppDb>,
     manager: Rc<CodexProfileManager>,
-    active_codex_thread_id: Rc<RefCell<Option<String>>>,
+    active_thread_id: Rc<RefCell<Option<String>>>,
     active_workspace_path: Rc<RefCell<Option<String>>>,
     workspace_path: String,
     show_profile_icons: Rc<Cell<bool>>,
@@ -169,18 +174,15 @@ fn profile_icon_name_for_profile(db: &AppDb, profile_id: i64) -> String {
 
 fn thread_has_linked_profile(thread: &ThreadRecord) -> bool {
     thread
-        .codex_thread_id
-        .as_deref()
+        .remote_thread_id()
         .map(str::trim)
         .is_some_and(|value| !value.is_empty())
         || thread
-            .codex_account_type
-            .as_deref()
+            .remote_account_type()
             .map(str::trim)
             .is_some_and(|value| !value.is_empty())
         || thread
-            .codex_account_email
-            .as_deref()
+            .remote_account_email()
             .map(str::trim)
             .is_some_and(|value| !value.is_empty())
 }
@@ -330,7 +332,7 @@ impl ThreadList {
     pub fn new(
         db: Rc<AppDb>,
         manager: Rc<CodexProfileManager>,
-        active_codex_thread_id: Rc<RefCell<Option<String>>>,
+        active_thread_id: Rc<RefCell<Option<String>>>,
         active_workspace_path: Rc<RefCell<Option<String>>>,
         workspace_path: String,
         threads: &[ThreadRecord],
@@ -353,7 +355,7 @@ impl ThreadList {
             listbox.append(&thread_row(
                 db.clone(),
                 manager.clone(),
-                active_codex_thread_id.clone(),
+                active_thread_id.clone(),
                 active_workspace_path.clone(),
                 workspace_path.clone(),
                 show_profile_icons.clone(),
@@ -368,7 +370,7 @@ impl ThreadList {
             listbox,
             db,
             manager,
-            active_codex_thread_id,
+            active_thread_id,
             active_workspace_path,
             workspace_path,
             show_profile_icons,
@@ -394,13 +396,13 @@ impl ThreadList {
         let runtime_workspace_path = thread_runtime_workspace_path(&thread, &self.workspace_path);
         self.active_workspace_path
             .replace(Some(runtime_workspace_path.clone()));
-        self.active_codex_thread_id
-            .replace(thread.codex_thread_id.clone());
+        self.active_thread_id
+            .replace(thread.remote_thread_id_owned());
 
         let row = thread_row(
             self.db.clone(),
             self.manager.clone(),
-            self.active_codex_thread_id.clone(),
+            self.active_thread_id.clone(),
             self.active_workspace_path.clone(),
             self.workspace_path.clone(),
             self.show_profile_icons.clone(),
@@ -430,7 +432,7 @@ impl ThreadList {
         let row = thread_row(
             self.db.clone(),
             self.manager.clone(),
-            self.active_codex_thread_id.clone(),
+            self.active_thread_id.clone(),
             self.active_workspace_path.clone(),
             self.workspace_path.clone(),
             self.show_profile_icons.clone(),

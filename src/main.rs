@@ -2,6 +2,7 @@ use adw::prelude::*;
 use gtk::gio;
 
 mod actions;
+mod backend;
 mod codex_appserver;
 mod codex_profiles;
 mod data;

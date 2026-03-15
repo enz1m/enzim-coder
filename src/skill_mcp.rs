@@ -1,6 +1,10 @@
+use crate::backend::capabilities_for_backend_kind;
 use crate::data::AppDb;
+use crate::data::CodexProfileRecord;
 use serde_json::{Map, Value, json};
 use std::collections::{HashMap, HashSet};
+use std::ffi::CStr;
+use std::path::PathBuf;
 
 const CATALOG_KEY: &str = "skill_mcp_catalog_v2";
 
@@ -77,6 +81,91 @@ pub fn skill_slug_from_name(raw: &str) -> String {
     } else {
         slug
     }
+}
+
+fn os_user_home_dir() -> Option<PathBuf> {
+    unsafe {
+        let uid = libc::geteuid();
+        let mut pwd: libc::passwd = std::mem::zeroed();
+        let mut result: *mut libc::passwd = std::ptr::null_mut();
+        let buf_len = libc::sysconf(libc::_SC_GETPW_R_SIZE_MAX);
+        let buf_len = if buf_len <= 0 { 16_384 } else { buf_len as usize };
+        let mut buf = vec![0u8; buf_len];
+        let status = libc::getpwuid_r(
+            uid,
+            &mut pwd,
+            buf.as_mut_ptr() as *mut libc::c_char,
+            buf.len(),
+            &mut result,
+        );
+        if status != 0 || result.is_null() || pwd.pw_dir.is_null() {
+            return None;
+        }
+        let home = CStr::from_ptr(pwd.pw_dir).to_string_lossy().trim().to_string();
+        if home.is_empty() {
+            None
+        } else {
+            Some(PathBuf::from(home))
+        }
+    }
+}
+
+pub fn profile_skill_file_path(profile_home: &str, backend_kind: &str, slug: &str) -> PathBuf {
+    let base_dir = if backend_kind.eq_ignore_ascii_case("opencode") {
+        os_user_home_dir().unwrap_or_else(|| PathBuf::from(profile_home))
+    } else {
+        PathBuf::from(profile_home)
+    };
+    let runtime_dir = if backend_kind.eq_ignore_ascii_case("opencode") {
+        ".opencode"
+    } else {
+        ".codex"
+    };
+    base_dir
+        .join(runtime_dir)
+        .join("skills")
+        .join(skill_slug_from_name(slug))
+        .join("SKILL.md")
+}
+
+pub fn supports_skill_assignment_for_backend(backend_kind: &str) -> bool {
+    capabilities_for_backend_kind(backend_kind).supports_skill_assignment
+}
+
+pub fn write_skill_assignment_for_profile(
+    profile: &CodexProfileRecord,
+    slug: &str,
+    content: &str,
+    enabled: bool,
+) -> Result<(), String> {
+    if !supports_skill_assignment_for_backend(&profile.backend_kind) {
+        return Err(format!(
+            "{} does not support skill assignment from Enzim yet.",
+            crate::backend::backend_display_name(&profile.backend_kind)
+        ));
+    }
+
+    let path = profile_skill_file_path(&profile.home_dir, &profile.backend_kind, slug);
+    if enabled {
+        let Some(parent) = path.parent() else {
+            return Err("invalid skill path".to_string());
+        };
+        std::fs::create_dir_all(parent).map_err(|err| {
+            format!(
+                "Failed to create skill directory {}: {err}",
+                parent.display()
+            )
+        })?;
+        std::fs::write(&path, content)
+            .map_err(|err| format!("Failed to write skill file {}: {err}", path.display()))?;
+    } else {
+        let _ = std::fs::remove_file(&path);
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::remove_dir(parent);
+        }
+    }
+
+    Ok(())
 }
 
 fn parse_catalog(raw: &str) -> SkillMcpCatalog {

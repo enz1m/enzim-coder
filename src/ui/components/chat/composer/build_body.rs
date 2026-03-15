@@ -27,8 +27,8 @@ fn build_attach_menu_item(icon_name: &str, label: &str) -> gtk::Button {
 fn build_inner(
     db: Rc<AppDb>,
     manager: Rc<CodexProfileManager>,
-    codex: Option<Arc<CodexAppServer>>,
-    active_codex_thread_id: Rc<RefCell<Option<String>>>,
+    codex: Option<Arc<RuntimeClient>>,
+    active_thread_id: Rc<RefCell<Option<String>>>,
     active_workspace_path: Rc<RefCell<Option<String>>>,
     messages_box: gtk::Box,
     messages_scroll: gtk::ScrolledWindow,
@@ -39,17 +39,17 @@ fn build_inner(
     let (send_error_tx, send_error_rx) = mpsc::channel::<String>();
     let (steer_note_tx, steer_note_rx) = mpsc::channel::<String>();
     let (turn_started_ui_tx, turn_started_ui_rx) = mpsc::channel::<(String, String)>();
-    let resolve_client_for_thread = {
+    let resolve_client_for_thread: Rc<dyn Fn(&str) -> Option<Arc<RuntimeClient>>> = {
         let db = db.clone();
         let manager = manager.clone();
-        move |thread_id: &str| {
+        Rc::new(move |thread_id: &str| {
             manager.resolve_client_for_thread_id(thread_id).or_else(|| {
                 db.runtime_profile_id()
                     .ok()
                     .flatten()
                     .and_then(|profile_id| manager.client_for_profile(profile_id))
             })
-        }
+        })
     };
 
     install_turn_started_retagger(&messages_box, turn_started_ui_rx);
@@ -352,6 +352,7 @@ fn build_inner(
         }
 
         button.composer-selector-button,
+        button#composer-selector-button,
         button.composer-input-mic,
         button.composer-worktree-button {
           background-color: transparent;
@@ -361,6 +362,7 @@ fn build_inner(
         }
 
         button.composer-selector-button:hover,
+        button#composer-selector-button:hover,
         button.composer-input-mic:hover,
         button.composer-worktree-button:hover {
           background-color: transparent;
@@ -368,6 +370,8 @@ fn build_inner(
 
         button.composer-selector-button:active,
         button.composer-selector-button:checked,
+        button#composer-selector-button:active,
+        button#composer-selector-button:checked,
         button.composer-input-mic:active,
         button.composer-worktree-button:active {
           background-color: transparent;
@@ -406,7 +410,8 @@ fn build_inner(
     let overlay = gtk::Overlay::new();
     overlay.set_child(Some(&input_scroll));
 
-    let placeholder = gtk::Label::new(Some("Ask Codex anything, @ to add files, / for commands"));
+    let placeholder =
+        gtk::Label::new(Some("Ask anything, @ to add files, / for commands"));
     placeholder.add_css_class("composer-placeholder");
     placeholder.set_halign(gtk::Align::Start);
     placeholder.set_valign(gtk::Align::Start);
@@ -570,35 +575,38 @@ fn build_inner(
 
     let model_setting_changed: Rc<dyn Fn(String)> = {
         let db = db.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         Rc::new(move |value: String| {
-            if let Some(thread_id) = active_codex_thread_id.borrow().clone() {
+            save_default_composer_setting(&db, "model", &value);
+            if let Some(thread_id) = active_thread_id.borrow().clone() {
                 save_thread_setting(&db, &thread_id, "model", &value);
             }
         })
     };
     let mode_setting_changed: Rc<dyn Fn(String)> = {
         let db = db.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         Rc::new(move |value: String| {
-            if let Some(thread_id) = active_codex_thread_id.borrow().clone() {
+            save_default_composer_setting(&db, "collaboration_mode", &value);
+            if let Some(thread_id) = active_thread_id.borrow().clone() {
                 save_thread_setting(&db, &thread_id, "collaboration_mode", &value);
             }
         })
     };
-    let (mode_selector, selected_mode_id, set_mode_id) = super::codex_controls::build_mode_selector(
-        active_codex_thread_id
+    let (mode_selector, selected_mode_id, set_mode_id) = super::runtime_controls::build_mode_selector(
+        active_thread_id
             .borrow()
             .as_deref()
-            .and_then(|thread_id| thread_setting_value(&db, thread_id, "collaboration_mode")),
+            .and_then(|thread_id| thread_setting_value(&db, thread_id, "collaboration_mode"))
+            .or_else(|| default_composer_setting_value(&db, "collaboration_mode")),
         Some(mode_setting_changed),
     );
     controls.append(&mode_selector);
 
-    let separator = create_compact_separator();
-    controls.append(&separator);
+    let mode_model_separator = create_compact_separator();
+    controls.append(&mode_model_separator);
 
-    let active_model_client = active_codex_thread_id
+    let active_model_client = active_thread_id
         .borrow()
         .as_deref()
         .and_then(|thread_id| manager.resolve_running_client_for_thread_id(thread_id))
@@ -609,74 +617,175 @@ fn build_inner(
                 .and_then(|profile_id| manager.running_client_for_profile(profile_id))
         })
         .or(codex.clone());
-    let (model_selector, selected_model_id, set_model_id) =
-        super::codex_controls::build_model_selector(
+    let cached_model_options: Rc<RefCell<Vec<crate::codex_appserver::ModelInfo>>> =
+        Rc::new(RefCell::new(super::runtime_controls::model_options(
             active_model_client.as_ref(),
-            active_codex_thread_id
+        )));
+    let cached_model_options_key: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
+    let (model_selector, selected_model_id, initial_set_model_id) =
+        super::runtime_controls::build_model_selector(
+            active_model_client.as_ref(),
+            active_thread_id
                 .borrow()
                 .as_deref()
-                .and_then(|thread_id| thread_setting_value(&db, thread_id, "model")),
-            Some(model_setting_changed),
+                .and_then(|thread_id| thread_setting_value(&db, thread_id, "model"))
+                .or_else(|| default_composer_setting_value(&db, "model")),
+            Some(model_setting_changed.clone()),
         );
-    controls.append(&model_selector);
+    let model_selector_slot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    model_selector_slot.append(&model_selector);
+    controls.append(&model_selector_slot);
+    let model_selector_signature: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
+    let model_selector_setter: Rc<RefCell<Option<Rc<dyn Fn(&str)>>>> =
+        Rc::new(RefCell::new(Some(initial_set_model_id.clone())));
+    let set_model_id: Rc<dyn Fn(&str)> = {
+        let selected_model_id = selected_model_id.clone();
+        let model_selector_setter = model_selector_setter.clone();
+        Rc::new(move |next_value: &str| {
+            selected_model_id.replace(next_value.to_string());
+            if let Some(setter) = model_selector_setter.borrow().as_ref() {
+                setter(next_value);
+            }
+        })
+    };
 
-    let separator = create_compact_separator();
-    controls.append(&separator);
+    let model_effort_separator = create_compact_separator();
+    controls.append(&model_effort_separator);
 
     let effort_setting_changed: Rc<dyn Fn(String)> = {
         let db = db.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         Rc::new(move |value: String| {
-            if let Some(thread_id) = active_codex_thread_id.borrow().clone() {
+            save_default_composer_setting(&db, "effort", &value);
+            if let Some(thread_id) = active_thread_id.borrow().clone() {
                 save_thread_setting(&db, &thread_id, "effort", &value);
             }
         })
     };
-    let (effort_selector, selected_effort, set_effort) =
-        super::codex_controls::build_effort_selector(
-            active_codex_thread_id
+    let selected_effort: Rc<RefCell<String>> = Rc::new(RefCell::new(
+        active_thread_id
+            .borrow()
+            .as_deref()
+            .and_then(|thread_id| thread_setting_value(&db, thread_id, "effort"))
+            .or_else(|| default_composer_setting_value(&db, "effort"))
+            .unwrap_or_else(|| "medium".to_string()),
+    ));
+    let effort_selector = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    effort_selector.set_visible(false);
+    controls.append(&effort_selector);
+    let effort_selector_signature: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
+    let effort_selector_setter: Rc<RefCell<Option<Rc<dyn Fn(&str)>>>> =
+        Rc::new(RefCell::new(None));
+    let set_effort: Rc<dyn Fn(&str)> = {
+        let selected_effort = selected_effort.clone();
+        let effort_selector_setter = effort_selector_setter.clone();
+        Rc::new(move |next_value: &str| {
+            selected_effort.replace(next_value.to_string());
+            if let Some(setter) = effort_selector_setter.borrow().as_ref() {
+                setter(next_value);
+            }
+        })
+    };
+
+    let variant_setting_changed: Rc<dyn Fn(String)> = {
+        let db = db.clone();
+        let active_thread_id = active_thread_id.clone();
+        Rc::new(move |value: String| {
+            save_default_composer_setting(&db, "variant", &value);
+            if let Some(thread_id) = active_thread_id.borrow().clone() {
+                save_thread_setting(&db, &thread_id, "variant", &value);
+            }
+        })
+    };
+    let selected_variant: Rc<RefCell<String>> = Rc::new(RefCell::new(
+        active_thread_id
+            .borrow()
+            .as_deref()
+            .and_then(|thread_id| thread_setting_value(&db, thread_id, "variant"))
+            .or_else(|| default_composer_setting_value(&db, "variant"))
+            .unwrap_or_default(),
+    ));
+    let variant_selector_slot = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    variant_selector_slot.set_visible(false);
+    controls.append(&variant_selector_slot);
+    let variant_selector_signature: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
+    let variant_selector_setter: Rc<RefCell<Option<Rc<dyn Fn(&str)>>>> =
+        Rc::new(RefCell::new(None));
+
+    let opencode_command_setting_changed: Rc<dyn Fn(String)> = {
+        let db = db.clone();
+        let active_thread_id = active_thread_id.clone();
+        let resolve_client_for_thread = resolve_client_for_thread.clone();
+        Rc::new(move |value: String| {
+            save_default_composer_setting(&db, "opencode_command_mode", &value);
+            if let Some(thread_id) = active_thread_id.borrow().clone() {
+                save_thread_setting(&db, &thread_id, "opencode_command_mode", &value);
+                if let Some(client) = resolve_client_for_thread(&thread_id) {
+                    let _ = client.thread_set_command_mode(&thread_id, &value);
+                }
+            }
+        })
+    };
+    let (opencode_command_selector, selected_opencode_command_mode, set_opencode_command_mode) =
+        super::runtime_controls::build_opencode_command_selector(
+            active_thread_id
                 .borrow()
                 .as_deref()
-                .and_then(|thread_id| thread_setting_value(&db, thread_id, "effort")),
-            Some(effort_setting_changed),
+                .and_then(|thread_id| thread_setting_value(&db, thread_id, "opencode_command_mode"))
+                .or_else(|| default_composer_setting_value(&db, "opencode_command_mode")),
+            Some(opencode_command_setting_changed),
         );
-    controls.append(&effort_selector);
+    opencode_command_selector.set_visible(false);
+    controls.append(&opencode_command_selector);
 
-    let separator = create_compact_separator();
-    controls.append(&separator);
+    let effort_access_separator = create_compact_separator();
+    controls.append(&effort_access_separator);
 
     let access_setting_changed: Rc<dyn Fn(String)> = {
         let db = db.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         Rc::new(move |value: String| {
-            if let Some(thread_id) = active_codex_thread_id.borrow().clone() {
+            save_default_composer_setting(&db, "access_mode", &value);
+            if let Some(thread_id) = active_thread_id.borrow().clone() {
                 save_thread_setting(&db, &thread_id, "access_mode", &value);
             }
         })
     };
     let (access_selector, selected_access_mode, set_access_mode) =
-        super::codex_controls::build_access_selector(
-            active_codex_thread_id
+        super::runtime_controls::build_access_selector(
+            active_thread_id
                 .borrow()
                 .as_deref()
-                .and_then(|thread_id| thread_setting_value(&db, thread_id, "access_mode")),
+                .and_then(|thread_id| thread_setting_value(&db, thread_id, "access_mode"))
+                .or_else(|| default_composer_setting_value(&db, "access_mode")),
             Some(access_setting_changed),
         );
     controls.append(&access_selector);
+    let backend_controls_note = gtk::Label::new(None);
+    backend_controls_note.add_css_class("composer-lock-note");
+    backend_controls_note.set_xalign(0.0);
+    backend_controls_note.set_wrap(true);
+    backend_controls_note.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    backend_controls_note.set_visible(false);
+
     let draft_text_by_thread: Rc<RefCell<HashMap<String, String>>> =
         Rc::new(RefCell::new(HashMap::new()));
 
     {
         let db = db.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         let selected_mode_id = selected_mode_id.clone();
         let selected_model_id = selected_model_id.clone();
         let selected_effort = selected_effort.clone();
+        let selected_variant = selected_variant.clone();
+        let selected_opencode_command_mode = selected_opencode_command_mode.clone();
         let selected_access_mode = selected_access_mode.clone();
         let set_mode_id = set_mode_id.clone();
         let set_model_id = set_model_id.clone();
         let set_effort = set_effort.clone();
+        let set_opencode_command_mode = set_opencode_command_mode.clone();
         let set_access_mode = set_access_mode.clone();
+        let resolve_client_for_thread = resolve_client_for_thread.clone();
         let suggestion_row = suggestion_row.clone();
         let input_view = input_view.clone();
         let draft_text_by_thread_for_timer = draft_text_by_thread.clone();
@@ -686,7 +795,7 @@ fn build_inner(
             if input_view.root().is_none() {
                 return gtk::glib::ControlFlow::Break;
             }
-            let thread_id = active_codex_thread_id.borrow().clone();
+            let thread_id = active_thread_id.borrow().clone();
             let previous_thread_id = last_seen_thread_id_for_timer.borrow().clone();
             if thread_id == previous_thread_id {
                 return gtk::glib::ControlFlow::Continue;
@@ -706,20 +815,50 @@ fn build_inner(
 
             last_seen_thread_id_for_timer.replace(thread_id.clone());
             if let Some(thread_id) = thread_id {
-                if let Some(saved_mode_id) =
-                    thread_setting_value(&db, &thread_id, "collaboration_mode")
-                {
+                let backend_kind = resolve_client_for_thread(&thread_id)
+                    .map(|client| client.backend_kind().to_string())
+                    .or_else(|| {
+                        db.runtime_profile_id()
+                            .ok()
+                            .flatten()
+                            .and_then(|profile_id| db.get_codex_profile(profile_id).ok().flatten())
+                            .map(|profile| profile.backend_kind)
+                    })
+                    .unwrap_or_else(|| "codex".to_string());
+                let is_opencode = backend_kind.eq_ignore_ascii_case("opencode");
+                let saved_mode_id = thread_setting_value(&db, &thread_id, "collaboration_mode")
+                    .or_else(|| default_composer_setting_value(&db, "collaboration_mode"));
+                if let Some(saved_mode_id) = saved_mode_id {
                     set_mode_id(&saved_mode_id);
                 }
-                if let Some(saved_model_id) = thread_setting_value(&db, &thread_id, "model") {
+                let saved_model_id = thread_setting_value(&db, &thread_id, "model")
+                    .or_else(|| default_composer_setting_value(&db, "model"));
+                if let Some(saved_model_id) = saved_model_id {
                     set_model_id(&saved_model_id);
                 }
-                if let Some(saved_effort) = thread_setting_value(&db, &thread_id, "effort") {
+                if is_opencode {
+                    selected_variant.replace(
+                        thread_setting_value(&db, &thread_id, "variant")
+                            .or_else(|| default_composer_setting_value(&db, "variant"))
+                            .unwrap_or_default(),
+                    );
+                    let saved_command_mode =
+                        thread_setting_value(&db, &thread_id, "opencode_command_mode")
+                            .or_else(|| default_composer_setting_value(&db, "opencode_command_mode"))
+                            .unwrap_or_else(|| "allowAll".to_string());
+                    set_opencode_command_mode(&saved_command_mode);
+                    if let Some(client) = resolve_client_for_thread(&thread_id) {
+                        let _ = client.thread_set_command_mode(&thread_id, &saved_command_mode);
+                    }
+                } else {
+                    let saved_effort = thread_setting_value(&db, &thread_id, "effort")
+                        .or_else(|| default_composer_setting_value(&db, "effort"))
+                        .unwrap_or_else(|| "medium".to_string());
                     set_effort(&saved_effort);
                 }
-                if let Some(saved_access_mode) =
-                    thread_setting_value(&db, &thread_id, "access_mode")
-                {
+                let saved_access_mode = thread_setting_value(&db, &thread_id, "access_mode")
+                    .or_else(|| default_composer_setting_value(&db, "access_mode"));
+                if let Some(saved_access_mode) = saved_access_mode {
                     set_access_mode(&saved_access_mode);
                 }
 
@@ -730,7 +869,17 @@ fn build_inner(
                     &selected_mode_id.borrow(),
                 );
                 save_thread_setting(&db, &thread_id, "model", &selected_model_id.borrow());
-                save_thread_setting(&db, &thread_id, "effort", &selected_effort.borrow());
+                if is_opencode {
+                    save_thread_setting(&db, &thread_id, "variant", &selected_variant.borrow());
+                    save_thread_setting(
+                        &db,
+                        &thread_id,
+                        "opencode_command_mode",
+                        &selected_opencode_command_mode.borrow(),
+                    );
+                } else {
+                    save_thread_setting(&db, &thread_id, "effort", &selected_effort.borrow());
+                }
                 save_thread_setting(
                     &db,
                     &thread_id,
@@ -781,6 +930,256 @@ fn build_inner(
     controls.append(&send);
     let thread_locked = Rc::new(RefCell::new(false));
 
+    {
+        let db = db.clone();
+        let active_thread_id = active_thread_id.clone();
+        let manager = manager.clone();
+        let resolve_client_for_thread = resolve_client_for_thread.clone();
+        let mode_selector = mode_selector.clone();
+        let mode_model_separator = mode_model_separator.clone();
+        let model_selector_slot = model_selector_slot.clone();
+        let model_selector_signature = model_selector_signature.clone();
+        let model_selector_setter = model_selector_setter.clone();
+        let effort_selector = effort_selector.clone();
+        let effort_selector_signature = effort_selector_signature.clone();
+        let effort_selector_setter = effort_selector_setter.clone();
+        let selected_effort = selected_effort.clone();
+        let selected_model_id = selected_model_id.clone();
+        let set_model_id = set_model_id.clone();
+        let model_setting_changed = model_setting_changed.clone();
+        let selected_variant = selected_variant.clone();
+        let opencode_command_selector = opencode_command_selector.clone();
+        let model_effort_separator = model_effort_separator.clone();
+        let variant_selector_slot = variant_selector_slot.clone();
+        let variant_selector_signature = variant_selector_signature.clone();
+        let variant_selector_setter = variant_selector_setter.clone();
+        let variant_setting_changed = variant_setting_changed.clone();
+        let cached_model_options = cached_model_options.clone();
+        let cached_model_options_key = cached_model_options_key.clone();
+        let access_selector = access_selector.clone();
+        let effort_access_separator = effort_access_separator.clone();
+        let backend_controls_note = backend_controls_note.clone();
+        gtk::glib::timeout_add_local(Duration::from_millis(180), move || {
+            if mode_selector.root().is_none() {
+                return gtk::glib::ControlFlow::Break;
+            }
+            let backend_kind = active_thread_id
+                .borrow()
+                .as_deref()
+                .and_then(|thread_id| resolve_client_for_thread(thread_id))
+                .map(|client| client.backend_kind().to_string())
+                .or_else(|| {
+                    db.runtime_profile_id()
+                        .ok()
+                        .flatten()
+                        .and_then(|profile_id| db.get_codex_profile(profile_id).ok().flatten())
+                        .map(|profile| profile.backend_kind)
+                })
+                .unwrap_or_else(|| "codex".to_string());
+            let is_opencode = backend_kind.eq_ignore_ascii_case("opencode");
+            let model_cache_version =
+                super::runtime_controls::model_options_cache_version();
+            let active_client = active_thread_id
+                .borrow()
+                .as_deref()
+                .and_then(|thread_id| resolve_client_for_thread(thread_id))
+                .or_else(|| {
+                    db.runtime_profile_id()
+                        .ok()
+                        .flatten()
+                        .and_then(|profile_id| manager.running_client_for_profile(profile_id))
+                });
+            let model_options_key = active_thread_id
+                .borrow()
+                .clone()
+                .map(|thread_id| format!("thread:{thread_id}:v:{model_cache_version}"))
+                .or_else(|| {
+                    db.runtime_profile_id()
+                        .ok()
+                        .flatten()
+                        .map(|profile_id| format!("profile:{profile_id}:v:{model_cache_version}"))
+                });
+            if cached_model_options_key.borrow().as_ref() != model_options_key.as_ref() {
+                cached_model_options
+                    .replace(super::runtime_controls::model_options(active_client.as_ref()));
+                cached_model_options_key.replace(model_options_key);
+            }
+            let model_signature = {
+                let models = cached_model_options.borrow();
+                format!(
+                    "{}\u{1f}{}",
+                    backend_kind,
+                    models
+                        .iter()
+                        .map(|model| model.id.as_str())
+                        .collect::<Vec<_>>()
+                        .join("\u{1f}")
+                )
+            };
+            if model_selector_signature.borrow().as_str() != model_signature {
+                crate::ui::widget_tree::clear_box_children(&model_selector_slot);
+                let current_selected_model_id = selected_model_id.borrow().clone();
+                let (selector, set_model) =
+                    super::runtime_controls::build_model_selector_with_state(
+                        active_client.as_ref(),
+                        selected_model_id.clone(),
+                        Some(current_selected_model_id),
+                        Some(model_setting_changed.clone()),
+                    );
+                model_selector_slot.append(&selector);
+                model_selector_setter.replace(Some(set_model));
+                model_selector_signature.replace(model_signature);
+            }
+            let current_model_id = selected_model_id.borrow().clone();
+            let replacement_model_id = {
+                let models = cached_model_options.borrow();
+                if models.iter().any(|model| model.id == current_model_id) {
+                    None
+                } else if let Some(model) = models.first() {
+                    Some(model.id.clone())
+                } else if is_opencode {
+                    Some(String::new())
+                } else {
+                    None
+                }
+            };
+            if let Some(next_model_id) = replacement_model_id {
+                if next_model_id != current_model_id {
+                    selected_model_id.replace(next_model_id.clone());
+                    set_model_id(&next_model_id);
+                    model_setting_changed(next_model_id);
+                }
+            }
+            let model_id = selected_model_id.borrow().clone();
+            let (effort_options, default_effort) =
+                super::runtime_controls::reasoning_effort_options_from_models(
+                    &cached_model_options.borrow(),
+                    &model_id,
+                );
+            let variant_options = if is_opencode {
+                super::runtime_controls::opencode_variant_options_from_models(
+                    &cached_model_options.borrow(),
+                    &model_id,
+                )
+            } else {
+                Vec::new()
+            };
+            mode_selector.set_visible(true);
+            mode_model_separator.set_visible(true);
+            if is_opencode {
+                let has_variants = !variant_options.is_empty();
+                effort_selector.set_visible(false);
+                variant_selector_slot.set_visible(has_variants);
+                model_effort_separator.set_visible(has_variants);
+                if has_variants {
+                    let signature = variant_options
+                        .iter()
+                        .map(|(_, value)| value.as_str())
+                        .collect::<Vec<_>>()
+                        .join("\u{1f}");
+                    let selected_variant_value = selected_variant.borrow().clone();
+                    let selected_is_valid = variant_options
+                        .iter()
+                        .any(|(_, value)| value == &selected_variant_value);
+                    if !selected_is_valid {
+                        selected_variant.replace(String::new());
+                        variant_setting_changed(String::new());
+                    }
+                    if variant_selector_signature.borrow().as_str() != signature {
+                        crate::ui::widget_tree::clear_box_children(&variant_selector_slot);
+                        let selected_variant_state = selected_variant.clone();
+                        let current_variant = selected_variant_state.borrow().clone();
+                        let selected_variant_for_change = selected_variant_state.clone();
+                        let variant_setting_changed = variant_setting_changed.clone();
+                        let (selector, _selected, set_variant) =
+                            super::runtime_controls::build_variant_selector(
+                                &variant_options,
+                                Some(current_variant),
+                                Some(Rc::new(move |value: String| {
+                                    selected_variant_for_change.replace(value.clone());
+                                    variant_setting_changed(value);
+                                })),
+                            );
+                        variant_selector_slot.append(&selector);
+                        variant_selector_setter.replace(Some(set_variant));
+                        variant_selector_signature.replace(signature);
+                    }
+                    if let Some(set_variant) = variant_selector_setter.borrow().as_ref() {
+                        let variant_value = selected_variant.borrow().clone();
+                        set_variant(&variant_value);
+                    }
+                } else {
+                    if !selected_variant.borrow().is_empty() {
+                        selected_variant.replace(String::new());
+                        variant_setting_changed(String::new());
+                    }
+                    if !variant_selector_signature.borrow().is_empty() {
+                        crate::ui::widget_tree::clear_box_children(&variant_selector_slot);
+                        variant_selector_signature.borrow_mut().clear();
+                        variant_selector_setter.replace(None);
+                    }
+                }
+            } else {
+                let has_effort_options = effort_options.len() > 1;
+                effort_selector.set_visible(has_effort_options);
+                variant_selector_slot.set_visible(false);
+                model_effort_separator.set_visible(has_effort_options);
+                if has_effort_options {
+                    let signature = effort_options
+                        .iter()
+                        .map(|(_, value)| value.as_str())
+                        .collect::<Vec<_>>()
+                        .join("\u{1f}");
+                    let default_effort = default_effort.unwrap_or_else(|| {
+                        effort_options
+                            .first()
+                            .map(|(_, value)| value.clone())
+                            .unwrap_or_else(|| "medium".to_string())
+                    });
+                    let selected_effort_value = selected_effort.borrow().clone();
+                    let selected_is_valid = effort_options
+                        .iter()
+                        .any(|(_, value)| value == &selected_effort_value);
+                    if !selected_is_valid {
+                        selected_effort.replace(default_effort.clone());
+                    }
+                    if effort_selector_signature.borrow().as_str() != signature {
+                        crate::ui::widget_tree::clear_box_children(&effort_selector);
+                        let selected_effort_state = selected_effort.clone();
+                        let current_effort = selected_effort_state.borrow().clone();
+                        let selected_effort_for_change = selected_effort_state.clone();
+                        let effort_setting_changed = effort_setting_changed.clone();
+                        let (selector, _selected, set_effort_value) =
+                            super::runtime_controls::build_effort_selector(
+                                &effort_options,
+                                Some(current_effort),
+                                Some(Rc::new(move |value: String| {
+                                    selected_effort_for_change.replace(value.clone());
+                                    effort_setting_changed(value);
+                                })),
+                            );
+                        effort_selector.append(&selector);
+                        effort_selector_setter.replace(Some(set_effort_value));
+                        effort_selector_signature.replace(signature);
+                    }
+                    if let Some(setter) = effort_selector_setter.borrow().as_ref() {
+                        let effort_value = selected_effort.borrow().clone();
+                        setter(&effort_value);
+                    }
+                } else if !effort_selector_signature.borrow().is_empty() {
+                    crate::ui::widget_tree::clear_box_children(&effort_selector);
+                    effort_selector_signature.borrow_mut().clear();
+                    effort_selector_setter.replace(None);
+                }
+            }
+            opencode_command_selector.set_visible(is_opencode);
+            access_selector.set_visible(!is_opencode);
+            effort_access_separator.set_visible(true);
+            backend_controls_note.set_visible(false);
+            gtk::glib::ControlFlow::Continue
+        });
+    }
+
     include!("build_body_worktree_section.rs");
 
     let buffer = input_view.buffer();
@@ -793,6 +1192,7 @@ fn build_inner(
     live_turn_status_overlay.set_size_request(-1, -1);
     live_turn_status_overlay.set_hexpand(true);
     composer.append(&controls);
+    composer.append(&backend_controls_note);
     composer_cluster.append(&composer);
     lower_content.append(&composer_cluster);
     if messages_box.first_child().is_some() {

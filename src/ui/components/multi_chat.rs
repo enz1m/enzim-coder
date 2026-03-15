@@ -1,4 +1,4 @@
-use crate::codex_appserver::CodexAppServer;
+use crate::backend::RuntimeClient;
 use crate::codex_profiles::CodexProfileManager;
 use crate::data::AppDb;
 use crate::ui::components::{actions_menu, chat, file_browser, git_tab, skills_mcp_menu};
@@ -26,7 +26,7 @@ struct PaneUi {
     stack: gtk::Stack,
     tab_buttons: Vec<gtk::Widget>,
     close_button: gtk::Box,
-    active_codex_thread_id: Rc<RefCell<Option<String>>>,
+    active_thread_id: Rc<RefCell<Option<String>>>,
     active_workspace_path: Rc<RefCell<Option<String>>>,
     chat: chat::ChatPaneWidgets,
 }
@@ -34,7 +34,7 @@ struct PaneUi {
 #[derive(Clone, Debug)]
 struct PersistedPane {
     id: u64,
-    codex_thread_id: Option<String>,
+    thread_id: Option<String>,
     workspace_path: Option<String>,
     tab: String,
     column: Option<usize>,
@@ -130,18 +130,15 @@ fn sidebar_profile_icon_visibility_by_workspace_id(db: &AppDb) -> HashMap<i64, b
                 .map(|workspace| {
                     let has_linked_profile = workspace.threads.into_iter().any(|thread| {
                         thread
-                            .codex_thread_id
-                            .as_deref()
+                            .remote_thread_id()
                             .map(str::trim)
                             .is_some_and(|value| !value.is_empty())
                             || thread
-                                .codex_account_type
-                                .as_deref()
+                                .remote_account_type()
                                 .map(str::trim)
                                 .is_some_and(|value| !value.is_empty())
                             || thread
-                                .codex_account_email
-                                .as_deref()
+                                .remote_account_email()
                                 .map(str::trim)
                                 .is_some_and(|value| !value.is_empty())
                     });
@@ -152,26 +149,26 @@ fn sidebar_profile_icon_visibility_by_workspace_id(db: &AppDb) -> HashMap<i64, b
         .unwrap_or_default()
 }
 
-fn codex_thread_exists(db: &AppDb, codex_thread_id: &str) -> bool {
-    if codex_thread_id.trim().is_empty() {
+pub(super) fn thread_exists(db: &AppDb, thread_id: &str) -> bool {
+    if thread_id.trim().is_empty() {
         return false;
     }
-    db.has_open_thread_for_codex_thread_id(codex_thread_id)
+    db.has_open_thread_for_remote_thread_id(thread_id)
         .ok()
         .unwrap_or(false)
 }
 
 fn resolve_workspace_path(
     db: &AppDb,
-    codex_thread_id: Option<&str>,
+    thread_id: Option<&str>,
     explicit: Option<String>,
     fallback: Option<String>,
 ) -> Option<String> {
     if let Some(path) = explicit.filter(|value| !value.trim().is_empty()) {
         return Some(path);
     }
-    if let Some(codex_thread_id) = codex_thread_id {
-        if let Ok(Some(path)) = db.workspace_path_for_codex_thread(codex_thread_id) {
+    if let Some(thread_id) = thread_id {
+        if let Ok(Some(path)) = db.workspace_path_for_remote_thread(thread_id) {
             return Some(path);
         }
     }
@@ -192,8 +189,9 @@ fn parse_persisted_layout(raw: &str) -> Option<PersistedLayout> {
                 .iter()
                 .filter_map(|pane| {
                     let id = pane.get("id").and_then(Value::as_u64)?;
-                    let codex_thread_id = pane
-                        .get("codexThreadId")
+                    let thread_id = pane
+                        .get("threadId")
+                        .or_else(|| pane.get("codexThreadId"))
                         .and_then(Value::as_str)
                         .map(|value| value.trim().to_string())
                         .filter(|value| !value.is_empty());
@@ -217,7 +215,7 @@ fn parse_persisted_layout(raw: &str) -> Option<PersistedLayout> {
                         .map(|value| value as usize);
                     Some(PersistedPane {
                         id,
-                        codex_thread_id,
+                        thread_id,
                         workspace_path,
                         tab,
                         column,
@@ -263,7 +261,7 @@ fn serialize_persisted_layout(
             let (column, row) = pos.get(&pane.id).copied().unwrap_or((0, 0));
             PersistedPane {
                 id: pane.id,
-                codex_thread_id: pane.active_codex_thread_id.borrow().clone(),
+                thread_id: pane.active_thread_id.borrow().clone(),
                 workspace_path: pane.active_workspace_path.borrow().clone(),
                 tab: selected_tab_name(&pane.stack),
                 column: Some(column),
@@ -284,7 +282,8 @@ fn serialize_persisted_layout_state(
         .map(|pane| {
             json!({
                 "id": pane.id,
-                "codexThreadId": pane.codex_thread_id,
+                "threadId": pane.thread_id,
+                "codexThreadId": pane.thread_id,
                 "workspacePath": pane.workspace_path,
                 "tab": normalize_tab_name(&pane.tab),
                 "column": pane.column.unwrap_or(0),
@@ -378,8 +377,8 @@ fn load_initial_layout(
     let mut panes = Vec::new();
     for pane in parsed_panes {
         let thread_id = pane
-            .codex_thread_id
-            .filter(|thread_id| codex_thread_exists(db, thread_id));
+            .thread_id
+            .filter(|thread_id| thread_exists(db, thread_id));
         if let Some(thread_id) = thread_id {
             if !seen_threads.insert(thread_id.clone()) {
                 continue;
@@ -392,7 +391,7 @@ fn load_initial_layout(
             );
             panes.push(PersistedPane {
                 id: pane.id,
-                codex_thread_id: Some(thread_id),
+                thread_id: Some(thread_id),
                 workspace_path: workspace,
                 tab: normalize_tab_name(&pane.tab),
                 column: pane.column,
@@ -404,11 +403,11 @@ fn load_initial_layout(
     if panes.is_empty() {
         let thread_id = fallback_thread
             .clone()
-            .filter(|thread_id| codex_thread_exists(db, thread_id))
+            .filter(|thread_id| thread_exists(db, thread_id))
             .or_else(|| fallback_thread.filter(|value| !value.trim().is_empty()));
         panes.push(PersistedPane {
             id: 1,
-            codex_thread_id: thread_id,
+            thread_id,
             workspace_path: fallback_workspace,
             tab: "chat".to_string(),
             column: Some(0),
@@ -441,8 +440,8 @@ fn build_pane_ui(
     pane_id: u64,
     db: Rc<AppDb>,
     manager: Rc<CodexProfileManager>,
-    codex: Option<Arc<CodexAppServer>>,
-    active_codex_thread_id: Rc<RefCell<Option<String>>>,
+    codex: Option<Arc<RuntimeClient>>,
+    active_thread_id: Rc<RefCell<Option<String>>>,
     active_workspace_path: Rc<RefCell<Option<String>>>,
 ) -> Option<PaneUi> {
     let pane_shell = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -594,7 +593,7 @@ fn build_pane_ui(
         db.clone(),
         manager.clone(),
         codex.clone(),
-        active_codex_thread_id.clone(),
+        active_thread_id.clone(),
         active_workspace_path.clone(),
     )?;
     stack.add_named(&chat_pane.root, Some("chat"));
@@ -659,7 +658,7 @@ fn build_pane_ui(
         stack,
         tab_buttons: buttons,
         close_button,
-        active_codex_thread_id,
+        active_thread_id,
         active_workspace_path,
         chat: chat_pane,
     })
@@ -751,11 +750,11 @@ fn attach_pane_handlers(
             set_reorder_drag_active_begin(true);
 
             let label_text = pane_for_drag_begin
-                .active_codex_thread_id
+                .active_thread_id
                 .borrow()
                 .as_deref()
                 .and_then(|thread_id| {
-                    db.get_thread_record_by_codex_thread_id(thread_id)
+                    db.get_thread_record_by_remote_thread_id(thread_id)
                         .ok()
                         .flatten()
                         .map(|thread| thread.title)
@@ -997,15 +996,16 @@ fn attach_pane_handlers(
 
 fn parse_thread_drop_payload(raw: &str) -> Option<(Option<String>, Option<String>)> {
     let parsed: Value = serde_json::from_str(raw).ok()?;
-    let codex_thread_id = parsed
-        .get("codexThreadId")
+    let thread_id = parsed
+        .get("threadId")
+        .or_else(|| parsed.get("codexThreadId"))
         .and_then(Value::as_str)
         .map(|value| value.to_string());
     let workspace_path = parsed
         .get("workspacePath")
         .and_then(Value::as_str)
         .map(|value| value.to_string());
-    Some((codex_thread_id, workspace_path))
+    Some((thread_id, workspace_path))
 }
 
 fn parse_pane_reorder_payload(raw: &str) -> Option<u64> {
@@ -1040,7 +1040,7 @@ mod tests {
         let panes = vec![
             PersistedPane {
                 id: 1,
-                codex_thread_id: Some("thread-a".to_string()),
+                thread_id: Some("thread-a".to_string()),
                 workspace_path: Some("/tmp/ws-a".to_string()),
                 tab: "chat".to_string(),
                 column: Some(0),
@@ -1048,7 +1048,7 @@ mod tests {
             },
             PersistedPane {
                 id: 2,
-                codex_thread_id: Some("thread-b".to_string()),
+                thread_id: Some("thread-b".to_string()),
                 workspace_path: Some("/tmp/ws-b".to_string()),
                 tab: "git".to_string(),
                 column: Some(1),
@@ -1079,7 +1079,7 @@ mod tests {
         assert_eq!(parsed.focused_pane_id, 7);
         assert_eq!(parsed.panes.len(), 1);
         assert_eq!(parsed.panes[0].id, 7);
-        assert_eq!(parsed.panes[0].codex_thread_id, None);
+        assert_eq!(parsed.panes[0].thread_id, None);
         assert_eq!(parsed.panes[0].workspace_path, None);
     }
 }

@@ -211,7 +211,14 @@
                             remote_command_count = turn_ui.command_widgets.len();
                             remote_file_edit_count = turn_ui.file_change_widgets.len();
                             remote_other_action_count =
-                                turn_ui.tool_call_widgets.len() + turn_ui.generic_item_widgets.len();
+                                turn_ui.tool_call_widgets.len()
+                                    + turn_ui
+                                        .generic_item_widgets
+                                        .keys()
+                                        .filter(|item_id| {
+                                            !turn_ui.reasoning_item_ids.contains((*item_id).as_str())
+                                        })
+                                        .count();
 
                             if is_active_thread {
                                 super::message_render::scroll_to_bottom(&messages_scroll);
@@ -349,7 +356,7 @@
                                     &all_file_changes,
                                 );
                                 if let Some(checkpoint_id) = checkpoint_id {
-                                    let active_thread = active_codex_thread_id.borrow().clone();
+                                    let active_thread = active_thread_id.clone();
                                     append_checkpoint_strip_for_turn(
                                         &manager,
                                         &messages_box,
@@ -366,7 +373,7 @@
                                     let turn_id_for_checkpoint = turn_id.clone();
                                     let checkpoint_tx = checkpoint_tx.clone();
                                     thread::spawn(move || {
-                                        let checkpoint_id = crate::data::background_repo::BackgroundRepo::capture_workspace_delta_checkpoint(
+                                        let checkpoint_id = crate::data::background_repo::BackgroundRepo::capture_workspace_delta_checkpoint_for_remote_thread(
                                             &thread_id_for_checkpoint,
                                             &turn_id_for_checkpoint,
                                         );
@@ -393,7 +400,7 @@
                                 let history_tx = history_tx.clone();
                                 let thread_id = thread_id.to_string();
                                 let log_source =
-                                    db.get_thread_record_by_codex_thread_id(&thread_id)
+                                    db.get_thread_record_by_remote_thread_id(&thread_id)
                                         .ok()
                                         .flatten()
                                         .and_then(|thread| {

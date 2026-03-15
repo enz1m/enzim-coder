@@ -22,6 +22,16 @@
   border: 1px solid alpha(@window_fg_color, 0.08);
 }
 
+.chat-profile-card-access-row {
+  margin-top: 4px;
+}
+
+.chat-profile-card-access-label {
+  color: alpha(@window_fg_color, 0.72);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
 .chat-profile-card-avatar {
   min-width: 18px;
   min-height: 18px;

@@ -411,6 +411,56 @@ button.chat-message-context-item:focus-visible image,
   box-shadow: inset 0 1px 0 alpha(white, 0.035);
 }
 
+.chat-thinking-card {
+  margin-top: 2px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  background-image: none;
+  box-shadow: none;
+}
+
+.chat-thinking-card .chat-command-header {
+  font-size: 0.72rem;
+  font-weight: 540;
+  color: alpha(@window_fg_color, 0.82);
+}
+
+.chat-thinking-card .chat-card-status {
+  color: alpha(@window_fg_color, 0.5);
+}
+
+.chat-thinking-card .chat-command-section-icon {
+  color: alpha(@window_fg_color, 0.68);
+}
+
+.chat-thinking-card .chat-activity-details {
+  margin-top: 1px;
+  margin-left: 12px;
+  padding-left: 8px;
+  border-left: 1px solid alpha(@window_fg_color, 0.1);
+}
+
+.chat-thinking-summary {
+  color: alpha(@window_fg_color, 0.74);
+}
+
+.chat-thinking-output {
+  font-family: inherit;
+  font-size: 0.74rem;
+  line-height: 1.42;
+  color: alpha(@window_fg_color, 0.76);
+  padding: 0;
+}
+
+.chat-thinking-output-scroll {
+  margin: 1px 0 2px 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
 .chat-activity-toggle {
   border-radius: 8px;
   padding: 0;
@@ -456,6 +506,78 @@ button.chat-message-context-item:focus-visible image,
   font-weight: 520;
   color: alpha(@window_fg_color, 0.86);
   letter-spacing: 0.01em;
+}
+
+.chat-action-header {
+  min-height: 18px;
+  align-items: start;
+}
+
+.chat-action-hidden-thinking-button {
+  min-width: 18px;
+  min-height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  opacity: 0;
+  border-color: transparent;
+}
+
+.chat-action-hidden-thinking-button:hover,
+.chat-action-hidden-thinking-button:active,
+.chat-action-hidden-thinking-button:focus-visible {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  border-color: transparent;
+  box-shadow: none;
+  outline: none;
+}
+
+.chat-action-section-has-thinking:hover .chat-action-hidden-thinking-button,
+.chat-action-hidden-thinking-button.is-active,
+.chat-action-hidden-thinking-button:focus-visible {
+  opacity: 1;
+}
+
+.chat-floating-thinking-toggle {
+  opacity: 1;
+  min-width: 18px;
+  min-height: 18px;
+  margin: 0;
+}
+
+.chat-inline-reasoning-revealer {
+  margin-top: 2px;
+}
+
+.chat-action-list .chat-inline-reasoning-revealer {
+  margin-top: 1px;
+  margin-bottom: 1px;
+}
+
+.chat-inline-reasoning-card {
+  margin-top: 0;
+}
+
+.chat-action-hidden-thinking-button image {
+  color: alpha(@window_fg_color, 0.78);
+}
+
+.chat-action-hidden-thinking-button.is-active .chat-action-hidden-thinking-slash {
+  opacity: 0;
+}
+
+.chat-action-hidden-thinking-slash {
+  margin-top: -1px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: alpha(@window_fg_color, 0.78);
 }
 
 .chat-action-list {
@@ -571,6 +693,93 @@ button.chat-message-context-item:focus-visible image,
 .chat-command-output-toggle-label {
   font-size: 0.68rem;
   color: alpha(@window_fg_color, 0.6);
+}
+
+.chat-thinking-card .chat-command-output-scroll,
+.chat-thinking-output-scroll {
+  margin: 1px 0 2px 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+}
+
+.chat-thinking-card scrolledwindow#chat-thinking-output-scroll,
+.chat-thinking-card scrolledwindow#chat-thinking-output-scroll > viewport,
+.chat-thinking-card scrolledwindow#chat-thinking-output-scroll > viewport.view,
+scrolledwindow#chat-thinking-output-scroll,
+scrolledwindow#chat-thinking-output-scroll > viewport,
+scrolledwindow#chat-thinking-output-scroll > viewport.view {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+}
+
+.chat-thinking-card scrolledwindow#chat-thinking-output-scroll > scrollbar.vertical,
+.chat-thinking-card scrolledwindow#chat-thinking-output-scroll > scrollbar.vertical > range,
+.chat-thinking-card scrolledwindow#chat-thinking-output-scroll > scrollbar.vertical > range > trough,
+.chat-thinking-card scrolledwindow#chat-thinking-output-scroll > scrollbar.vertical.overlay-indicator,
+.chat-thinking-card scrolledwindow#chat-thinking-output-scroll > scrollbar.vertical.overlay-indicator > range,
+.chat-thinking-card scrolledwindow#chat-thinking-output-scroll > scrollbar.vertical.overlay-indicator > range > trough,
+scrolledwindow#chat-thinking-output-scroll > scrollbar.vertical,
+scrolledwindow#chat-thinking-output-scroll > scrollbar.vertical > range,
+scrolledwindow#chat-thinking-output-scroll > scrollbar.vertical > range > trough,
+scrolledwindow#chat-thinking-output-scroll > scrollbar.vertical.overlay-indicator,
+scrolledwindow#chat-thinking-output-scroll > scrollbar.vertical.overlay-indicator > range,
+scrolledwindow#chat-thinking-output-scroll > scrollbar.vertical.overlay-indicator > range > trough {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  outline: none;
+  color: transparent;
+  min-width: 8px;
+  margin: 0;
+  padding: 0;
+}
+
+.chat-thinking-card scrolledwindow#chat-thinking-output-scroll > scrollbar.vertical > range > trough > slider,
+.chat-thinking-card scrolledwindow#chat-thinking-output-scroll > scrollbar.vertical.overlay-indicator > range > trough > slider,
+scrolledwindow#chat-thinking-output-scroll > scrollbar.vertical > range > trough > slider,
+scrolledwindow#chat-thinking-output-scroll > scrollbar.vertical.overlay-indicator > range > trough > slider {
+  min-width: 5px;
+  min-height: 28px;
+  border-radius: 999px;
+  background: alpha(@window_fg_color, 0.14);
+  background-color: alpha(@window_fg_color, 0.14);
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  outline: none;
+}
+
+.chat-thinking-card scrolledwindow#chat-thinking-output-scroll > scrollbar.vertical > range > trough > slider:hover,
+.chat-thinking-card scrolledwindow#chat-thinking-output-scroll > scrollbar.vertical.overlay-indicator > range > trough > slider:hover,
+scrolledwindow#chat-thinking-output-scroll > scrollbar.vertical > range > trough > slider:hover,
+scrolledwindow#chat-thinking-output-scroll > scrollbar.vertical.overlay-indicator > range > trough > slider:hover {
+  background: alpha(@window_fg_color, 0.22);
+  background-color: alpha(@window_fg_color, 0.22);
+}
+
+.chat-thinking-card scrolledwindow#chat-thinking-output-scroll > scrollbar.vertical > range > trough > slider:active,
+.chat-thinking-card scrolledwindow#chat-thinking-output-scroll > scrollbar.vertical.overlay-indicator > range > trough > slider:active,
+scrolledwindow#chat-thinking-output-scroll > scrollbar.vertical > range > trough > slider:active,
+scrolledwindow#chat-thinking-output-scroll > scrollbar.vertical.overlay-indicator > range > trough > slider:active {
+  background: alpha(@window_fg_color, 0.28);
+  background-color: alpha(@window_fg_color, 0.28);
+}
+
+.chat-thinking-card .chat-command-output,
+.chat-thinking-output {
+  font-family: inherit;
+  font-size: 0.74rem;
+  line-height: 1.42;
+  color: alpha(@window_fg_color, 0.76);
+  padding: 0;
 }
 
 .chat-filechange-card {

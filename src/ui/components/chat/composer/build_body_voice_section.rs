@@ -52,7 +52,7 @@
 
     {
         let db = db.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         let voice_capture_state = voice_capture_state.clone();
         let mic = mic.clone();
         let input_view = input_view.clone();
@@ -123,10 +123,10 @@
         let mic_for_click = mic.clone();
         let mic_for_click_handler = mic.clone();
         mic_for_click.connect_clicked(move |_| {
-            let is_locked = active_codex_thread_id
+            let is_locked = active_thread_id
                 .borrow()
                 .as_deref()
-                .and_then(|thread_id| db.is_codex_thread_locked(thread_id).ok())
+                .and_then(|thread_id| db.is_remote_thread_locked(thread_id).ok())
                 .or_else(|| {
                     db.get_setting("last_active_thread_id")
                         .ok()
@@ -140,7 +140,7 @@
                     &messages_box,
                     Some(&messages_scroll),
                     &conversation_stack,
-                    "This thread is locked to another Codex account. Voice input is unavailable.",
+                    "This thread is locked to another account. Voice input is unavailable.",
                     false,
                     std::time::SystemTime::now(),
                 );

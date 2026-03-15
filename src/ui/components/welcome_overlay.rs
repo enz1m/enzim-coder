@@ -17,6 +17,7 @@ pub(crate) fn is_visible() -> bool {
 #[derive(Clone, Default, PartialEq, Eq)]
 struct WelcomeState {
     installed: bool,
+    backend_kind: Option<String>,
     account_type: Option<String>,
     email: Option<String>,
 }
@@ -57,6 +58,7 @@ enum PollResult {
     },
     Installed {
         profile_id: i64,
+        backend_kind: String,
         account_type: Option<String>,
         email: Option<String>,
     },
@@ -291,10 +293,25 @@ pub fn attach(
     codex_row.append(&codex_badge);
     provider_rows.append(&codex_row);
 
-    for (name, icon_name) in [
-        ("OpenCode", "provider-opencode"),
-        ("Claude Code", "provider-claude"),
-        ("Gemini CLI", "provider-gemini"),
+    for (name, icon_name, badge_text, badge_class) in [
+        (
+            "OpenCode",
+            "provider-opencode",
+            "Available",
+            "welcome-status-installed",
+        ),
+        (
+            "Claude Code",
+            "provider-claude",
+            "Soon",
+            "welcome-status-soon",
+        ),
+        (
+            "Gemini CLI",
+            "provider-gemini",
+            "Soon",
+            "welcome-status-soon",
+        ),
     ] {
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
         row.add_css_class("welcome-provider-row");
@@ -305,9 +322,9 @@ pub fn attach(
         provider_name.add_css_class("welcome-provider-name");
         provider_name.set_xalign(0.0);
         provider_name.set_hexpand(true);
-        let soon_badge = gtk::Label::new(Some("Soon"));
+        let soon_badge = gtk::Label::new(Some(badge_text));
         soon_badge.add_css_class("welcome-pill-badge");
-        soon_badge.add_css_class("welcome-status-soon");
+        soon_badge.add_css_class(badge_class);
         soon_badge.set_halign(gtk::Align::End);
         row.append(&provider_icon);
         row.append(&provider_name);
@@ -324,7 +341,7 @@ pub fn attach(
     logged_revealer.set_reveal_child(false);
     let logged_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
     logged_box.add_css_class("welcome-section");
-    let logged_label = gtk::Label::new(Some("Codex Profile detected with email: -"));
+    let logged_label = gtk::Label::new(Some("Runtime profile detected with account: -"));
     logged_label.set_xalign(0.0);
     logged_label.set_wrap(true);
     logged_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
@@ -342,7 +359,7 @@ pub fn attach(
     login_box.add_css_class("welcome-section");
 
     let login_hint = gtk::Label::new(Some(
-        "You need to log in to Codex before using Enzim Coder.",
+        "You need to log in to a supported runtime before using Enzim Coder.",
     ));
     login_hint.set_xalign(0.5);
     login_hint.set_halign(gtk::Align::Center);
@@ -351,10 +368,15 @@ pub fn attach(
     login_hint.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     login_hint.add_css_class("welcome-muted");
 
-    let login_button = gtk::Button::with_label("Login with ChatGPT");
+    let login_button = gtk::Button::with_label("Start Login");
     login_button.add_css_class("sidebar-action-button");
     login_button.add_css_class("welcome-login-button");
     login_button.set_halign(gtk::Align::Center);
+
+    let api_key_button = gtk::Button::with_label("Use API Key");
+    api_key_button.add_css_class("app-flat-button");
+    api_key_button.set_halign(gtk::Align::Center);
+    api_key_button.set_visible(false);
 
     let login_status = gtk::Label::new(None);
     login_status.set_xalign(0.0);
@@ -390,7 +412,7 @@ pub fn attach(
     login_url_revealer.set_child(Some(&login_url_row));
 
     let login_terminal_hint = gtk::Label::new(Some(
-        "Or use codex CLI in your terminal to log in with ChatGPT.",
+        "You can also use your runtime CLI in the terminal to complete login.",
     ));
     login_terminal_hint.set_xalign(0.5);
     login_terminal_hint.set_halign(gtk::Align::Center);
@@ -401,6 +423,7 @@ pub fn attach(
 
     login_box.append(&login_hint);
     login_box.append(&login_button);
+    login_box.append(&api_key_button);
     login_box.append(&login_status);
     login_box.append(&login_url_revealer);
     login_box.append(&login_terminal_hint);
@@ -415,14 +438,16 @@ pub fn attach(
     let install_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
     install_box.add_css_class("welcome-section");
 
-    let install_hint = gtk::Label::new(Some("Install Codex CLI first:"));
+    let install_hint = gtk::Label::new(Some("Install a supported runtime CLI first:"));
     install_hint.set_xalign(0.0);
     install_hint.add_css_class("welcome-muted");
 
     let install_command_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     install_command_row.add_css_class("welcome-code-block");
 
-    let install_command = gtk::Label::new(Some("npm i -g @openai/codex"));
+    let install_command = gtk::Label::new(Some(
+        "npm i -g @openai/codex  # or: npm install -g opencode-ai",
+    ));
     install_command.add_css_class("welcome-code-text");
     install_command.set_xalign(0.0);
     install_command.set_hexpand(true);
@@ -588,7 +613,7 @@ pub fn attach(
 
     {
         copy_install_button.connect_clicked(move |_| {
-            copy_to_clipboard("npm i -g @openai/codex");
+            copy_to_clipboard("npm i -g @openai/codex  # or: npm install -g opencode-ai");
         });
     }
 
@@ -612,6 +637,7 @@ pub fn attach(
         let login_url_revealer = login_url_revealer.clone();
         let login_status = login_status.clone();
         let login_button = login_button.clone();
+        let api_key_button = api_key_button.clone();
         Rc::new(move |next: WelcomeState| {
             current_state.replace(next.clone());
             set_codex_badge_state(&codex_badge, next.installed);
@@ -627,10 +653,18 @@ pub fn attach(
                 login_status.set_visible(false);
                 login_status.set_text("");
                 login_button.set_sensitive(true);
+                api_key_button.set_visible(false);
                 let value = next
                     .account_display()
                     .unwrap_or_else(|| "unknown".to_string());
-                logged_label.set_text(&format!("Codex Profile detected with email: {value}"));
+                logged_label.set_text(&format!("Runtime profile detected with account: {value}"));
+            } else {
+                let show_api_key = next.installed
+                    && next
+                        .backend_kind
+                        .as_deref()
+                        .is_some_and(|value| value.eq_ignore_ascii_case("opencode"));
+                api_key_button.set_visible(show_api_key);
             }
         })
     };
@@ -656,14 +690,14 @@ pub fn attach(
                 Ok(client) => client,
                 Err(err) => {
                     login_status.set_visible(true);
-                    login_status.set_text(&format!("Unable to start Codex runtime: {err}"));
+                    login_status.set_text(&format!("Unable to start the selected runtime: {err}"));
                     login_button.set_sensitive(true);
                     return;
                 }
             };
             login_button.set_sensitive(false);
             login_status.set_visible(true);
-            login_status.set_text("Generating ChatGPT login URL...");
+            login_status.set_text("Generating login URL...");
             login_url_revealer.set_reveal_child(false);
             login_url_entry.set_text("");
             copy_login_url_button.set_sensitive(false);
@@ -701,6 +735,48 @@ pub fn attach(
                     gtk::glib::ControlFlow::Break
                 }
             });
+        });
+    }
+
+    {
+        let db = db.clone();
+        let manager = manager.clone();
+        let apply_state = apply_state.clone();
+        let api_key_button_for_signal = api_key_button.clone();
+        let api_key_button = api_key_button.clone();
+        let login_status = login_status.clone();
+        api_key_button_for_signal.connect_clicked(move |_| {
+            let profile_id = db
+                .active_profile_id()
+                .ok()
+                .flatten()
+                .unwrap_or(runtime_profile_id);
+            let db_for_success = db.clone();
+            let apply_state_for_success = apply_state.clone();
+            let login_status_for_success = login_status.clone();
+            crate::ui::components::runtime_auth_dialog::start_opencode_api_key_flow(
+                None,
+                db.clone(),
+                manager.clone(),
+                profile_id,
+                api_key_button.clone(),
+                login_status.clone(),
+                "welcome-muted",
+                Rc::new(move |account, provider_name| {
+                    let account_type = account.as_ref().map(|a| a.account_type.clone());
+                    let email = account.as_ref().and_then(|a| a.email.clone());
+                    let _ = db_for_success.update_codex_profile_status(profile_id, "running");
+                    (apply_state_for_success)(WelcomeState {
+                        installed: true,
+                        backend_kind: Some("opencode".to_string()),
+                        account_type: normalize_optional(account_type),
+                        email: normalize_optional(email),
+                    });
+                    login_status_for_success.set_visible(true);
+                    login_status_for_success
+                        .set_text(&format!("Saved API key for {provider_name}."));
+                }),
+            );
         });
     }
 
@@ -1153,7 +1229,7 @@ pub fn attach(
                 .flatten()
                 .unwrap_or(runtime_profile_id);
 
-            if !crate::codex_appserver::cli_available() {
+            if !crate::backend::any_runtime_cli_available() {
                 let _ = poll_tx.send(PollResult::NotInstalled { profile_id });
                 return gtk::glib::ControlFlow::Continue;
             }
@@ -1163,10 +1239,12 @@ pub fn attach(
                     let poll_tx = poll_tx.clone();
                     thread::spawn(move || {
                         let account = client.account_read(true).ok().flatten();
+                        let backend_kind = client.backend_kind().to_string();
                         let account_type = account.as_ref().map(|info| info.account_type.clone());
                         let email = account.and_then(|info| info.email);
                         let _ = poll_tx.send(PollResult::Installed {
                             profile_id,
+                            backend_kind,
                             account_type: normalize_optional(account_type),
                             email: normalize_optional(email),
                         });
@@ -1175,6 +1253,7 @@ pub fn attach(
                 Err(_) => {
                     let _ = poll_tx.send(PollResult::Installed {
                         profile_id,
+                        backend_kind: "codex".to_string(),
                         account_type: None,
                         email: None,
                     });
@@ -1202,23 +1281,20 @@ pub fn attach(
                     }
                     PollResult::Installed {
                         profile_id,
+                        backend_kind,
                         account_type,
                         email,
                     } => {
                         let _ = db.update_codex_profile_status(profile_id, "running");
-                        let _ = db.update_codex_profile_account(
+                        let _ = crate::ui::components::runtime_auth_dialog::sync_runtime_account_fields_to_db(
+                            &db,
                             profile_id,
                             account_type.as_deref(),
                             email.as_deref(),
                         );
-                        if db.active_profile_id().ok().flatten() == Some(profile_id) {
-                            let _ = db.set_current_codex_account(
-                                account_type.as_deref(),
-                                email.as_deref(),
-                            );
-                        }
                         (apply_state)(WelcomeState {
                             installed: true,
+                            backend_kind: Some(backend_kind),
                             account_type,
                             email,
                         });

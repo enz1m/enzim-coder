@@ -90,16 +90,18 @@
         let input_scroll = input_scroll.clone();
         let placeholder = placeholder.clone();
         let manager = manager.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         let selected_mode_id = selected_mode_id.clone();
         let selected_model_id = selected_model_id.clone();
         let selected_effort = selected_effort.clone();
+        let selected_variant = selected_variant.clone();
         let selected_access_mode = selected_access_mode.clone();
         let selected_mentions = selected_mentions.clone();
         let selected_images = selected_images.clone();
         let mention_popover = mention_popover.clone();
         let image_preview_scroll = image_preview_scroll.clone();
         let image_preview_strip = image_preview_strip.clone();
+        let resolve_client_for_thread = resolve_client_for_thread.clone();
         let send_button = send.clone();
         let send_error_tx = send_error_tx.clone();
         let messages_box = messages_box.clone();
@@ -152,14 +154,14 @@
                     &messages_box,
                     Some(&messages_scroll),
                     &conversation_stack,
-                    "This thread was started with a different Codex account. Start a new thread to continue.",
+                    "This thread was started with a different account. Start a new thread to continue.",
                     false,
                     std::time::SystemTime::now(),
                 );
                 return;
             }
 
-            let active_thread = active_codex_thread_id.borrow().clone();
+            let active_thread = active_thread_id.borrow().clone();
             let turn_id = active_thread
                 .as_deref()
                 .and_then(super::codex_runtime::active_turn_for_thread);
@@ -180,10 +182,26 @@
                     }
                     let queued_mode = selected_mode_id.borrow().clone();
                     let queued_model_id = selected_model_id.borrow().clone();
-                    let queued_effort = selected_effort.borrow().clone();
+                    let queued_effort = if active_thread
+                        .as_deref()
+                        .and_then(|thread_id| manager.resolve_running_client_for_thread_id(thread_id))
+                        .map(|client| client.backend_kind().eq_ignore_ascii_case("opencode"))
+                        .or_else(|| {
+                            db.runtime_profile_id()
+                                .ok()
+                                .flatten()
+                                .and_then(|profile_id| manager.client_for_profile(profile_id))
+                                .map(|client| client.backend_kind().eq_ignore_ascii_case("opencode"))
+                        })
+                        .unwrap_or(false)
+                    {
+                        selected_variant.borrow().clone()
+                    } else {
+                        selected_effort.borrow().clone()
+                    };
                     let queued_access_mode = selected_access_mode.borrow().clone();
                     let queued_sandbox_policy =
-                        super::codex_controls::sandbox_policy_for(&queued_access_mode);
+                        super::runtime_controls::sandbox_policy_for(&queued_access_mode);
                     let queued_collaboration_mode = collaboration_mode_payload(
                         &queued_mode,
                         &queued_model_id,
@@ -272,7 +290,7 @@
                     let queued_entries_for_cancel = queued_entries.clone();
                     let manager_for_steer = manager.clone();
                     let db_for_steer = db.clone();
-                    let active_codex_thread_id_for_steer = active_codex_thread_id.clone();
+                    let active_thread_id_for_steer = active_thread_id.clone();
                     let queued_dispatch_state_for_steer = queued_dispatch_state.clone();
                     let send_error_tx_for_steer = send_error_tx.clone();
                     let steer_note_tx_for_steer = steer_note_tx.clone();
@@ -353,7 +371,7 @@
                         let payload = queued_entry.payload.borrow().clone();
                         let thread_id = payload
                             .expected_thread_id
-                            .or_else(|| active_codex_thread_id_for_steer.borrow().clone());
+                            .or_else(|| active_thread_id_for_steer.borrow().clone());
                         let Some(thread_id) = thread_id else {
                             let _ = send_error_tx_for_steer.send(
                                 "Create or select a thread from the sidebar first.".to_string(),
@@ -373,7 +391,7 @@
                             })
                         else {
                             let _ = send_error_tx_for_steer
-                                .send("Codex app-server is not available.".to_string());
+                                .send("Runtime backend is not available.".to_string());
                             return;
                         };
 
@@ -399,6 +417,55 @@
                         let queued_effort_for_turn = payload.effort.clone();
                         let queued_sandbox_policy_for_turn = payload.sandbox_policy.clone();
                         let queued_collaboration_mode_for_turn = payload.collaboration_mode.clone();
+                        let client = if client.backend_kind().eq_ignore_ascii_case("opencode") {
+                            let maybe_provider_id = queued_model_id_for_turn
+                                .split_once(':')
+                                .map(|(provider_id, _)| provider_id.to_string());
+                            if let Some(provider_id) = maybe_provider_id.as_deref() {
+                                match client.account_provider_list() {
+                                    Ok(providers) => {
+                                        let stale_provider = providers.iter().find(|provider| {
+                                            provider.provider_id == provider_id
+                                                && provider.has_saved_auth
+                                                && !provider.connected
+                                        });
+                                        if let Some(provider) = stale_provider {
+                                            if let Some(profile_id) = client.profile_id() {
+                                                eprintln!(
+                                                    "[opencode-send] restarting runtime for profile {} before queued turn because provider {} has saved auth but is not connected",
+                                                    profile_id, provider.provider_id
+                                                );
+                                                match manager_for_steer.restart_profile(profile_id) {
+                                                    Ok(restarted) => restarted,
+                                                    Err(err) => {
+                                                        eprintln!(
+                                                            "[opencode-send] failed to restart runtime for stale provider {}: {}",
+                                                            provider.provider_id, err
+                                                        );
+                                                        client
+                                                    }
+                                                }
+                                            } else {
+                                                client
+                                            }
+                                        } else {
+                                            client
+                                        }
+                                    }
+                                    Err(err) => {
+                                        eprintln!(
+                                            "[opencode-send] failed to inspect provider connectivity before queued turn: {}",
+                                            err
+                                        );
+                                        client
+                                    }
+                                }
+                            } else {
+                                client
+                            }
+                        } else {
+                            client
+                        };
                         let pending_row_marker_for_turn = if current_turn_id.is_none() {
                             let pending_row_marker = next_pending_user_row_marker();
                             let user_content =
@@ -446,9 +513,9 @@
                                 thread::sleep(Duration::from_millis(200));
                             }
 
-                            let _ = crate::data::background_repo::BackgroundRepo::ensure_thread_baseline_checkpoint(&thread_id);
+                            let _ = crate::data::background_repo::BackgroundRepo::ensure_remote_thread_baseline_checkpoint(&thread_id);
                             let workspace_path_for_turn =
-                                crate::data::background_repo::BackgroundRepo::workspace_path_for_codex_thread(&thread_id);
+                                crate::data::background_repo::BackgroundRepo::workspace_path_for_remote_thread(&thread_id);
                             if let Some(workspace_path) = workspace_path_for_turn.as_deref() {
                                 match client.thread_resume(
                                     &thread_id,
@@ -585,7 +652,7 @@
             suggestion_row.set_visible(false);
             super::message_render::scroll_to_bottom(&messages_scroll);
 
-            let Some(thread_id) = active_codex_thread_id.borrow().clone() else {
+            let Some(thread_id) = active_thread_id.borrow().clone() else {
                 super::message_render::append_message(
                     &messages_box,
                     Some(&messages_scroll),
@@ -601,7 +668,7 @@
                     &messages_box,
                     Some(&messages_scroll),
                     &conversation_stack,
-                    "Codex app-server is not available. Start `codex app-server` and retry.",
+                    "Runtime backend is not available for this thread. Start the selected profile runtime and retry.",
                     false,
                     std::time::SystemTime::now(),
                 );
@@ -610,7 +677,7 @@
 
             if !text.trim().is_empty() {
                 if let Some(next_title) = title_from_first_prompt(&text) {
-                    match db.rename_thread_if_new_by_codex_id(&thread_id, &next_title) {
+                    match db.rename_thread_if_new_by_remote_id(&thread_id, &next_title) {
                         Ok(Some(local_thread_id)) => {
                             if let Some(root) = messages_box.root() {
                                 let root_widget: gtk::Widget = root.upcast();
@@ -629,9 +696,62 @@
 
             let collaboration_mode = selected_mode_id.borrow().clone();
             let model_id = selected_model_id.borrow().clone();
-            let effort = selected_effort.borrow().clone();
+            let client = if client.backend_kind().eq_ignore_ascii_case("opencode") {
+                let maybe_provider_id = model_id
+                    .split_once(':')
+                    .map(|(provider_id, _)| provider_id.to_string());
+                if let Some(provider_id) = maybe_provider_id.as_deref() {
+                    match client.account_provider_list() {
+                        Ok(providers) => {
+                            let stale_provider = providers.iter().find(|provider| {
+                                provider.provider_id == provider_id
+                                    && provider.has_saved_auth
+                                    && !provider.connected
+                            });
+                            if let Some(provider) = stale_provider {
+                                if let Some(profile_id) = client.profile_id() {
+                                    eprintln!(
+                                        "[opencode-send] restarting runtime for profile {} before turn because provider {} has saved auth but is not connected",
+                                        profile_id, provider.provider_id
+                                    );
+                                    match manager.restart_profile(profile_id) {
+                                        Ok(restarted) => restarted,
+                                        Err(err) => {
+                                            eprintln!(
+                                                "[opencode-send] failed to restart runtime for stale provider {}: {}",
+                                                provider.provider_id, err
+                                            );
+                                            client
+                                        }
+                                    }
+                                } else {
+                                    client
+                                }
+                            } else {
+                                client
+                            }
+                        }
+                        Err(err) => {
+                            eprintln!(
+                                "[opencode-send] failed to inspect provider connectivity before turn: {}",
+                                err
+                            );
+                            client
+                        }
+                    }
+                } else {
+                    client
+                }
+            } else {
+                client
+            };
+            let effort = if client.backend_kind().eq_ignore_ascii_case("opencode") {
+                selected_variant.borrow().clone()
+            } else {
+                selected_effort.borrow().clone()
+            };
             let access_mode = selected_access_mode.borrow().clone();
-            let sandbox_policy = super::codex_controls::sandbox_policy_for(&access_mode);
+            let sandbox_policy = super::runtime_controls::sandbox_policy_for(&access_mode);
             let collaboration_mode_for_turn =
                 collaboration_mode_payload(&collaboration_mode, &model_id, &effort);
             let send_error_tx_for_thread = send_error_tx.clone();
@@ -646,9 +766,9 @@
                 attached_images.iter().map(|image| image.path.clone()).collect();
 
             thread::spawn(move || {
-                let _ = crate::data::background_repo::BackgroundRepo::ensure_thread_baseline_checkpoint(&thread_id);
+                let _ = crate::data::background_repo::BackgroundRepo::ensure_remote_thread_baseline_checkpoint(&thread_id);
                 let workspace_path_for_turn =
-                    crate::data::background_repo::BackgroundRepo::workspace_path_for_codex_thread(&thread_id);
+                    crate::data::background_repo::BackgroundRepo::workspace_path_for_remote_thread(&thread_id);
                 if let Some(workspace_path) = workspace_path_for_turn.as_deref() {
                     match client.thread_resume(&thread_id, Some(workspace_path), Some(&model_id)) {
                         Ok(resolved_thread_id) => {
@@ -715,11 +835,13 @@
         let queued_box = queued_box.clone();
         let queued_next_id = queued_next_id.clone();
         let refresh_queue_ui = refresh_queue_ui.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         let selected_mode_id = selected_mode_id.clone();
         let selected_model_id = selected_model_id.clone();
         let selected_effort = selected_effort.clone();
+        let selected_variant = selected_variant.clone();
         let selected_access_mode = selected_access_mode.clone();
+        let resolve_client_for_thread = resolve_client_for_thread.clone();
         let send = send.clone();
         let input_view = input_view.clone();
         let input_scroll = input_scroll.clone();
@@ -728,11 +850,11 @@
             if send.root().is_none() {
                 return gtk::glib::ControlFlow::Break;
             }
-            let Some(active_thread_id) = active_codex_thread_id.borrow().clone() else {
+            let Some(active_thread_id) = active_thread_id.borrow().clone() else {
                 return gtk::glib::ControlFlow::Continue;
             };
             let Some(local_thread_id) = db
-                .get_thread_record_by_codex_thread_id(&active_thread_id)
+                .get_thread_record_by_remote_thread_id(&active_thread_id)
                 .ok()
                 .flatten()
                 .map(|thread| thread.id)
@@ -757,10 +879,17 @@
 
                 let queued_mode = selected_mode_id.borrow().clone();
                 let queued_model_id = selected_model_id.borrow().clone();
-                let queued_effort = selected_effort.borrow().clone();
+                let queued_effort = if resolve_client_for_thread(&active_thread_id)
+                    .map(|client| client.backend_kind().eq_ignore_ascii_case("opencode"))
+                    .unwrap_or(false)
+                {
+                    selected_variant.borrow().clone()
+                } else {
+                    selected_effort.borrow().clone()
+                };
                 let queued_access_mode = selected_access_mode.borrow().clone();
                 let queued_sandbox_policy =
-                    super::codex_controls::sandbox_policy_for(&queued_access_mode);
+                    super::runtime_controls::sandbox_policy_for(&queued_access_mode);
                 let queued_collaboration_mode =
                     collaboration_mode_payload(&queued_mode, &queued_model_id, &queued_effort);
 
@@ -1026,7 +1155,7 @@
 
     {
         let queued_entries = queued_entries.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         let queued_dispatch_state = queued_dispatch_state.clone();
         let send = send.clone();
         gtk::glib::timeout_add_local(Duration::from_millis(180), move || {
@@ -1058,7 +1187,7 @@
                 .borrow()
                 .expected_thread_id
                 .clone()
-                .or_else(|| active_codex_thread_id.borrow().clone());
+                .or_else(|| active_thread_id.borrow().clone());
             let Some(thread_id) = thread_id else {
                 return gtk::glib::ControlFlow::Continue;
             };

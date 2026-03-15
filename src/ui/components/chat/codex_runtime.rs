@@ -1,4 +1,5 @@
-use crate::codex_appserver::{AppServerNotification, CodexAppServer};
+use crate::backend::RuntimeClient;
+use crate::codex_appserver::AppServerNotification;
 use crate::codex_profiles::CodexProfileManager;
 use crate::data::AppDb;
 use gtk::prelude::*;
@@ -278,7 +279,7 @@ pub(super) fn maybe_replace_profile_auth_error_message(
         return message.to_string();
     };
     let Some(thread_record) = db
-        .get_thread_record_by_codex_thread_id(codex_thread_id)
+        .get_thread_record_by_remote_thread_id(codex_thread_id)
         .ok()
         .flatten()
     else {
@@ -303,9 +304,9 @@ pub(super) fn maybe_replace_profile_auth_error_message(
     let is_system_profile = profile.home_dir.trim() == system_home.trim();
 
     if is_system_profile {
-        "You are logged out. Please login with Codex CLI in your terminal.".to_string()
+        "You are logged out. Please login with your runtime CLI in the terminal.".to_string()
     } else {
-        "Open Profile settings to reauthenticate / log in with ChatGPT.".to_string()
+        "Open Profile settings to reauthenticate or start the login flow again.".to_string()
     }
 }
 

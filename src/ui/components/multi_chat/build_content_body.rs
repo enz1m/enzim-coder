@@ -1,8 +1,8 @@
 fn build_multi_chat_content_inner(
     db: Rc<AppDb>,
     manager: Rc<CodexProfileManager>,
-    codex: Option<Arc<CodexAppServer>>,
-    active_codex_thread_id: Rc<RefCell<Option<String>>>,
+    codex: Option<Arc<RuntimeClient>>,
+    active_thread_id: Rc<RefCell<Option<String>>>,
     active_workspace_path: Rc<RefCell<Option<String>>>,
 ) -> gtk::Box {
     let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -25,13 +25,13 @@ fn build_multi_chat_content_inner(
 
     let (initial_panes, initial_columns, restored_focus, raw_saved_layout) = load_initial_layout(
         db.as_ref(),
-        active_codex_thread_id.borrow().clone(),
+        active_thread_id.borrow().clone(),
         active_workspace_path.borrow().clone(),
     );
 
     let panes_state: Rc<RefCell<Vec<PaneUi>>> = Rc::new(RefCell::new(Vec::new()));
     for persisted in &initial_panes {
-        let thread_state = Rc::new(RefCell::new(persisted.codex_thread_id.clone()));
+        let thread_state = Rc::new(RefCell::new(persisted.thread_id.clone()));
         let workspace_state = Rc::new(RefCell::new(persisted.workspace_path.clone()));
         if let Some(pane) = build_pane_ui(
             persisted.id,
@@ -47,7 +47,7 @@ fn build_multi_chat_content_inner(
     }
 
     if panes_state.borrow().is_empty() {
-        let thread_state = Rc::new(RefCell::new(active_codex_thread_id.borrow().clone()));
+        let thread_state = Rc::new(RefCell::new(active_thread_id.borrow().clone()));
         let workspace_state = Rc::new(RefCell::new(active_workspace_path.borrow().clone()));
         if let Some(pane) = build_pane_ui(
             1,
@@ -128,7 +128,7 @@ fn build_multi_chat_content_inner(
         let db = db.clone();
         let panes_state = panes_state.clone();
         let focused_pane_id = focused_pane_id.clone();
-        let global_active_codex_thread_id = active_codex_thread_id.clone();
+        let global_active_thread_id = active_thread_id.clone();
         let global_active_workspace_path = active_workspace_path.clone();
         Rc::new(move || {
             let panes = panes_state.borrow();
@@ -137,13 +137,13 @@ fn build_multi_chat_content_inner(
                 .find(|pane| pane.id == *focused_pane_id.borrow())
                 .or_else(|| panes.first());
             if let Some(target) = target {
-                let next_thread_id = target.active_codex_thread_id.borrow().clone();
-                global_active_codex_thread_id.replace(next_thread_id.clone());
+                let next_thread_id = target.active_thread_id.borrow().clone();
+                global_active_thread_id.replace(next_thread_id.clone());
                 global_active_workspace_path.replace(target.active_workspace_path.borrow().clone());
-                if let Some(codex_thread_id) =
+                if let Some(thread_id) =
                     next_thread_id.filter(|value| !value.trim().is_empty())
                 {
-                    if let Ok(Some(thread)) = db.get_thread_record_by_codex_thread_id(&codex_thread_id)
+                    if let Ok(Some(thread)) = db.get_thread_record_by_remote_thread_id(&thread_id)
                     {
                         if let Some(root) = target.root.root() {
                             let root_widget: gtk::Widget = root.upcast();
@@ -288,11 +288,11 @@ fn build_multi_chat_content_inner(
                 for pane_id in col {
                     if let Some(pane) = by_id.get(pane_id).copied() {
                         let thread_record = pane
-                            .active_codex_thread_id
+                            .active_thread_id
                             .borrow()
                             .as_deref()
                             .and_then(|thread_id| {
-                                db.get_thread_record_by_codex_thread_id(thread_id)
+                                db.get_thread_record_by_remote_thread_id(thread_id)
                                     .ok()
                                     .flatten()
                             });
@@ -535,7 +535,7 @@ fn build_multi_chat_content_inner(
                         });
                     }
                 }
-                if target.active_codex_thread_id.borrow().is_none() {
+                if target.active_thread_id.borrow().is_none() {
                     composer_holder.set_visible(false);
                     return;
                 }
@@ -543,7 +543,7 @@ fn build_multi_chat_content_inner(
                     db.clone(),
                     manager.clone(),
                     codex.clone(),
-                    target.active_codex_thread_id.clone(),
+                    target.active_thread_id.clone(),
                     target.active_workspace_path.clone(),
                     target.chat.messages_box.clone(),
                     target.chat.messages_scroll.clone(),
@@ -948,7 +948,7 @@ fn build_multi_chat_content_inner(
                 {
                     let panes = panes_state.borrow();
                     if let Some(existing) = panes.iter().find(|pane| {
-                        pane.active_codex_thread_id.borrow().as_deref()
+                        pane.active_thread_id.borrow().as_deref()
                             == Some(codex_thread.as_str())
                     }) {
                         let was_focused = existing.id == *focused_pane_id.borrow();

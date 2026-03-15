@@ -55,7 +55,7 @@ pub fn forward_turn_completion_if_enabled(
         return;
     };
     let Some(thread) = db
-        .get_thread_record_by_codex_thread_id(codex_thread_id)
+        .get_thread_record_by_remote_thread_id(codex_thread_id)
         .ok()
         .flatten()
     else {
@@ -100,7 +100,7 @@ pub fn forward_turn_completion_if_enabled(
         let mut other_action_count = 0usize;
 
         for attempt in 0..10 {
-            if let Ok(turns) = db_bg.list_local_chat_turns_for_codex_thread(&codex_thread_id) {
+            if let Ok(turns) = db_bg.list_local_chat_turns_for_remote_thread(&codex_thread_id) {
                 if let Some(turn) = turns.iter().find(|turn| turn.external_turn_id == turn_id) {
                     if !turn.assistant_text.trim().is_empty() {
                         assistant_text = turn.assistant_text.clone();
@@ -843,7 +843,7 @@ fn send_text_to_selected_thread(
             .unwrap_or_else(|| thread_id.to_string());
         let linked = thread
             .as_ref()
-            .and_then(|thread| thread.codex_thread_id.as_deref())
+            .and_then(|thread| thread.remote_thread_id())
             .map(|value| !value.trim().is_empty())
             .unwrap_or(false);
         let mut body = format!(
@@ -877,8 +877,7 @@ fn send_last_agent_response_for_selected_thread(
         return;
     };
     let Some(codex_thread_id) = thread
-        .codex_thread_id
-        .as_deref()
+        .remote_thread_id()
         .map(str::trim)
         .filter(|value| !value.is_empty())
     else {
@@ -890,7 +889,7 @@ fn send_last_agent_response_for_selected_thread(
         return;
     };
     let turns = db
-        .list_local_chat_turns_for_codex_thread(codex_thread_id)
+        .list_local_chat_turns_for_remote_thread(codex_thread_id)
         .unwrap_or_default();
     let Some(last_assistant_turn) = turns
         .iter()
@@ -939,7 +938,7 @@ fn create_thread_from_bot(db: &AppDb, client: &TelegramClient, chat_id: &str, ti
     };
 
     let profile_id = db.active_profile_id().ok().flatten().unwrap_or(1);
-    match db.create_thread(
+    match db.create_thread_with_remote_identity(
         workspace.workspace.id,
         profile_id,
         None,
@@ -1059,13 +1058,12 @@ fn request_app_thread_activation(db: &AppDb, thread_id: i64) {
         let _ = db.set_setting("last_active_workspace_path", &workspace_path);
     }
 
-    let linked_codex_thread = thread
-        .codex_thread_id
-        .as_deref()
+    let has_linked_thread = thread
+        .remote_thread_id()
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .is_some();
-    if linked_codex_thread {
+    if has_linked_thread {
         let _ = db.set_setting("pending_profile_thread_id", "");
     } else {
         let _ = db.set_setting("pending_profile_thread_id", &thread.id.to_string());

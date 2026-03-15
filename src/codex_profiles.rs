@@ -1,4 +1,5 @@
-use crate::codex_appserver::{AccountInfo, CodexAppServer};
+use crate::backend::RuntimeClient;
+use crate::codex_appserver::AccountInfo;
 use crate::data::{AppDb, CodexProfileRecord};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -9,7 +10,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct CodexProfileManager {
     db: Rc<AppDb>,
-    clients: Rc<RefCell<HashMap<i64, Arc<CodexAppServer>>>>,
+    clients: Rc<RefCell<HashMap<i64, Arc<RuntimeClient>>>>,
 }
 
 impl CodexProfileManager {
@@ -34,24 +35,24 @@ impl CodexProfileManager {
         Ok(())
     }
 
-    pub fn client_for_profile(&self, profile_id: i64) -> Option<Arc<CodexAppServer>> {
+    pub fn client_for_profile(&self, profile_id: i64) -> Option<Arc<RuntimeClient>> {
         if let Some(client) = self.clients.borrow().get(&profile_id) {
             return Some(client.clone());
         }
         self.ensure_started(profile_id).ok()
     }
 
-    pub fn running_client_for_profile(&self, profile_id: i64) -> Option<Arc<CodexAppServer>> {
+    pub fn running_client_for_profile(&self, profile_id: i64) -> Option<Arc<RuntimeClient>> {
         self.clients.borrow().get(&profile_id).cloned()
     }
 
     pub fn resolve_running_client_for_thread_id(
         &self,
         codex_thread_id: &str,
-    ) -> Option<Arc<CodexAppServer>> {
+    ) -> Option<Arc<RuntimeClient>> {
         let thread = self
             .db
-            .get_thread_record_by_codex_thread_id(codex_thread_id)
+            .get_thread_record_by_remote_thread_id(codex_thread_id)
             .ok()
             .flatten()?;
         let running_ids: Vec<i64> = self
@@ -63,7 +64,7 @@ impl CodexProfileManager {
             return self.running_client_for_profile(thread.profile_id);
         }
         if let Some(profile_id) =
-            self.match_profile_by_thread_email(&thread.codex_account_email, &running_ids)
+            self.match_profile_by_thread_email(&thread.remote_account_email_owned(), &running_ids)
         {
             return self.running_client_for_profile(profile_id);
         }
@@ -73,13 +74,13 @@ impl CodexProfileManager {
     pub fn resolve_client_for_thread_id(
         &self,
         codex_thread_id: &str,
-    ) -> Option<Arc<CodexAppServer>> {
+    ) -> Option<Arc<RuntimeClient>> {
         if let Some(client) = self.resolve_running_client_for_thread_id(codex_thread_id) {
             return Some(client);
         }
         let thread = self
             .db
-            .get_thread_record_by_codex_thread_id(codex_thread_id)
+            .get_thread_record_by_remote_thread_id(codex_thread_id)
             .ok()
             .flatten()?;
         self.client_for_profile(thread.profile_id)
@@ -88,7 +89,7 @@ impl CodexProfileManager {
     pub fn switch_runtime_to_thread(&self, codex_thread_id: &str) {
         let thread = self
             .db
-            .get_thread_record_by_codex_thread_id(codex_thread_id)
+            .get_thread_record_by_remote_thread_id(codex_thread_id)
             .ok()
             .flatten();
         let Some(thread) = thread else {
@@ -103,13 +104,34 @@ impl CodexProfileManager {
         let runtime_profile_id = if running_ids.contains(&thread.profile_id) {
             thread.profile_id
         } else {
-            self.match_profile_by_thread_email(&thread.codex_account_email, &running_ids)
+            self.match_profile_by_thread_email(&thread.remote_account_email_owned(), &running_ids)
                 .unwrap_or(thread.profile_id)
         };
         let _ = self.db.set_runtime_profile_id(runtime_profile_id);
     }
 
-    pub fn ensure_started(&self, profile_id: i64) -> Result<Arc<CodexAppServer>, String> {
+    #[allow(dead_code)]
+    pub fn resolve_running_client_for_remote_thread_id(
+        &self,
+        remote_thread_id: &str,
+    ) -> Option<Arc<RuntimeClient>> {
+        self.resolve_running_client_for_thread_id(remote_thread_id)
+    }
+
+    #[allow(dead_code)]
+    pub fn resolve_client_for_remote_thread_id(
+        &self,
+        remote_thread_id: &str,
+    ) -> Option<Arc<RuntimeClient>> {
+        self.resolve_client_for_thread_id(remote_thread_id)
+    }
+
+    #[allow(dead_code)]
+    pub fn switch_runtime_to_remote_thread(&self, remote_thread_id: &str) {
+        self.switch_runtime_to_thread(remote_thread_id);
+    }
+
+    pub fn ensure_started(&self, profile_id: i64) -> Result<Arc<RuntimeClient>, String> {
         if let Some(existing) = self.clients.borrow().get(&profile_id) {
             return Ok(existing.clone());
         }
@@ -118,10 +140,8 @@ impl CodexProfileManager {
             .get_codex_profile(profile_id)
             .map_err(|err| err.to_string())?
             .ok_or_else(|| format!("profile {} not found", profile_id))?;
-        let home = PathBuf::from(&profile.home_dir);
-        let _ = std::fs::create_dir_all(&home);
         let label = format!("{}#{}", profile.name, profile_id);
-        let client = CodexAppServer::connect_with_home_and_label(Some(&home), &label)?;
+        let client = RuntimeClient::connect_for_profile(Some(&profile), &label)?;
         self.clients.borrow_mut().insert(profile_id, client.clone());
         let _ = self.db.update_codex_profile_status(profile_id, "running");
         self.refresh_profile_account(profile_id, &client);
@@ -142,12 +162,16 @@ impl CodexProfileManager {
         }
     }
 
-    pub fn restart_profile(&self, profile_id: i64) -> Result<Arc<CodexAppServer>, String> {
+    pub fn restart_profile(&self, profile_id: i64) -> Result<Arc<RuntimeClient>, String> {
         self.stop_profile(profile_id);
         self.ensure_started(profile_id)
     }
 
-    pub fn create_profile(&self, name: &str) -> Result<CodexProfileRecord, String> {
+    pub fn create_profile(
+        &self,
+        name: &str,
+        backend_kind: &str,
+    ) -> Result<CodexProfileRecord, String> {
         let base = crate::data::default_app_data_dir().join("codex_profiles");
         let _ = std::fs::create_dir_all(&base);
         let now = std::time::SystemTime::now()
@@ -158,8 +182,42 @@ impl CodexProfileManager {
         let home = base.join(dir_name);
         let _ = std::fs::create_dir_all(&home);
         self.db
-            .create_codex_profile(name, &home.to_string_lossy())
+            .create_codex_profile(name, backend_kind, &home.to_string_lossy())
             .map_err(|err| err.to_string())
+    }
+
+    pub fn ensure_profile_for_backend(
+        &self,
+        backend_kind: &str,
+    ) -> Result<CodexProfileRecord, String> {
+        let profiles = self
+            .db
+            .list_codex_profiles()
+            .map_err(|err| err.to_string())?;
+
+        if backend_kind.eq_ignore_ascii_case("codex") {
+            let system_home =
+                crate::data::configured_profile_home_dir(&crate::data::default_app_data_dir());
+            let system_home = system_home.to_string_lossy().to_string();
+            if let Some(profile) = profiles.iter().find(|profile| {
+                profile.backend_kind.eq_ignore_ascii_case(backend_kind)
+                    && profile.home_dir.trim() == system_home.trim()
+            }) {
+                return Ok(profile.clone());
+            }
+        }
+
+        if let Some(profile) = profiles
+            .into_iter()
+            .find(|profile| profile.backend_kind.eq_ignore_ascii_case(backend_kind))
+        {
+            return Ok(profile);
+        }
+
+        self.create_profile(
+            crate::backend::backend_display_name(backend_kind),
+            backend_kind,
+        )
     }
 
     pub fn remove_profile(&self, profile_id: i64) -> Result<(), String> {
@@ -201,7 +259,7 @@ impl CodexProfileManager {
 
     #[allow(dead_code)]
     pub fn poll_accounts(&self) {
-        let running: Vec<(i64, Arc<CodexAppServer>)> = self
+        let running: Vec<(i64, Arc<RuntimeClient>)> = self
             .clients
             .borrow()
             .iter()
@@ -212,7 +270,7 @@ impl CodexProfileManager {
         }
     }
 
-    pub fn running_clients(&self) -> Vec<(i64, Arc<CodexAppServer>)> {
+    pub fn running_clients(&self) -> Vec<(i64, Arc<RuntimeClient>)> {
         self.clients
             .borrow()
             .iter()
@@ -220,7 +278,7 @@ impl CodexProfileManager {
             .collect()
     }
 
-    fn refresh_profile_account(&self, profile_id: i64, client: &Arc<CodexAppServer>) {
+    fn refresh_profile_account(&self, profile_id: i64, client: &Arc<RuntimeClient>) {
         let account = client.account_read(false).ok().flatten();
         let (account_type, email): (Option<String>, Option<String>) = match account {
             Some(AccountInfo {
@@ -229,7 +287,7 @@ impl CodexProfileManager {
             }) => (Some(account_type), email),
             None => (None, None),
         };
-        let _ = self.db.update_codex_profile_account(
+        let _ = self.db.update_profile_account_identity(
             profile_id,
             account_type.as_deref(),
             email.as_deref(),
@@ -237,7 +295,7 @@ impl CodexProfileManager {
         if self.active_profile_id() == Some(profile_id) {
             let _ = self
                 .db
-                .set_current_codex_account(account_type.as_deref(), email.as_deref());
+                .set_current_profile_account_identity(account_type.as_deref(), email.as_deref());
         }
     }
 

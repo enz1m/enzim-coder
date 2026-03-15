@@ -1,4 +1,4 @@
-use crate::codex_appserver::CodexAppServer;
+use crate::backend::RuntimeClient;
 use crate::data::AppDb;
 use crate::restore::{RestoreAction, RestorePreview};
 use crate::ui::widget_tree;
@@ -406,9 +406,9 @@ fn refresh_preview_list(
 pub fn open_restore_preview_dialog(
     parent: Option<gtk::Window>,
     db: Rc<AppDb>,
-    codex: Option<Arc<CodexAppServer>>,
+    codex: Option<Arc<RuntimeClient>>,
     codex_thread_id: String,
-    active_codex_thread_id: Rc<RefCell<Option<String>>>,
+    active_thread_id: Rc<RefCell<Option<String>>>,
     workspace_path: String,
 ) {
     let parent_window = parent.clone();
@@ -441,7 +441,7 @@ pub fn open_restore_preview_dialog(
             .unwrap_or_default(),
     ));
 
-    let checkpoints = crate::restore::list_checkpoints_for_thread(&db, &codex_thread_id);
+    let checkpoints = crate::restore::list_checkpoints_for_remote_thread(&db, &codex_thread_id);
     let checkpoint_map: Rc<RefCell<Vec<(String, i64, String, i64)>>> =
         Rc::new(RefCell::new(Vec::new()));
     let checkpoint_model = gtk::StringList::new(&[]);
@@ -557,7 +557,7 @@ pub fn open_restore_preview_dialog(
     let selected_user_prompt: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
     let selected_git_risk: Rc<RefCell<Option<RestoreGitRiskSummary>>> = Rc::new(RefCell::new(None));
     let last_backup_checkpoint_id: Rc<RefCell<Option<i64>>> = Rc::new(RefCell::new(
-        crate::restore::last_backup_checkpoint_for_thread(&db, &codex_thread_id),
+        crate::restore::last_backup_checkpoint_for_remote_thread(&db, &codex_thread_id),
     ));
     if last_backup_checkpoint_id.borrow().is_some() {
         undo_btn.set_sensitive(true);
@@ -632,8 +632,11 @@ pub fn open_restore_preview_dialog(
                 selected_user_preview.set_text("(turn text not available)");
                 selected_assistant_preview.set_text("(turn text not available)");
             }
-            let preview =
-                crate::restore::preview_restore_to_checkpoint(&db, &codex_thread_id, checkpoint_id);
+            let preview = crate::restore::preview_restore_to_checkpoint_by_remote_id(
+                &db,
+                &codex_thread_id,
+                checkpoint_id,
+            );
             apply_btn.set_sensitive(preview.is_some());
             undo_btn.set_sensitive(last_backup_checkpoint_id.borrow().is_some());
             refresh_preview_list(preview, &listbox, &summary, &forced_paths);
@@ -663,7 +666,7 @@ pub fn open_restore_preview_dialog(
         let selected_git_risk = selected_git_risk.clone();
         let last_backup_checkpoint_id = last_backup_checkpoint_id.clone();
         let codex = codex.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         let workspace_path = workspace_path.clone();
         let parent_window = parent_window.clone();
         apply_btn.connect_clicked(move |_| {
@@ -674,7 +677,7 @@ pub fn open_restore_preview_dialog(
             let selected_turn_id_value = selected_turn_id.borrow().clone();
             let selected_user_prompt_value = selected_user_prompt.borrow().clone();
 
-            let preview = crate::restore::preview_restore_to_checkpoint(
+            let preview = crate::restore::preview_restore_to_checkpoint_by_remote_id(
                 &db,
                 &codex_thread_id,
                 checkpoint_id,
@@ -715,7 +718,7 @@ pub fn open_restore_preview_dialog(
                 let forced_paths = forced_paths.clone();
                 let last_backup_checkpoint_id = last_backup_checkpoint_id.clone();
                 let codex = codex.clone();
-                let active_codex_thread_id = active_codex_thread_id.clone();
+                let active_thread_id = active_thread_id.clone();
                 let workspace_path = workspace_path.clone();
                 let selected_turn_id_value = selected_turn_id_value.clone();
                 let selected_user_prompt_value = selected_user_prompt_value.clone();
@@ -726,13 +729,13 @@ pub fn open_restore_preview_dialog(
                         codex_thread_id,
                         checkpoint_id,
                         selected_turn_id_value,
-                        active_codex_thread_id.borrow().clone()
+                        active_thread_id.borrow().clone()
                     );
                     let forced: Vec<String> = forced_paths.borrow().iter().cloned().collect();
                     match apply_restore_with_chat_sync(
                         &db,
                         codex.clone(),
-                        Some(active_codex_thread_id.clone()),
+                        Some(active_thread_id.clone()),
                         Some(&workspace_path),
                         &codex_thread_id,
                         checkpoint_id,
@@ -756,7 +759,7 @@ pub fn open_restore_preview_dialog(
                                 rollback_status
                             ));
 
-                            let preview = crate::restore::preview_restore_to_checkpoint(
+                            let preview = crate::restore::preview_restore_to_checkpoint_by_remote_id(
                                 &db,
                                 &codex_thread_id,
                                 checkpoint_id,
@@ -788,13 +791,18 @@ pub fn open_restore_preview_dialog(
         undo_btn.connect_clicked(move |_| {
             let backup_checkpoint_id = last_backup_checkpoint_id
                 .borrow()
-                .or_else(|| crate::restore::last_backup_checkpoint_for_thread(&db, &codex_thread_id));
+                .or_else(|| {
+                    crate::restore::last_backup_checkpoint_for_remote_thread(
+                        &db,
+                        &codex_thread_id,
+                    )
+                });
             let Some(backup_checkpoint_id) = backup_checkpoint_id else {
                 status.set_text("No backup checkpoint found for undo.");
                 return;
             };
 
-            let preview = crate::restore::preview_restore_to_checkpoint(
+            let preview = crate::restore::preview_restore_to_checkpoint_by_remote_id(
                 &db,
                 &codex_thread_id,
                 backup_checkpoint_id,
@@ -832,7 +840,7 @@ pub fn open_restore_preview_dialog(
                 let checkpoint_dropdown = checkpoint_dropdown.clone();
                 let undo_forced_paths = undo_forced_paths.clone();
                 Rc::new(move || {
-                    match crate::restore::apply_restore_to_checkpoint(
+                    match crate::restore::apply_restore_to_checkpoint_by_remote_id(
                         &db,
                         &codex_thread_id,
                         backup_checkpoint_id,
@@ -852,7 +860,7 @@ pub fn open_restore_preview_dialog(
                             ));
 
                             if let Some(current_id) = *selected_checkpoint_id.borrow() {
-                                let preview = crate::restore::preview_restore_to_checkpoint(
+                                let preview = crate::restore::preview_restore_to_checkpoint_by_remote_id(
                                     &db,
                                     &codex_thread_id,
                                     current_id,
@@ -860,12 +868,14 @@ pub fn open_restore_preview_dialog(
                                 refresh_preview_list(preview, &listbox, &summary, &forced_paths);
                             } else {
                                 let idx = checkpoint_dropdown.selected() as usize;
-                                if let Some(id) =
-                                    crate::restore::list_checkpoints_for_thread(&db, &codex_thread_id)
-                                        .get(idx)
-                                        .map(|cp| cp.id)
+                                if let Some(id) = crate::restore::list_checkpoints_for_remote_thread(
+                                    &db,
+                                    &codex_thread_id,
+                                )
+                                .get(idx)
+                                .map(|cp| cp.id)
                                 {
-                                    let preview = crate::restore::preview_restore_to_checkpoint(
+                                    let preview = crate::restore::preview_restore_to_checkpoint_by_remote_id(
                                         &db,
                                         &codex_thread_id,
                                         id,

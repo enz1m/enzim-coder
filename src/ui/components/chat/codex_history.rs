@@ -233,6 +233,10 @@ fn load_older_history_chunk(
     state.lazy_loaded_row_count = state.lazy_loaded_row_count.saturating_add(loaded_rows);
     state.rendered_start = new_start;
     drop(state);
+    super::message_render::set_chat_reasoning_visibility(
+        messages_box,
+        super::message_render::messages_reasoning_visible(messages_box),
+    );
 
     let adj = messages_scroll.vadjustment();
     let state_for_finish = state_rc.clone();
@@ -580,8 +584,9 @@ fn append_tool_item_from_value(body_box: &gtk::Box, value: &Value) -> bool {
             super::message_render::append_action_widget(body_box, "dynamicToolCall", &widget);
             true
         }
-        "webSearch" | "mcpToolCall" | "collabToolCall" | "imageView" | "enteredReviewMode"
-        | "exitedReviewMode" | "contextCompaction" => {
+        "webSearch" | "webFetch" | "fileRead" | "fileSearch" | "directoryList" | "codeSearch"
+        | "skillCall" | "todoList" | "questionTool" | "mcpToolCall" | "collabToolCall"
+        | "imageView" | "enteredReviewMode" | "exitedReviewMode" | "contextCompaction" => {
             let (section, title, summary, status, output) =
                 super::codex_events::extract_generic_item_fields(value);
             let (widget, generic_ui) =
@@ -754,6 +759,14 @@ fn raw_items_may_include_uncached_actions(raw: &str) -> bool {
         || raw.contains("\"fileChange\"")
         || raw.contains("\"dynamicToolCall\"")
         || raw.contains("\"webSearch\"")
+        || raw.contains("\"webFetch\"")
+        || raw.contains("\"fileRead\"")
+        || raw.contains("\"fileSearch\"")
+        || raw.contains("\"directoryList\"")
+        || raw.contains("\"codeSearch\"")
+        || raw.contains("\"skillCall\"")
+        || raw.contains("\"todoList\"")
+        || raw.contains("\"questionTool\"")
         || raw.contains("\"mcpToolCall\"")
         || raw.contains("\"collabToolCall\"")
         || raw.contains("\"imageView\"")
@@ -906,6 +919,25 @@ fn filter_cached_entries_by_turn_ids(entries: &[Value], turn_ids: &HashSet<Strin
         .collect()
 }
 
+fn filter_cached_pending_requests_by_turn_ids(
+    entries: &[Value],
+    turn_ids: &HashSet<String>,
+) -> Vec<Value> {
+    entries
+        .iter()
+        .filter(|entry| {
+            entry
+                .get("turnId")
+                .and_then(Value::as_str)
+                .map(|turn_id| {
+                    turn_ids.contains(turn_id) || turn_id.starts_with("opencode-pending:")
+                })
+                .unwrap_or(false)
+        })
+        .cloned()
+        .collect()
+}
+
 pub(super) fn prune_cached_state_for_thread(db: &AppDb, thread_id: &str, thread: &Value) {
     let turn_ids = surviving_turn_ids(thread);
     save_cached_commands(
@@ -926,7 +958,10 @@ pub(super) fn prune_cached_state_for_thread(db: &AppDb, thread_id: &str, thread:
     save_cached_pending_requests(
         db,
         thread_id,
-        &filter_cached_entries_by_turn_ids(&load_cached_pending_requests(db, thread_id), &turn_ids),
+        &filter_cached_pending_requests_by_turn_ids(
+            &load_cached_pending_requests(db, thread_id),
+            &turn_ids,
+        ),
     );
     save_cached_turn_errors(
         db,
@@ -940,7 +975,7 @@ pub(super) fn sync_completed_turns_from_thread(
     thread_id: &str,
     thread: &Value,
 ) -> rusqlite::Result<usize> {
-    let existing_turns = db.list_local_chat_turns_for_codex_thread(thread_id)?;
+    let existing_turns = db.list_local_chat_turns_for_remote_thread(thread_id)?;
     let Some(turns) = thread.get("turns").and_then(Value::as_array) else {
         eprintln!(
             "[history-sync] thread/read missing turns for thread_id={}, preserving {} local turn(s)",
@@ -1020,7 +1055,7 @@ pub(super) fn sync_completed_turns_from_thread(
         String,
         (String, String, Option<String>, String, i64, Option<i64>),
     > = db
-        .list_local_chat_turns_for_codex_thread(thread_id)?
+        .list_local_chat_turns_for_remote_thread(thread_id)?
         .into_iter()
         .map(|turn| {
             (
@@ -1053,7 +1088,7 @@ pub(super) fn sync_completed_turns_from_thread(
     }
     changed_count += existing_by_turn.len();
 
-    db.replace_local_chat_turns_for_codex_thread(thread_id, &completed)?;
+    db.replace_local_chat_turns_for_remote_thread(thread_id, &completed)?;
     Ok(changed_count)
 }
 
@@ -1219,9 +1254,9 @@ pub(super) fn render_local_thread_history_from_db(
         )
     } else {
         let turns = db
-            .list_local_chat_turns_for_codex_thread(thread_id)
+            .list_local_chat_turns_for_remote_thread(thread_id)
             .unwrap_or_default();
-        let checkpoints = crate::restore::list_checkpoints_for_thread(db, thread_id);
+        let checkpoints = crate::restore::list_checkpoints_for_remote_thread(db, thread_id);
         let checkpoint_by_turn: HashMap<String, i64> = checkpoints
             .into_iter()
             .map(|checkpoint| (checkpoint.turn_id, checkpoint.id))
@@ -1271,6 +1306,10 @@ pub(super) fn render_local_thread_history_from_db(
         &cached_file_changes_by_turn,
         &cached_tool_items_by_turn,
         &cached_turn_errors_by_turn,
+    );
+    super::message_render::set_chat_reasoning_visibility(
+        messages_box,
+        super::message_render::messages_reasoning_visible(messages_box),
     );
 
     if rendered_any {

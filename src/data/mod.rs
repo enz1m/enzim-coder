@@ -20,6 +20,7 @@ pub struct WorkspaceRecord {
 #[derive(Clone, Debug)]
 pub struct CodexProfileRecord {
     pub id: i64,
+    pub backend_kind: String,
     pub name: String,
     pub icon_name: String,
     pub home_dir: String,
@@ -55,6 +56,36 @@ impl ThreadRecord {
     #[allow(dead_code)]
     pub fn relative_time(&self) -> String {
         format_relative_age(self.updated_at.max(self.created_at))
+    }
+
+    #[allow(dead_code)]
+    pub fn remote_thread_id(&self) -> Option<&str> {
+        self.codex_thread_id.as_deref()
+    }
+
+    #[allow(dead_code)]
+    pub fn remote_thread_id_owned(&self) -> Option<String> {
+        self.remote_thread_id().map(ToOwned::to_owned)
+    }
+
+    #[allow(dead_code)]
+    pub fn remote_account_type(&self) -> Option<&str> {
+        self.codex_account_type.as_deref()
+    }
+
+    #[allow(dead_code)]
+    pub fn remote_account_type_owned(&self) -> Option<String> {
+        self.remote_account_type().map(ToOwned::to_owned)
+    }
+
+    #[allow(dead_code)]
+    pub fn remote_account_email(&self) -> Option<&str> {
+        self.codex_account_email.as_deref()
+    }
+
+    #[allow(dead_code)]
+    pub fn remote_account_email_owned(&self) -> Option<String> {
+        self.remote_account_email().map(ToOwned::to_owned)
     }
 }
 

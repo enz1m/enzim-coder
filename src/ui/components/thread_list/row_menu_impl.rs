@@ -1,7 +1,7 @@
 fn thread_row(
     db: Rc<AppDb>,
     manager: Rc<CodexProfileManager>,
-    active_codex_thread_id: Rc<RefCell<Option<String>>>,
+    active_thread_id: Rc<RefCell<Option<String>>>,
     active_workspace_path: Rc<RefCell<Option<String>>>,
     workspace_path: String,
     show_profile_icons: Rc<Cell<bool>>,
@@ -14,12 +14,12 @@ fn thread_row(
     let local_thread_id = thread.id;
     let runtime_workspace_path = thread_runtime_workspace_path(&thread, &workspace_path);
     let thread_has_account_identity =
-        thread.codex_account_type.is_some() || thread.codex_account_email.is_some();
+        thread.remote_account_type().is_some() || thread.remote_account_email().is_some();
 
     row.set_widget_name(&format!("thread-{}", local_thread_id));
 
-    let current_codex_thread_id: Rc<RefCell<Option<String>>> =
-        Rc::new(RefCell::new(thread.codex_thread_id.clone()));
+    let current_thread_id: Rc<RefCell<Option<String>>> =
+        Rc::new(RefCell::new(thread.remote_thread_id_owned()));
 
     let inner = gtk::Box::new(gtk::Orientation::Horizontal, 4);
     inner.add_css_class("thread-row-content");
@@ -103,7 +103,7 @@ fn thread_row(
 
     {
         let thread_title = thread.title.clone();
-        let codex_thread_id = thread.codex_thread_id.clone();
+        let remote_thread_id = thread.remote_thread_id_owned();
         let workspace_path = runtime_workspace_path.clone();
         let drag_source = gtk::DragSource::builder()
             .actions(gtk::gdk::DragAction::COPY)
@@ -121,7 +121,8 @@ fn thread_row(
         drag_source.connect_prepare(move |_, _, _| {
             let payload = json!({
                 "localThreadId": local_thread_id,
-                "codexThreadId": codex_thread_id,
+                "threadId": remote_thread_id,
+                "codexThreadId": remote_thread_id,
                 "workspacePath": workspace_path,
             })
             .to_string();
@@ -163,7 +164,7 @@ fn thread_row(
         let label = label.clone();
         let time_label = time_label.clone();
         let inner = inner.clone();
-        let current_codex_thread_id = current_codex_thread_id.clone();
+        let current_thread_id = current_thread_id.clone();
         let thread_title_text = thread_title_text.clone();
         gtk::glib::timeout_add_local(Duration::from_millis(90), move || {
             if label.root().is_none() {
@@ -178,23 +179,23 @@ fn thread_row(
                 thread_title_text.replace(observed_title);
             }
             let text = thread_title_text.borrow().clone();
-            let mut known_codex_thread_id = current_codex_thread_id.borrow().clone();
-            if known_codex_thread_id.is_none() {
-                known_codex_thread_id = db
+            let mut known_thread_id = current_thread_id.borrow().clone();
+            if known_thread_id.is_none() {
+                known_thread_id = db
                     .get_thread_record(local_thread_id)
                     .ok()
                     .flatten()
-                    .and_then(|record| record.codex_thread_id);
-                if known_codex_thread_id.is_some() {
-                    current_codex_thread_id.replace(known_codex_thread_id.clone());
+                    .and_then(|record| record.remote_thread_id_owned());
+                if known_thread_id.is_some() {
+                    current_thread_id.replace(known_thread_id.clone());
                 }
             }
 
-            let has_active_turn = known_codex_thread_id
+            let has_active_turn = known_thread_id
                 .as_deref()
                 .map(crate::ui::components::chat::thread_has_active_turn)
                 .unwrap_or(false);
-            let has_completed_unseen = known_codex_thread_id
+            let has_completed_unseen = known_thread_id
                 .as_deref()
                 .map(crate::ui::components::chat::thread_has_completed_unseen)
                 .unwrap_or(false);
@@ -233,8 +234,8 @@ fn thread_row(
         let row_for_select = row.clone();
         let db = db.clone();
         let manager = manager.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
-        let current_codex_thread_id = current_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
+        let current_thread_id = current_thread_id.clone();
         let active_workspace_path_for_select = active_workspace_path.clone();
         let workspace_path = runtime_workspace_path.clone();
         let thread_profile_id = thread.profile_id;
@@ -256,29 +257,29 @@ fn thread_row(
             }
 
             row_for_select.add_css_class("thread-row-selected");
-            if let Some(known_codex_thread_id) = current_codex_thread_id.borrow().clone() {
-                active_codex_thread_id.replace(Some(known_codex_thread_id));
+            if let Some(known_thread_id) = current_thread_id.borrow().clone() {
+                active_thread_id.replace(Some(known_thread_id));
             }
-            if let Some(codex_thread_id) = current_codex_thread_id.borrow().clone() {
-                crate::ui::components::chat::clear_thread_completed_unseen(&codex_thread_id);
+            if let Some(thread_id) = current_thread_id.borrow().clone() {
+                crate::ui::components::chat::clear_thread_completed_unseen(&thread_id);
                 completion_icon.set_visible(false);
             } else if let Ok(Some(record)) = db.get_thread_record(local_thread_id) {
-                if let Some(codex_thread_id) = record.codex_thread_id.as_deref() {
-                    crate::ui::components::chat::clear_thread_completed_unseen(codex_thread_id);
+                if let Some(thread_id) = record.remote_thread_id() {
+                    crate::ui::components::chat::clear_thread_completed_unseen(thread_id);
                 }
                 completion_icon.set_visible(false);
             }
 
             let db = db.clone();
             let manager = manager.clone();
-            let active_codex_thread_id = active_codex_thread_id.clone();
-            let current_codex_thread_id = current_codex_thread_id.clone();
+            let active_thread_id = active_thread_id.clone();
+            let current_thread_id = current_thread_id.clone();
             let workspace_path = workspace_path.clone();
             gtk::glib::timeout_add_local_once(Duration::from_millis(8), move || {
                 let _ = db.set_runtime_profile_id(thread_profile_id);
                 let _ = db.set_active_profile_id(thread_profile_id);
                 if let Some(profile) = db.get_codex_profile(thread_profile_id).ok().flatten() {
-                    let _ = db.set_current_codex_account(
+                    let _ = db.set_current_thread_account(
                         profile.last_account_type.as_deref(),
                         profile.last_email.as_deref(),
                     );
@@ -288,19 +289,20 @@ fn thread_row(
 
                 let is_locked = db.is_local_thread_locked(local_thread_id).unwrap_or(false);
                 let latest_thread = db.get_thread_record(local_thread_id).ok().flatten();
-                let existing_codex_thread_id = latest_thread
+                let existing_thread_id = latest_thread
                     .as_ref()
-                    .and_then(|record| record.codex_thread_id.clone())
-                    .or_else(|| current_codex_thread_id.borrow().clone());
-                current_codex_thread_id.replace(existing_codex_thread_id.clone());
+                    .and_then(|record| record.remote_thread_id_owned())
+                    .or_else(|| current_thread_id.borrow().clone());
+                current_thread_id.replace(existing_thread_id.clone());
                 let needs_account_backfill = latest_thread
                     .as_ref()
                     .map(|record| {
-                        record.codex_account_type.is_none() && record.codex_account_email.is_none()
+                        record.remote_account_type().is_none()
+                            && record.remote_account_email().is_none()
                     })
                     .unwrap_or(!thread_has_account_identity);
-                if let Some(codex_thread_id) = existing_codex_thread_id {
-                    active_codex_thread_id.replace(Some(codex_thread_id.clone()));
+                if let Some(thread_id) = existing_thread_id {
+                    active_thread_id.replace(Some(thread_id.clone()));
                     if db
                         .get_setting("pending_profile_thread_id")
                         .ok()
@@ -315,21 +317,21 @@ fn thread_row(
                     }
                     let manager_for_resume = manager.clone();
                     let db_for_resume = db.clone();
-                    let current_for_resume = current_codex_thread_id.clone();
-                    let active_for_resume = active_codex_thread_id.clone();
+                    let current_for_resume = current_thread_id.clone();
+                    let active_for_resume = active_thread_id.clone();
                     let workspace_path_for_resume = workspace_path.clone();
                     gtk::glib::timeout_add_local_once(Duration::from_millis(24), move || {
-                        manager_for_resume.switch_runtime_to_thread(&codex_thread_id);
+                        manager_for_resume.switch_runtime_to_thread(&thread_id);
                         if let Some(client) =
-                            manager_for_resume.resolve_running_client_for_thread_id(&codex_thread_id)
+                            manager_for_resume.resolve_running_client_for_thread_id(&thread_id)
                         {
                             let client = client.clone();
                             let workspace_path_bg = workspace_path_for_resume.clone();
-                            let codex_thread_id_bg = codex_thread_id.clone();
+                            let remote_thread_id_bg = thread_id.clone();
                             let (tx, rx) = mpsc::channel::<Result<String, String>>();
                             thread::spawn(move || {
                                 let result = client.thread_resume(
-                                    &codex_thread_id_bg,
+                                    &remote_thread_id_bg,
                                     Some(&workspace_path_bg),
                                     Some("gpt-5.3-codex"),
                                 );
@@ -343,24 +345,24 @@ fn thread_row(
                                 match rx.try_recv() {
                                     Ok(Ok(resolved_id)) => {
                                         let account =
-                                            db_for_result.current_codex_account().ok().flatten();
+                                            db_for_result.current_thread_account().ok().flatten();
                                         let account_type =
                                             account.as_ref().map(|(kind, _)| kind.as_str());
                                         let account_email =
                                             account.as_ref().and_then(|(_, email)| email.as_deref());
-                                        if resolved_id != codex_thread_id {
+                                        if resolved_id != thread_id {
                                             eprintln!(
                                                 "thread_resume returned mismatched thread id for local_thread_id={} expected={} got={}, keeping original mapping",
-                                                local_thread_id, codex_thread_id, resolved_id
+                                                local_thread_id, thread_id, resolved_id
                                             );
                                             if active_for_result.borrow().as_deref()
-                                                == Some(codex_thread_id.as_str())
+                                                == Some(thread_id.as_str())
                                             {
                                                 active_for_result
-                                                    .replace(Some(codex_thread_id.clone()));
+                                                    .replace(Some(thread_id.clone()));
                                             }
                                             current_for_result
-                                                .replace(Some(codex_thread_id.clone()));
+                                                .replace(Some(thread_id.clone()));
                                         } else if needs_account_backfill {
                                             let _ = db_for_result.set_thread_account_identity(
                                                 local_thread_id,
@@ -393,16 +395,16 @@ fn thread_row(
                     .and_then(|value| value.parse::<i64>().ok())
                     == Some(local_thread_id)
                 {
-                    active_codex_thread_id.replace(None);
+                    active_thread_id.replace(None);
                     return;
                 }
                 if is_locked {
-                    active_codex_thread_id.replace(None);
+                    active_thread_id.replace(None);
                     return;
                 }
 
                 if db
-                    .local_thread_has_codex_chat_turns(local_thread_id)
+                    .local_thread_has_remote_chat_turns(local_thread_id)
                     .unwrap_or(false)
                 {
                     eprintln!(
@@ -412,46 +414,73 @@ fn thread_row(
                     return;
                 }
 
-                if let Some(refreshed_codex_thread_id) = db
+                if let Some(refreshed_thread_id) = db
                     .get_thread_record(local_thread_id)
                     .ok()
                     .flatten()
-                    .and_then(|record| record.codex_thread_id)
+                    .and_then(|record| record.remote_thread_id_owned())
                 {
-                    current_codex_thread_id.replace(Some(refreshed_codex_thread_id.clone()));
-                    active_codex_thread_id.replace(Some(refreshed_codex_thread_id));
+                    current_thread_id.replace(Some(refreshed_thread_id.clone()));
+                    active_thread_id.replace(Some(refreshed_thread_id));
                     return;
                 }
 
                 let _ = db.set_runtime_profile_id(thread_profile_id);
                 if let Some(client) = manager.client_for_profile(thread_profile_id) {
                     let client = client.clone();
+                    let sandbox_policy = if client.backend_kind().eq_ignore_ascii_case("opencode")
+                    {
+                        let default_access_mode =
+                            crate::ui::components::chat::composer::default_composer_setting_value(
+                                db.as_ref(),
+                                "opencode_access_mode",
+                            )
+                            .unwrap_or_else(|| "workspaceWrite".to_string());
+                        let default_command_mode =
+                            crate::ui::components::chat::composer::default_composer_setting_value(
+                                db.as_ref(),
+                                "opencode_command_mode",
+                            )
+                            .unwrap_or_else(|| "allowAll".to_string());
+                        Some(
+                            crate::ui::components::chat::runtime_controls::opencode_session_policy_for(
+                                &default_access_mode,
+                                &default_command_mode,
+                            ),
+                        )
+                    } else {
+                        None
+                    };
                     let workspace_path_bg = workspace_path.clone();
                     let (tx, rx) = mpsc::channel::<Result<String, String>>();
                     thread::spawn(move || {
                         let _ = tx.send(
-                            client.thread_start(Some(&workspace_path_bg), Some("gpt-5.3-codex"))
+                            client.thread_start(
+                                Some(&workspace_path_bg),
+                                None,
+                                sandbox_policy,
+                            )
                         );
                     });
 
                     let db_for_result = db.clone();
-                    let current_for_result = current_codex_thread_id.clone();
-                    let active_for_result = active_codex_thread_id.clone();
+                    let current_for_result = current_thread_id.clone();
+                    let active_for_result = active_thread_id.clone();
                     gtk::glib::timeout_add_local(Duration::from_millis(30), move || {
                         match rx.try_recv() {
-                            Ok(Ok(new_codex_thread_id)) => {
-                                let account = db_for_result.current_codex_account().ok().flatten();
+                            Ok(Ok(new_thread_id)) => {
+                                let account = db_for_result.current_thread_account().ok().flatten();
                                 let account_type = account.as_ref().map(|(kind, _)| kind.as_str());
                                 let account_email =
                                     account.as_ref().and_then(|(_, email)| email.as_deref());
                                 let _ = db_for_result.set_thread_codex_id_with_account(
                                     local_thread_id,
-                                    &new_codex_thread_id,
+                                    &new_thread_id,
                                     account_type,
                                     account_email,
                                 );
-                                current_for_result.replace(Some(new_codex_thread_id.clone()));
-                                active_for_result.replace(Some(new_codex_thread_id));
+                                current_for_result.replace(Some(new_thread_id.clone()));
+                                active_for_result.replace(Some(new_thread_id));
                                 if db_for_result
                                     .get_setting("pending_profile_thread_id")
                                     .ok()
@@ -483,8 +512,8 @@ fn thread_row(
         thread_title_text.clone(),
         db.clone(),
         manager.clone(),
-        active_codex_thread_id.clone(),
-        current_codex_thread_id.clone(),
+        active_thread_id.clone(),
+        current_thread_id.clone(),
         active_workspace_path.clone(),
         runtime_workspace_path.clone(),
         &thread,
@@ -527,8 +556,8 @@ fn build_thread_context_menu(
     thread_title_text: Rc<RefCell<String>>,
     db: Rc<AppDb>,
     manager: Rc<CodexProfileManager>,
-    active_codex_thread_id: Rc<RefCell<Option<String>>>,
-    current_codex_thread_id: Rc<RefCell<Option<String>>>,
+    active_thread_id: Rc<RefCell<Option<String>>>,
+    current_thread_id: Rc<RefCell<Option<String>>>,
     _active_workspace_path: Rc<RefCell<Option<String>>>,
     workspace_path: String,
     thread: &ThreadRecord,
@@ -637,16 +666,16 @@ fn build_thread_context_menu(
         let row = row.clone();
         let db = db.clone();
         let manager = manager.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         let thread_id = thread.id;
         let thread_worktree_path = thread.worktree_path.clone();
         let thread_has_worktree = thread.worktree_active;
-        let current_codex_thread_id = current_codex_thread_id.clone();
+        let current_thread_id = current_thread_id.clone();
         close_button.connect_clicked(move |_| {
-            let codex_thread_id = current_codex_thread_id.borrow().clone();
-            if let Some(codex_thread_id) = codex_thread_id.as_deref() {
-                if let Some(client) = manager.resolve_client_for_thread_id(codex_thread_id) {
-                    let _ = client.thread_archive(codex_thread_id);
+            let remote_thread_id = current_thread_id.borrow().clone();
+            if let Some(thread_id) = remote_thread_id.as_deref() {
+                if let Some(client) = manager.resolve_client_for_thread_id(thread_id) {
+                    let _ = client.thread_archive(thread_id);
                 }
             }
             if let Some(path) = thread_worktree_path
@@ -667,8 +696,8 @@ fn build_thread_context_menu(
             if let Err(err) = db.close_thread(thread_id) {
                 eprintln!("failed to close thread: {err}");
             } else if let Some(listbox) = row.parent().and_downcast::<gtk::ListBox>() {
-                if let Some(codex_thread_id) = codex_thread_id.as_deref() {
-                    layout::remove_thread_from_multiview_layout(db.as_ref(), codex_thread_id);
+                if let Some(thread_id) = remote_thread_id.as_deref() {
+                    layout::remove_thread_from_multiview_layout(db.as_ref(), thread_id);
                 }
                 listbox.remove(&row);
                 let _ = with_thread_list_for_listbox(&listbox, |thread_list| {
@@ -682,12 +711,12 @@ fn build_thread_context_menu(
                 if selected_local_thread == Some(thread_id) {
                     let _ = db.set_setting("last_active_thread_id", "");
                     let _ = db.set_setting("pending_profile_thread_id", "");
-                    active_codex_thread_id.replace(None);
+                    active_thread_id.replace(None);
                 }
-                let active_id = active_codex_thread_id.borrow().clone();
+                let active_id = active_thread_id.borrow().clone();
                 if let Some(active_id) = active_id {
-                    if codex_thread_id.as_deref() == Some(active_id.as_str()) {
-                        active_codex_thread_id.replace(None);
+                    if remote_thread_id.as_deref() == Some(active_id.as_str()) {
+                        active_thread_id.replace(None);
                     }
                 }
             }
@@ -701,10 +730,10 @@ fn build_thread_context_menu(
         let row = row.clone();
         let db = db.clone();
         let manager = manager.clone();
-        let current_codex_thread_id = current_codex_thread_id.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let current_thread_id = current_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         restore_button.connect_clicked(move |_| {
-            let Some(codex_thread_id) = current_codex_thread_id.borrow().clone() else {
+            let Some(thread_id) = current_thread_id.borrow().clone() else {
                 eprintln!("restore preview unavailable: thread has no Codex id yet");
                 popover.popdown();
                 return;
@@ -716,9 +745,9 @@ fn build_thread_context_menu(
             super::restore_preview::open_restore_preview_dialog(
                 parent_window,
                 db.clone(),
-                manager.resolve_client_for_thread_id(&codex_thread_id),
-                codex_thread_id,
-                active_codex_thread_id.clone(),
+                manager.resolve_client_for_thread_id(&thread_id),
+                thread_id,
+                active_thread_id.clone(),
                 workspace_path.clone(),
             );
             popover.popdown();

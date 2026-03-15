@@ -1,16 +1,17 @@
-use crate::codex_appserver::{CodexAppServer, McpServerInfo};
+use crate::backend::RuntimeClient;
+use crate::codex_appserver::McpServerInfo;
 use crate::codex_profiles::CodexProfileManager;
 use crate::data::AppDb;
 use crate::skill_mcp::{
     PolicyKind, ProfileAssignments, SkillMcpCatalog, load_catalog, load_profile_assignments,
-    set_profile_assigned, skill_slug_from_name,
+    set_profile_assigned, write_skill_assignment_for_profile,
 };
 use crate::ui::components::settings_dialog::{self, SettingsPage};
+use crate::ui::components::skills_mcp_reload_guard::run_with_opencode_reload_guard;
 use gtk::prelude::*;
 use serde_json::Value;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::mpsc;
@@ -37,6 +38,7 @@ struct PopupEntry {
 #[derive(Clone, Debug)]
 struct PopupData {
     profile_id: i64,
+    profile_backend_kind: String,
     profile_name: String,
     profile_running: bool,
     entries: Vec<PopupEntry>,
@@ -61,48 +63,26 @@ fn normalize_mcp_server_name(input: &str) -> String {
     }
 }
 
-fn skill_file_path(profile_home: &str, slug: &str) -> PathBuf {
-    Path::new(profile_home)
-        .join(".codex")
-        .join("skills")
-        .join(skill_slug_from_name(slug))
-        .join("SKILL.md")
-}
-
-fn ensure_skill_parent(path: &Path) -> Result<(), String> {
-    let Some(parent) = path.parent() else {
-        return Err("invalid skill path".to_string());
-    };
-    std::fs::create_dir_all(parent).map_err(|err| {
-        format!(
-            "Failed to create skill directory {}: {err}",
-            parent.display()
-        )
-    })
-}
-
-fn remove_skill_path(path: &Path) {
-    let _ = std::fs::remove_file(path);
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::remove_dir(parent);
-    }
-}
-
 fn set_skill_for_profile(
     profile_home: &str,
     slug: &str,
     content: &str,
     enabled: bool,
-    client: Arc<CodexAppServer>,
+    client: Arc<RuntimeClient>,
 ) -> Result<(), String> {
-    let path = skill_file_path(profile_home, slug);
-    if enabled {
-        ensure_skill_parent(&path)?;
-        std::fs::write(&path, content)
-            .map_err(|err| format!("Failed to write skill file {}: {err}", path.display()))?;
-    } else {
-        remove_skill_path(&path);
-    }
+    let profile = crate::data::CodexProfileRecord {
+        id: 0,
+        backend_kind: client.backend_kind().to_string(),
+        name: String::new(),
+        icon_name: String::new(),
+        home_dir: profile_home.to_string(),
+        last_account_type: None,
+        last_email: None,
+        status: String::new(),
+        created_at: 0,
+        updated_at: 0,
+    };
+    write_skill_assignment_for_profile(&profile, slug, content, enabled)?;
 
     let _ = client.skills_list(&[], true);
 
@@ -113,7 +93,7 @@ fn set_mcp_for_profile(
     name: &str,
     config: Value,
     enabled: bool,
-    client: Arc<CodexAppServer>,
+    client: Arc<RuntimeClient>,
 ) -> Result<(), String> {
     let key_path = format!("mcp_servers.{}", normalize_mcp_server_name(name));
     if enabled {
@@ -185,13 +165,17 @@ fn build_entries(
     out
 }
 
-fn fetch_popup_data(profile_id: i64, client: Option<Arc<CodexAppServer>>) -> PopupData {
+fn fetch_popup_data(profile_id: i64, client: Option<Arc<RuntimeClient>>) -> PopupData {
     let background_db = AppDb::open_default();
     let profile = background_db.get_codex_profile(profile_id).ok().flatten();
     let profile_name = profile
         .as_ref()
         .map(|profile| profile.name.clone())
         .unwrap_or_else(|| format!("Profile #{profile_id}"));
+    let profile_backend_kind = profile
+        .as_ref()
+        .map(|profile| profile.backend_kind.clone())
+        .unwrap_or_else(|| "codex".to_string());
     let profile_running = profile
         .as_ref()
         .map(|profile| profile.status.eq_ignore_ascii_case("running"))
@@ -211,6 +195,7 @@ fn fetch_popup_data(profile_id: i64, client: Option<Arc<CodexAppServer>>) -> Pop
 
     PopupData {
         profile_id,
+        profile_backend_kind,
         profile_name,
         profile_running,
         entries: build_entries(&catalog, &assignments, &mcp_status),
@@ -311,6 +296,7 @@ pub fn build_skills_mcp_button(
     let refresh_fn: Rc<dyn Fn()> = {
         let db = db.clone();
         let manager = manager.clone();
+        let popover = popover.clone();
         let profile_label = profile_label.clone();
         let status_label = status_label.clone();
         let list_box = list_box.clone();
@@ -335,6 +321,7 @@ pub fn build_skills_mcp_button(
             let profile_label = profile_label.clone();
             let refresh_handle_for_rows = refresh_handle.clone();
             let manager_for_rows = manager.clone();
+            let popover_for_rows = popover.clone();
             gtk::glib::timeout_add_local(Duration::from_millis(50), move || match rx.try_recv() {
                 Ok(data) => {
                     while let Some(child) = list_box.first_child() {
@@ -357,10 +344,19 @@ pub fn build_skills_mcp_button(
                         let top = gtk::Box::new(gtk::Orientation::Horizontal, 8);
                         let check = gtk::CheckButton::new();
                         check.set_active(entry.assigned);
-                        check.set_sensitive(data.profile_running);
+                        let skill_supported = entry.kind != EntryKind::Skill
+                            || crate::backend::capabilities_for_backend_kind(
+                                &data.profile_backend_kind,
+                            )
+                            .supports_skill_assignment;
+                        check.set_sensitive(data.profile_running && skill_supported);
                         if !data.profile_running {
                             check.set_tooltip_text(Some(
                                 "Profile is stopped. Start it to change assignments.",
+                            ));
+                        } else if !skill_supported {
+                            check.set_tooltip_text(Some(
+                                "Skill assignment is not supported for this runtime profile.",
                             ));
                         }
                         top.append(&check);
@@ -397,7 +393,7 @@ pub fn build_skills_mcp_button(
                                 auth_button.connect_clicked(move |_| {
                                     let Some(client) = client.clone() else {
                                         status_label
-                                            .set_text("Runtime profile app-server is not running.");
+                                            .set_text("Runtime profile is not running.");
                                         return;
                                     };
                                     status_label.set_text("Starting MCP OAuth login...");
@@ -494,121 +490,180 @@ pub fn build_skills_mcp_button(
                             let entry_key = entry.key.clone();
                             let entry_name = entry.name.clone();
                             let profile_id = data.profile_id;
+                            let profile_backend_kind = data.profile_backend_kind.clone();
+                            let parent_for_toggle = popover_for_rows
+                                .root()
+                                .and_then(|root| root.downcast::<gtk::Window>().ok());
+                            let manager_for_toggle = manager_for_rows.clone();
                             let status_label_for_toggle = status_label.clone();
                             let refresh_handle_for_toggle = refresh_handle_for_rows.clone();
-                            let client = manager_for_rows.running_client_for_profile(profile_id);
                             check.connect_toggled(move |toggle| {
                                 let enabled = toggle.is_active();
-                                status_label_for_toggle.set_text("Applying assignment...");
-                                let entry_key_for_thread = entry_key.clone();
-                                let entry_name_for_thread = entry_name.clone();
-                                let client = client.clone();
-                                let (tx, rx) = mpsc::channel::<Result<(), String>>();
-                                thread::spawn(move || {
-                                    let result = (|| -> Result<(), String> {
-                                        let background_db = AppDb::open_default();
-                                        let kind = match entry_kind {
-                                            EntryKind::Skill => PolicyKind::Skill,
-                                            EntryKind::Mcp => PolicyKind::Mcp,
-                                        };
-                                        set_profile_assigned(
-                                            background_db.as_ref(),
-                                            profile_id,
-                                            kind,
-                                            &entry_key_for_thread,
-                                            enabled,
-                                        )?;
-
-                                        let profile = background_db
-                                            .get_codex_profile(profile_id)
-                                            .map_err(|err| err.to_string())?
-                                            .ok_or_else(|| {
-                                                format!("profile {} not found", profile_id)
-                                            })?;
-
-                                        let catalog = load_catalog(background_db.as_ref());
-                                        match entry_kind {
-                                            EntryKind::Skill => {
-                                                let skill = catalog
-                                                    .skills
-                                                    .into_iter()
-                                                    .find(|item| item.key == entry_key_for_thread)
-                                                    .ok_or_else(|| {
-                                                        format!(
-                                                            "skill not found in catalog: {}",
-                                                            entry_key_for_thread
-                                                        )
-                                                    })?;
-                                                let Some(client) = client else {
+                                let start_toggle: Rc<dyn Fn()> = {
+                                    let manager_for_toggle = manager_for_toggle.clone();
+                                    let status_label_for_toggle = status_label_for_toggle.clone();
+                                    let refresh_handle_for_toggle =
+                                        refresh_handle_for_toggle.clone();
+                                    let entry_key_for_thread = entry_key.clone();
+                                    let entry_name_for_thread = entry_name.clone();
+                                    let profile_backend_kind_for_thread =
+                                        profile_backend_kind.clone();
+                                    let toggle = toggle.clone();
+                                    Rc::new(move || {
+                                        status_label_for_toggle.set_text("Applying assignment...");
+                                        let client =
+                                            manager_for_toggle.running_client_for_profile(profile_id);
+                                        let (tx, rx) = mpsc::channel::<Result<(), String>>();
+                                        let entry_key_for_thread =
+                                            entry_key_for_thread.clone();
+                                        let entry_name_for_thread =
+                                            entry_name_for_thread.clone();
+                                        let profile_backend_kind_for_thread =
+                                            profile_backend_kind_for_thread.clone();
+                                        thread::spawn(move || {
+                                            let result = (|| -> Result<(), String> {
+                                                let background_db = AppDb::open_default();
+                                                let kind = match entry_kind {
+                                                    EntryKind::Skill => PolicyKind::Skill,
+                                                    EntryKind::Mcp => PolicyKind::Mcp,
+                                                };
+                                                if entry_kind == EntryKind::Skill
+                                                    && !crate::backend::capabilities_for_backend_kind(
+                                                        &profile_backend_kind_for_thread,
+                                                    )
+                                                    .supports_skill_assignment
+                                                {
                                                     return Err(
-                                                        "Profile app-server is not running."
+                                                        "Skill assignment is not supported for this runtime profile."
                                                             .to_string(),
                                                     );
-                                                };
-                                                set_skill_for_profile(
-                                                    &profile.home_dir,
-                                                    &skill.slug,
-                                                    &skill.content,
+                                                }
+                                                set_profile_assigned(
+                                                    background_db.as_ref(),
+                                                    profile_id,
+                                                    kind,
+                                                    &entry_key_for_thread,
                                                     enabled,
-                                                    client,
-                                                )
-                                            }
-                                            EntryKind::Mcp => {
-                                                let mcp = catalog
-                                                    .mcps
-                                                    .into_iter()
-                                                    .find(|item| item.key == entry_key_for_thread)
+                                                )?;
+
+                                                let profile = background_db
+                                                    .get_codex_profile(profile_id)
+                                                    .map_err(|err| err.to_string())?
                                                     .ok_or_else(|| {
                                                         format!(
-                                                            "mcp not found in catalog: {}",
-                                                            entry_key_for_thread
+                                                            "profile {} not found",
+                                                            profile_id
                                                         )
                                                     })?;
-                                                let Some(client) = client else {
-                                                    return Err(
-                                                        "Profile app-server is not running."
-                                                            .to_string(),
-                                                    );
-                                                };
-                                                set_mcp_for_profile(
-                                                    &entry_name_for_thread,
-                                                    mcp.config,
-                                                    enabled,
-                                                    client,
-                                                )
-                                            }
-                                        }
-                                    })();
-                                    let _ = tx.send(result);
-                                });
-                                let status_label_for_toggle = status_label_for_toggle.clone();
-                                let refresh_handle_for_toggle = refresh_handle_for_toggle.clone();
-                                let toggle = toggle.clone();
-                                gtk::glib::timeout_add_local(
-                                    Duration::from_millis(60),
-                                    move || match rx.try_recv() {
-                                        Ok(Ok(())) => {
-                                            status_label_for_toggle.set_text("Assignment updated.");
-                                            if let Some(refresh) =
-                                                refresh_handle_for_toggle.borrow().as_ref()
-                                            {
-                                                refresh();
-                                            }
-                                            gtk::glib::ControlFlow::Break
-                                        }
-                                        Ok(Err(err)) => {
-                                            status_label_for_toggle
-                                                .set_text(&format!("Toggle failed: {err}"));
-                                            toggle.set_active(!enabled);
-                                            gtk::glib::ControlFlow::Break
-                                        }
-                                        Err(mpsc::TryRecvError::Empty) => {
-                                            gtk::glib::ControlFlow::Continue
-                                        }
-                                        Err(mpsc::TryRecvError::Disconnected) => {
-                                            gtk::glib::ControlFlow::Break
-                                        }
-                                    },
+
+                                                let catalog = load_catalog(background_db.as_ref());
+                                                match entry_kind {
+                                                    EntryKind::Skill => {
+                                                        let skill = catalog
+                                                            .skills
+                                                            .into_iter()
+                                                            .find(|item| {
+                                                                item.key == entry_key_for_thread
+                                                            })
+                                                            .ok_or_else(|| {
+                                                                format!(
+                                                                    "skill not found in catalog: {}",
+                                                                    entry_key_for_thread
+                                                                )
+                                                            })?;
+                                                        let Some(client) = client else {
+                                                            return Err(
+                                                                "Runtime profile is not running."
+                                                                    .to_string(),
+                                                            );
+                                                        };
+                                                        set_skill_for_profile(
+                                                            &profile.home_dir,
+                                                            &skill.slug,
+                                                            &skill.content,
+                                                            enabled,
+                                                            client,
+                                                        )
+                                                    }
+                                                    EntryKind::Mcp => {
+                                                        let mcp = catalog
+                                                            .mcps
+                                                            .into_iter()
+                                                            .find(|item| {
+                                                                item.key == entry_key_for_thread
+                                                            })
+                                                            .ok_or_else(|| {
+                                                                format!(
+                                                                    "mcp not found in catalog: {}",
+                                                                    entry_key_for_thread
+                                                                )
+                                                            })?;
+                                                        let Some(client) = client else {
+                                                            return Err(
+                                                                "Runtime profile is not running."
+                                                                    .to_string(),
+                                                            );
+                                                        };
+                                                        set_mcp_for_profile(
+                                                            &entry_name_for_thread,
+                                                            mcp.config,
+                                                            enabled,
+                                                            client,
+                                                        )
+                                                    }
+                                                }
+                                            })();
+                                            let _ = tx.send(result);
+                                        });
+                                        let status_label_for_toggle =
+                                            status_label_for_toggle.clone();
+                                        let refresh_handle_for_toggle =
+                                            refresh_handle_for_toggle.clone();
+                                        let toggle = toggle.clone();
+                                        gtk::glib::timeout_add_local(
+                                            Duration::from_millis(60),
+                                            move || match rx.try_recv() {
+                                                Ok(Ok(())) => {
+                                                    status_label_for_toggle
+                                                        .set_text("Assignment updated.");
+                                                    if let Some(refresh) =
+                                                        refresh_handle_for_toggle.borrow().as_ref()
+                                                    {
+                                                        refresh();
+                                                    }
+                                                    gtk::glib::ControlFlow::Break
+                                                }
+                                                Ok(Err(err)) => {
+                                                    status_label_for_toggle
+                                                        .set_text(&format!(
+                                                            "Toggle failed: {err}"
+                                                        ));
+                                                    toggle.set_active(!enabled);
+                                                    gtk::glib::ControlFlow::Break
+                                                }
+                                                Err(mpsc::TryRecvError::Empty) => {
+                                                    gtk::glib::ControlFlow::Continue
+                                                }
+                                                Err(mpsc::TryRecvError::Disconnected) => {
+                                                    gtk::glib::ControlFlow::Break
+                                                }
+                                            },
+                                        );
+                                    })
+                                };
+                                let status_label_for_cancel = status_label_for_toggle.clone();
+                                let toggle_for_cancel = toggle.clone();
+                                run_with_opencode_reload_guard(
+                                    parent_for_toggle.as_ref(),
+                                    manager_for_toggle.clone(),
+                                    profile_id,
+                                    status_label_for_toggle.clone(),
+                                    start_toggle,
+                                    Rc::new(move || {
+                                        status_label_for_cancel
+                                            .set_text("Assignment canceled.");
+                                        toggle_for_cancel.set_active(!enabled);
+                                    }),
                                 );
                             });
                         }

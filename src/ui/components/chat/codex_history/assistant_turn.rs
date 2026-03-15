@@ -173,6 +173,22 @@ fn append_history_assistant_turn(
             .and_then(Value::as_str)
             .unwrap_or("unknown")
         {
+            "reasoning" => {
+                let text = item.get("text").and_then(Value::as_str).unwrap_or("");
+                if !text.trim().is_empty() {
+                    let (widget, generic_ui) =
+                        super::message_render::create_reasoning_widget();
+                    let title = super::codex_events::reasoning_duration_summary(item)
+                        .unwrap_or_else(|| super::codex_events::summarize_reasoning_text(text));
+                    generic_ui.set_title(&title);
+                    generic_ui.set_status("");
+                    generic_ui.set_details("", text);
+                    generic_ui.set_running(false);
+                    generic_ui.set_expanded(false);
+                    super::message_render::append_reasoning_widget(&body_box, &widget);
+                    has_content = true;
+                }
+            }
             "agentMessage" => {
                 if let Some(text) = super::codex_events::extract_agent_message_text(item) {
                     if !text.trim().is_empty() {
@@ -250,8 +266,10 @@ fn append_history_assistant_turn(
                 );
                 has_content = true;
             }
-            "webSearch" | "mcpToolCall" | "collabToolCall" | "imageView" | "enteredReviewMode"
-            | "exitedReviewMode" | "contextCompaction" => {
+            "webSearch" | "webFetch" | "fileRead" | "fileSearch" | "directoryList"
+            | "codeSearch" | "skillCall" | "todoList" | "questionTool" | "mcpToolCall"
+            | "collabToolCall" | "imageView" | "enteredReviewMode" | "exitedReviewMode"
+            | "contextCompaction" => {
                 if let Some(item_id) = item.get("id").and_then(Value::as_str) {
                     if cached_tool_item_ids.contains(item_id) {
                         continue;

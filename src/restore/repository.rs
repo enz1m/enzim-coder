@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 struct ThreadContext {
     local_thread_id: i64,
     workspace_root: PathBuf,
-    codex_thread_id: String,
+    remote_thread_id: String,
 }
 
 #[derive(Clone, Debug)]
@@ -66,11 +66,11 @@ fn normalize_path_for_workspace(raw_path: &str, workspace_root: &Path) -> Option
     normalize_rel_path(raw_path)
 }
 
-fn extract_local_thread_id(db: &AppDb, codex_thread_id: &str) -> Option<i64> {
+fn extract_local_thread_id_for_remote_thread(db: &AppDb, remote_thread_id: &str) -> Option<i64> {
     let workspaces = db.list_workspaces_with_threads().ok()?;
     for ws in workspaces {
         for thread in ws.threads {
-            if thread.codex_thread_id.as_deref() == Some(codex_thread_id) {
+            if thread.remote_thread_id() == Some(remote_thread_id) {
                 return Some(thread.id);
             }
         }
@@ -90,13 +90,16 @@ fn workspace_of_thread(db: &AppDb, local_thread_id: i64) -> Option<PathBuf> {
     None
 }
 
-fn resolve_thread_context(db: &AppDb, codex_thread_id: &str) -> Option<ThreadContext> {
-    let local_thread_id = extract_local_thread_id(db, codex_thread_id)?;
+fn resolve_thread_context_by_remote_id(
+    db: &AppDb,
+    remote_thread_id: &str,
+) -> Option<ThreadContext> {
+    let local_thread_id = extract_local_thread_id_for_remote_thread(db, remote_thread_id)?;
     let workspace_root = workspace_of_thread(db, local_thread_id)?;
     Some(ThreadContext {
         local_thread_id,
         workspace_root,
-        codex_thread_id: codex_thread_id.to_string(),
+        remote_thread_id: remote_thread_id.to_string(),
     })
 }
 
@@ -273,7 +276,7 @@ fn insert_checkpoint(
     conn.execute(
         "INSERT INTO restore_checkpoints(local_thread_id, codex_thread_id, turn_id, created_at)
          VALUES(?1, ?2, ?3, ?4)",
-        params![ctx.local_thread_id, ctx.codex_thread_id, turn_id, now],
+        params![ctx.local_thread_id, ctx.remote_thread_id, turn_id, now],
     )?;
     let checkpoint_id = conn.last_insert_rowid();
 
@@ -285,7 +288,7 @@ fn insert_checkpoint(
         params![
             checkpoint_id,
             ctx.local_thread_id,
-            ctx.codex_thread_id,
+            ctx.remote_thread_id,
             git_dir.to_string_lossy().to_string(),
             before_tree,
             after_tree,
@@ -486,11 +489,11 @@ pub fn clear_thread_restore_data(db: &AppDb, local_thread_id: i64) -> Result<(),
 
 pub fn capture_turn_checkpoint(
     db: &AppDb,
-    codex_thread_id: &str,
+    remote_thread_id: &str,
     turn_id: &str,
     file_change_items: &[Value],
 ) -> rusqlite::Result<Option<i64>> {
-    let Some(ctx) = resolve_thread_context(db, codex_thread_id) else {
+    let Some(ctx) = resolve_thread_context_by_remote_id(db, remote_thread_id) else {
         return Ok(None);
     };
 
@@ -530,10 +533,10 @@ pub fn capture_turn_checkpoint(
 
 pub fn capture_workspace_delta_checkpoint(
     db: &AppDb,
-    codex_thread_id: &str,
+    remote_thread_id: &str,
     turn_id: &str,
 ) -> rusqlite::Result<Option<i64>> {
-    let Some(ctx) = resolve_thread_context(db, codex_thread_id) else {
+    let Some(ctx) = resolve_thread_context_by_remote_id(db, remote_thread_id) else {
         return Ok(None);
     };
 
@@ -584,7 +587,7 @@ pub fn capture_workspace_delta_checkpoint(
         eprintln!(
             "[restore] skipped workspace delta checkpoint: too many changed files ({}) thread_id={}",
             touched_paths.len(),
-            codex_thread_id
+            remote_thread_id
         );
         return Ok(None);
     }
@@ -604,9 +607,9 @@ pub fn capture_workspace_delta_checkpoint(
 
 pub fn ensure_thread_baseline_checkpoint(
     db: &AppDb,
-    codex_thread_id: &str,
+    remote_thread_id: &str,
 ) -> rusqlite::Result<Option<i64>> {
-    let Some(ctx) = resolve_thread_context(db, codex_thread_id) else {
+    let Some(ctx) = resolve_thread_context_by_remote_id(db, remote_thread_id) else {
         return Ok(None);
     };
 
@@ -650,7 +653,7 @@ pub fn ensure_thread_baseline_checkpoint(
     )?;
     eprintln!(
         "[restore] created baseline checkpoint thread_id={} checkpoint_id={} tree={}",
-        codex_thread_id, checkpoint_id, tree
+        remote_thread_id, checkpoint_id, tree
     );
 
     Ok(Some(checkpoint_id))
@@ -658,7 +661,7 @@ pub fn ensure_thread_baseline_checkpoint(
 
 pub fn capture_preimages_for_item(
     _db: &AppDb,
-    _codex_thread_id: &str,
+    _remote_thread_id: &str,
     _item: &Value,
 ) -> Option<Value> {
     None
@@ -666,9 +669,10 @@ pub fn capture_preimages_for_item(
 
 pub fn list_checkpoints_for_thread(
     db: &AppDb,
-    codex_thread_id: &str,
+    remote_thread_id: &str,
 ) -> rusqlite::Result<Vec<RestoreCheckpoint>> {
-    let Some(local_thread_id) = extract_local_thread_id(db, codex_thread_id) else {
+    let Some(local_thread_id) = extract_local_thread_id_for_remote_thread(db, remote_thread_id)
+    else {
         return Ok(Vec::new());
     };
 
@@ -708,9 +712,10 @@ pub fn list_checkpoints_for_thread(
 
 pub fn last_backup_checkpoint_for_thread(
     db: &AppDb,
-    codex_thread_id: &str,
+    remote_thread_id: &str,
 ) -> rusqlite::Result<Option<i64>> {
-    let Some(local_thread_id) = extract_local_thread_id(db, codex_thread_id) else {
+    let Some(local_thread_id) = extract_local_thread_id_for_remote_thread(db, remote_thread_id)
+    else {
         return Ok(None);
     };
 
@@ -735,10 +740,10 @@ pub fn last_backup_checkpoint_for_thread(
 
 pub fn preview_restore_to_checkpoint(
     db: &AppDb,
-    codex_thread_id: &str,
+    remote_thread_id: &str,
     target_checkpoint_id: i64,
 ) -> rusqlite::Result<Option<RestorePreview>> {
-    let Some(ctx) = resolve_thread_context(db, codex_thread_id) else {
+    let Some(ctx) = resolve_thread_context_by_remote_id(db, remote_thread_id) else {
         return Ok(None);
     };
     let Some(state) = checkpoint_state(db, ctx.local_thread_id, target_checkpoint_id)? else {
@@ -794,14 +799,14 @@ pub fn preview_restore_to_checkpoint(
 
 pub fn apply_restore_to_checkpoint(
     db: &AppDb,
-    codex_thread_id: &str,
+    remote_thread_id: &str,
     target_checkpoint_id: i64,
     selected_paths: &[String],
     forced_paths: &[String],
 ) -> Result<Option<RestoreApplyResult>, String> {
     let _ = forced_paths;
 
-    let Some(ctx) = resolve_thread_context(db, codex_thread_id) else {
+    let Some(ctx) = resolve_thread_context_by_remote_id(db, remote_thread_id) else {
         return Ok(None);
     };
     let Some(state) = checkpoint_state(db, ctx.local_thread_id, target_checkpoint_id)

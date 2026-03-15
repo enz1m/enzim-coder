@@ -880,19 +880,18 @@ fn collect_checkpoint_diff_entries(file_path: &Path) -> (Vec<CheckpointDiffEntry
             "Active thread record is unavailable.".to_string(),
         );
     };
-    let Some(codex_thread_id) = thread
-        .codex_thread_id
-        .as_deref()
+    let Some(remote_thread_id) = thread
+        .remote_thread_id()
         .filter(|id| !id.trim().is_empty())
         .map(|id| id.to_string())
     else {
         return (
             Vec::new(),
-            "Thread has no Codex id yet. Checkpoint diffs unavailable.".to_string(),
+            "Thread has no remote runtime id yet. Checkpoint diffs unavailable.".to_string(),
         );
     };
     let Some(workspace_path) = db
-        .workspace_path_for_codex_thread(&codex_thread_id)
+        .workspace_path_for_remote_thread(&remote_thread_id)
         .ok()
         .flatten()
     else {
@@ -924,7 +923,7 @@ fn collect_checkpoint_diff_entries(file_path: &Path) -> (Vec<CheckpointDiffEntry
         Ok(stmt) => stmt,
         Err(_) => return (Vec::new(), "Unable to load checkpoint history.".to_string()),
     };
-    let rows = match stmt.query_map(params![codex_thread_id], |row| {
+    let rows = match stmt.query_map(params![remote_thread_id], |row| {
         Ok((
             row.get::<_, i64>(0)?,
             row.get::<_, String>(1)?,

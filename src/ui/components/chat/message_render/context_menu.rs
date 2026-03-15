@@ -348,7 +348,7 @@ fn fallback_active_thread_id(db: &AppDb) -> Option<String> {
     db.get_thread_record(local_thread_id)
         .ok()
         .flatten()
-        .and_then(|thread| thread.codex_thread_id)
+        .and_then(|thread| thread.remote_thread_id_owned())
 }
 
 fn find_message_row(root: &gtk::Widget) -> Option<gtk::Widget> {
@@ -418,32 +418,41 @@ fn start_fork_from_context(content: &gtk::Widget) {
         eprintln!("fork action ignored: chat context unavailable");
         return;
     };
-    let Some(source_codex_thread_id) =
+    let Some(source_thread_id) =
         current_messages_box_thread_id(content).or_else(|| fallback_active_thread_id(db.as_ref()))
     else {
         eprintln!("fork action ignored: source thread id unavailable");
         return;
     };
     let Some(source_thread) = db
-        .get_thread_record_by_codex_thread_id(&source_codex_thread_id)
+        .get_thread_record_by_remote_thread_id(&source_thread_id)
         .ok()
         .flatten()
     else {
         eprintln!("fork action ignored: source local thread record not found");
         return;
     };
-    let Some(client) = manager.resolve_client_for_thread_id(&source_codex_thread_id) else {
+    let Some(client) = manager.resolve_client_for_thread_id(&source_thread_id) else {
         eprintln!("fork action ignored: runtime client unavailable for source thread");
         return;
     };
+    if !client.capabilities().supports_fork {
+        eprintln!("fork action ignored: runtime does not support thread fork");
+        return;
+    }
     let target_turn_id = extract_turn_id_from_assistant_context(content);
-    let source_codex_thread_id_for_worker = source_codex_thread_id.clone();
+    let source_thread_id_for_worker = source_thread_id.clone();
     let target_turn_id_for_worker = target_turn_id.clone();
     let (tx, rx) = mpsc::channel::<Result<(String, Value), String>>();
     thread::spawn(move || {
         let result = (|| -> Result<(String, Value), String> {
-            let forked_thread_id = client.thread_fork(&source_codex_thread_id_for_worker)?;
+            let forked_thread_id = client.thread_fork(&source_thread_id_for_worker)?;
             if let Some(target_turn_id) = target_turn_id_for_worker.as_deref() {
+                if !client.capabilities().supports_rollback {
+                    return Err(
+                        "runtime does not support rollback for fork-at-turn".to_string(),
+                    );
+                }
                 let fork_thread = client.thread_read(&forked_thread_id, true)?;
                 if let Some(rollback_count) =
                     rollback_count_after_target_turn(&fork_thread, target_turn_id)
@@ -463,14 +472,14 @@ fn start_fork_from_context(content: &gtk::Widget) {
     gtk::glib::timeout_add_local(Duration::from_millis(30), move || match rx.try_recv() {
         Ok(Ok((forked_thread_id, forked_thread))) => {
             let fork_title = source_thread.title.clone();
-            let new_thread = match db.create_thread(
+            let new_thread = match db.create_thread_with_remote_identity(
                 source_thread.workspace_id,
                 source_thread.profile_id,
                 Some(source_thread.id),
                 &fork_title,
                 Some(&forked_thread_id),
-                source_thread.codex_account_type.as_deref(),
-                source_thread.codex_account_email.as_deref(),
+                source_thread.remote_account_type(),
+                source_thread.remote_account_email(),
             ) {
                 Ok(record) => record,
                 Err(err) => {

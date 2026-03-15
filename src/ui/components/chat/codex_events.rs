@@ -157,6 +157,72 @@ pub(super) fn sanitize_stream_status_text(raw: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+pub(super) fn summarize_reasoning_text(raw: &str) -> String {
+    let latest_line = raw
+        .lines()
+        .rev()
+        .find(|line| !line.trim().is_empty())
+        .map(sanitize_stream_status_text)
+        .unwrap_or_default();
+    if latest_line.is_empty() {
+        return "Thinking...".to_string();
+    }
+    let mut summary = String::new();
+    for ch in latest_line.chars().take(96) {
+        summary.push(ch);
+    }
+    if latest_line.chars().count() > 96 {
+        summary.push_str("...");
+    }
+    summary
+}
+
+fn item_timestamp_millis(item: &Value, key: &str) -> Option<i64> {
+    let raw = item.get(key)?;
+    if let Some(value) = raw.as_i64() {
+        return Some(if value > 1_000_000_000_000 {
+            value
+        } else {
+            value.saturating_mul(1_000)
+        });
+    }
+    raw.as_str()
+        .and_then(|value| value.parse::<i64>().ok())
+        .map(|value| {
+            if value > 1_000_000_000_000 {
+                value
+            } else {
+                value.saturating_mul(1_000)
+            }
+        })
+}
+
+pub(super) fn reasoning_duration_summary(item: &Value) -> Option<String> {
+    let started = item_timestamp_millis(item, "startedAt")?;
+    let completed = item_timestamp_millis(item, "completedAt")?;
+    if completed <= started {
+        return None;
+    }
+    let elapsed_secs = ((completed - started) / 1_000).max(1);
+    if elapsed_secs < 60 {
+        Some(format!("Thought for {elapsed_secs} sec"))
+    } else {
+        let elapsed_mins = ((elapsed_secs as f64) / 60.0).round() as i64;
+        Some(format!("Thought for {} min", elapsed_mins.max(1)))
+    }
+}
+
+pub(super) fn format_elapsed_clock(total_secs: u64) -> String {
+    let hours = total_secs / 3600;
+    let minutes = (total_secs % 3600) / 60;
+    let seconds = total_secs % 60;
+    if hours > 0 {
+        format!("{hours:02}:{minutes:02}:{seconds:02}")
+    } else {
+        format!("{minutes:02}:{seconds:02}")
+    }
+}
+
 pub(super) fn item_kind_for_delta_method(method: &str) -> Option<&'static str> {
     match method {
         "item/agentMessage/delta" => Some("agentMessage"),
@@ -168,6 +234,14 @@ pub(super) fn item_kind_for_delta_method(method: &str) -> Option<&'static str> {
             Some("dynamicToolCall")
         }
         "item/webSearch/outputDelta" | "item/webSearch/textDelta" => Some("webSearch"),
+        "item/fileRead/outputDelta" | "item/fileRead/textDelta" => Some("fileRead"),
+        "item/fileSearch/outputDelta" | "item/fileSearch/textDelta" => Some("fileSearch"),
+        "item/directoryList/outputDelta" | "item/directoryList/textDelta" => Some("directoryList"),
+        "item/codeSearch/outputDelta" | "item/codeSearch/textDelta" => Some("codeSearch"),
+        "item/webFetch/outputDelta" | "item/webFetch/textDelta" => Some("webFetch"),
+        "item/skillCall/outputDelta" | "item/skillCall/textDelta" => Some("skillCall"),
+        "item/todoList/outputDelta" | "item/todoList/textDelta" => Some("todoList"),
+        "item/questionTool/outputDelta" | "item/questionTool/textDelta" => Some("questionTool"),
         "item/mcpToolCall/outputDelta" | "item/mcpToolCall/textDelta" => Some("mcpToolCall"),
         "item/collabToolCall/outputDelta" | "item/collabToolCall/textDelta" => {
             Some("collabToolCall")
@@ -363,6 +437,51 @@ pub(super) fn extract_generic_item_fields(
             }
             ("Web Search".to_string(), title, summary, status, output)
         }
+        "webFetch" => {
+            let title = cached_title.unwrap_or_else(|| {
+                item.get("url")
+                    .and_then(Value::as_str)
+                    .unwrap_or("Web fetch")
+                    .to_string()
+            });
+            let summary = cached_summary.unwrap_or_else(|| "Fetched web content".to_string());
+            ("Web Fetch".to_string(), title, summary, status, output)
+        }
+        "fileRead" => {
+            let title = cached_title.unwrap_or_else(|| "File".to_string());
+            let summary = cached_summary.unwrap_or_default();
+            ("File Read".to_string(), title, summary, status, output)
+        }
+        "fileSearch" => {
+            let title = cached_title.unwrap_or_else(|| "Search files".to_string());
+            let summary = cached_summary.unwrap_or_default();
+            ("File Search".to_string(), title, summary, status, output)
+        }
+        "directoryList" => {
+            let title = cached_title.unwrap_or_else(|| ".".to_string());
+            let summary = cached_summary.unwrap_or_else(|| "List directory contents".to_string());
+            ("Directory List".to_string(), title, summary, status, output)
+        }
+        "codeSearch" => {
+            let title = cached_title.unwrap_or_else(|| "Code search".to_string());
+            let summary = cached_summary.unwrap_or_default();
+            ("Code Search".to_string(), title, summary, status, output)
+        }
+        "skillCall" => {
+            let title = cached_title.unwrap_or_else(|| "Skill".to_string());
+            let summary = cached_summary.unwrap_or_default();
+            ("Skill".to_string(), title, summary, status, output)
+        }
+        "todoList" => {
+            let title = cached_title.unwrap_or_else(|| "Todo list".to_string());
+            let summary = cached_summary.unwrap_or_default();
+            ("Todo".to_string(), title, summary, status, output)
+        }
+        "questionTool" => {
+            let title = cached_title.unwrap_or_else(|| "Question".to_string());
+            let summary = cached_summary.unwrap_or_default();
+            ("Question".to_string(), title, summary, status, output)
+        }
         "mcpToolCall" => {
             let name = cached_title.unwrap_or_else(|| {
                 item.get("toolName")
@@ -459,6 +578,11 @@ pub(super) fn format_command_status_label(
     let mut parts = Vec::new();
     parts.push(if status == "failed" {
         "Failed".to_string()
+    } else if matches!(
+        status,
+        "pendingApproval" | "pending_approval" | "waitingApproval" | "needsApproval"
+    ) {
+        "Waiting for approval".to_string()
     } else if status == "running" {
         "Running".to_string()
     } else {

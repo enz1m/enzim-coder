@@ -254,7 +254,15 @@ pub(super) fn create_file_change_widget(item: &Value) -> gtk::Box {
         .and_then(Value::as_array)
         .map(Vec::as_slice)
         .unwrap_or(&[]);
-    let section = if changes.len() == 1 {
+    let operation = item
+        .get("operation")
+        .and_then(Value::as_str)
+        .unwrap_or("edit");
+    let section = if changes.len() == 1 && operation == "create" {
+        "New File".to_string()
+    } else if changes.len() == 1 && operation == "write" {
+        "File Write".to_string()
+    } else if changes.len() == 1 {
         "File Edit".to_string()
     } else {
         format!("File Edits ({})", changes.len())

@@ -26,7 +26,8 @@ pub(super) fn remove_thread_from_multiview_layout(db: &AppDb, codex_thread_id: &
         .cloned()
         .unwrap_or_default();
     panes.retain(|pane| {
-        pane.get("codexThreadId")
+        pane.get("threadId")
+            .or_else(|| pane.get("codexThreadId"))
             .and_then(Value::as_str)
             .map(|id| id != codex_thread_id)
             .unwrap_or(true)

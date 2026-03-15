@@ -382,6 +382,14 @@ fn is_generic_item_kind(kind: &str) -> bool {
     matches!(
         kind,
         "webSearch"
+            | "webFetch"
+            | "fileRead"
+            | "fileSearch"
+            | "directoryList"
+            | "codeSearch"
+            | "skillCall"
+            | "todoList"
+            | "questionTool"
             | "mcpToolCall"
             | "collabToolCall"
             | "imageView"
@@ -584,7 +592,7 @@ fn remove_persisted_pending_request(
 
 #[allow(clippy::too_many_arguments)]
 fn show_pending_request_card(
-    client: &Arc<CodexAppServer>,
+    client: &Arc<RuntimeClient>,
     turn_uis: &Rc<RefCell<HashMap<String, super::TurnUi>>>,
     pending_server_requests_by_id: &Rc<RefCell<HashMap<i64, PendingServerRequestUi>>>,
     messages_box: &gtk::Box,

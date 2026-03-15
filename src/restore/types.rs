@@ -9,6 +9,23 @@ pub struct RestoreCheckpoint {
     pub created_at: i64,
 }
 
+impl RestoreCheckpoint {
+    #[allow(dead_code)]
+    pub fn remote_thread_id(&self) -> &str {
+        &self.codex_thread_id
+    }
+
+    #[allow(dead_code)]
+    pub fn remote_thread_id_owned(&self) -> String {
+        self.codex_thread_id.clone()
+    }
+
+    #[allow(dead_code)]
+    pub fn legacy_codex_thread_id(&self) -> &str {
+        &self.codex_thread_id
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum RestoreAction {
     #[allow(dead_code)]

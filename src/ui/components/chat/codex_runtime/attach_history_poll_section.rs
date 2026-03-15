@@ -3,7 +3,7 @@
             if loading_history_thread_id.borrow().as_deref() == Some(thread_id.as_str()) {
                 loading_history_thread_id.replace(None);
             }
-            if active_codex_thread_id.borrow().as_deref() != Some(thread_id.as_str()) {
+            if active_thread_id.borrow().as_deref() != Some(thread_id.as_str()) {
                 continue;
             }
 

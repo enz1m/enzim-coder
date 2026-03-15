@@ -247,6 +247,9 @@ pub struct ModelInfo {
     pub id: String,
     pub display_name: String,
     pub is_default: bool,
+    pub variants: Vec<String>,
+    pub default_reasoning_effort: Option<String>,
+    pub reasoning_efforts: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -306,10 +309,12 @@ impl CodexAppServer {
         input_items
     }
 
+    #[allow(dead_code)]
     pub fn connect() -> Result<Arc<Self>, String> {
         Self::connect_with_home_and_label(None, "system")
     }
 
+    #[allow(dead_code)]
     pub fn connect_with_home(home_dir: Option<&Path>) -> Result<Arc<Self>, String> {
         Self::connect_with_home_and_label(home_dir, "system")
     }
@@ -488,6 +493,25 @@ impl CodexAppServer {
                     id,
                     display_name,
                     is_default,
+                    variants: Vec::new(),
+                    default_reasoning_effort: entry
+                        .get("defaultReasoningEffort")
+                        .and_then(Value::as_str)
+                        .map(ToOwned::to_owned),
+                    reasoning_efforts: entry
+                        .get("supportedReasoningEfforts")
+                        .and_then(Value::as_array)
+                        .map(|items| {
+                            items
+                                .iter()
+                                .filter_map(|item| {
+                                    item.get("reasoningEffort")
+                                        .and_then(Value::as_str)
+                                        .map(ToOwned::to_owned)
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default(),
                 });
             }
             Ok(out)

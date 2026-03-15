@@ -7,7 +7,7 @@ fn attach_inner(
     conversation_stack: gtk::Stack,
     suggestion_row: gtk::Box,
     track_background_completion: bool,
-    active_codex_thread_id: Rc<RefCell<Option<String>>>,
+    active_thread_id: Rc<RefCell<Option<String>>>,
     turn_uis: Rc<RefCell<HashMap<String, super::TurnUi>>>,
     item_turns: Rc<RefCell<HashMap<String, String>>>,
     item_kinds: Rc<RefCell<HashMap<String, String>>>,
@@ -24,6 +24,7 @@ fn attach_inner(
     loading_history_thread_id: Rc<RefCell<Option<String>>>,
 ) {
     let (history_tx, history_rx) = mpsc::channel::<HistorySyncMessage>();
+    let (pending_request_tx, pending_request_rx) = mpsc::channel::<PendingRequestSyncMessage>();
     let (history_snapshot_tx, history_snapshot_rx) = mpsc::channel::<(
         String,
         Result<super::codex_history::ThreadHistoryRenderSnapshot, String>,
@@ -56,7 +57,7 @@ fn attach_inner(
         }
         ensure_shared_event_workers(&manager);
 
-        let active_thread_now = active_codex_thread_id.borrow().clone();
+        let active_thread_now = active_thread_id.borrow().clone();
         if let Some(thread_id) = active_thread_now.as_deref() {
             if take_history_reload_request(thread_id) {
                 mark_history_dirty_for_thread(thread_id);
@@ -95,6 +96,7 @@ fn attach_inner(
                 &loading_history_thread_id,
                 &history_snapshot_tx,
                 &history_tx,
+                &pending_request_tx,
             );
         }
 
@@ -116,7 +118,7 @@ fn attach_inner(
                     eprintln!(
                         "[chat-load:{thread_id}] detached sqlite snapshot load failed: {err}"
                     );
-                    if active_codex_thread_id.borrow().as_deref() == Some(thread_id.as_str()) {
+                    if active_thread_id.borrow().as_deref() == Some(thread_id.as_str()) {
                         super::clear_messages(&messages_box);
                         conversation_stack.set_visible_child_name("empty");
                         suggestion_row.set_visible(true);
@@ -127,10 +129,39 @@ fn attach_inner(
             }
         }
 
+        while let Ok((thread_id, pending_result)) = pending_request_rx.try_recv() {
+            match pending_result {
+                Ok(entries) => {
+                    if active_thread_id.borrow().as_deref() == Some(thread_id.as_str()) {
+                        replace_pending_requests_for_thread(
+                            &db,
+                            &manager,
+                            &thread_id,
+                            entries,
+                            &turn_uis,
+                            &pending_server_requests_by_id,
+                            &pending_request_thread_by_id,
+                            &messages_box,
+                            &messages_scroll,
+                            &conversation_stack,
+                            &cached_pending_requests_for_thread,
+                        );
+                    } else {
+                        super::codex_history::save_cached_pending_requests(&db, &thread_id, &entries);
+                    }
+                }
+                Err(err) => {
+                    eprintln!(
+                        "[chat-load:{thread_id}] failed to refresh pending server requests: {err}"
+                    );
+                }
+            }
+        }
+
         include!("attach_history_poll_section.rs");
 
         while let Ok((thread_id, turn_id, checkpoint_id)) = checkpoint_rx.try_recv() {
-            let active_thread = active_codex_thread_id.borrow().clone();
+            let active_thread = active_thread_id.borrow().clone();
             append_checkpoint_strip_for_turn(
                 &manager,
                 &messages_box,

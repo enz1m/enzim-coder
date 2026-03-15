@@ -1,4 +1,4 @@
-use crate::codex_appserver::CodexAppServer;
+use crate::backend::RuntimeClient;
 use crate::codex_profiles::CodexProfileManager;
 use crate::data::AppDb;
 use gtk::prelude::*;
@@ -36,7 +36,7 @@ struct BrowserEntry {
 
 #[derive(Clone, Debug)]
 struct WorktreeBatchEntry {
-    forked_codex_thread_id: String,
+    forked_thread_id: String,
     worktree_path: String,
     worktree_branch: String,
 }
@@ -1058,6 +1058,20 @@ fn composer_setting_key(thread_id: &str, suffix: &str) -> String {
     format!("thread:{thread_id}:composer:{suffix}")
 }
 
+pub(crate) fn default_composer_setting_key(suffix: &str) -> String {
+    format!("composer:default:{suffix}")
+}
+
+pub(crate) fn default_composer_setting_value(db: &AppDb, suffix: &str) -> Option<String> {
+    db.get_setting(&default_composer_setting_key(suffix))
+        .ok()
+        .flatten()
+}
+
+pub(crate) fn save_default_composer_setting_value(db: &AppDb, suffix: &str, value: &str) {
+    let _ = db.set_setting(&default_composer_setting_key(suffix), value);
+}
+
 fn thread_setting_value(db: &AppDb, thread_id: &str, suffix: &str) -> Option<String> {
     db.get_setting(&composer_setting_key(thread_id, suffix))
         .ok()
@@ -1066,6 +1080,10 @@ fn thread_setting_value(db: &AppDb, thread_id: &str, suffix: &str) -> Option<Str
 
 fn save_thread_setting(db: &AppDb, thread_id: &str, suffix: &str, value: &str) {
     let _ = db.set_setting(&composer_setting_key(thread_id, suffix), value);
+}
+
+fn save_default_composer_setting(db: &AppDb, suffix: &str, value: &str) {
+    save_default_composer_setting_value(db, suffix, value);
 }
 
 fn title_from_first_prompt(prompt: &str) -> Option<String> {

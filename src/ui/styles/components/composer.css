@@ -323,7 +323,8 @@ button.composer-worktree-create {
   margin: 0 4px 0 2px;
 }
 
-button.composer-selector-button {
+button.composer-selector-button,
+button#composer-selector-button {
   min-height: 22px;
   padding: 0 6px;
   margin: 0;
@@ -336,7 +337,8 @@ button.composer-selector-button {
   color: alpha(@window_fg_color, 0.86);
 }
 
-button.composer-selector-button:hover {
+button.composer-selector-button:hover,
+button#composer-selector-button:hover {
   background: alpha(@window_fg_color, 0.1);
   background-color: alpha(@window_fg_color, 0.1);
   border-color: alpha(@window_fg_color, 0.14);
@@ -344,7 +346,9 @@ button.composer-selector-button:hover {
 }
 
 button.composer-selector-button:active,
-button.composer-selector-button:checked {
+button.composer-selector-button:checked,
+button#composer-selector-button:active,
+button#composer-selector-button:checked {
   background: alpha(@window_fg_color, 0.14);
   background-color: alpha(@window_fg_color, 0.14);
   border-color: alpha(@window_fg_color, 0.2);
@@ -381,16 +385,19 @@ menubutton.composer-selector-button > button.toggle:checked {
   color: alpha(@window_fg_color, 0.99);
 }
 
-.compact-selector-label {
+.compact-selector-label,
+label#compact-selector-label {
   font-size: 0.75rem;
   color: alpha(@window_fg_color, 0.75);
 }
 
-.compact-selector-arrow {
+.compact-selector-arrow,
+image#compact-selector-arrow {
   color: alpha(@window_fg_color, 0.55);
 }
 
-.compact-selector-popover {
+.compact-selector-popover,
+popover#compact-selector-popover {
   background: transparent;
   background-color: transparent;
   background-image: none;
@@ -399,7 +406,9 @@ menubutton.composer-selector-button > button.toggle:checked {
 }
 
 popover.compact-selector-popover > contents,
-popover.compact-selector-popover.background > contents {
+popover.compact-selector-popover.background > contents,
+popover#compact-selector-popover > contents,
+popover#compact-selector-popover.background > contents {
   padding: 4px;
   border-radius: 10px;
   border: 1px solid alpha(@window_fg_color, 0.14);
@@ -410,7 +419,9 @@ popover.compact-selector-popover.background > contents {
 }
 
 popover.compact-selector-popover > arrow,
-popover.compact-selector-popover.background > arrow {
+popover.compact-selector-popover.background > arrow,
+popover#compact-selector-popover > arrow,
+popover#compact-selector-popover.background > arrow {
   background: alpha(@window_bg_color, 0.98);
   background-color: alpha(@window_bg_color, 0.98);
   background-image: none;
@@ -439,7 +450,24 @@ popover.composer-attach-picker-popover.background > arrow {
   border: none;
 }
 
-button.compact-selector-item {
+scrolledwindow#compact-selector-scroll > scrollbar.vertical,
+scrolledwindow#compact-selector-scroll > scrollbar.vertical > range,
+scrolledwindow#compact-selector-scroll > scrollbar.vertical > range > trough,
+scrolledwindow#compact-selector-scroll > scrollbar.vertical > range > trough > slider {
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  opacity: 0;
+}
+
+button.compact-selector-item,
+button#compact-selector-item {
   min-height: 28px;
   border-radius: 8px;
   padding: 2px 8px;
@@ -452,20 +480,28 @@ button.compact-selector-item {
   min-width: 0;
 }
 
-button.compact-selector-item label {
+button.compact-selector-item label,
+button#compact-selector-item label,
+label#compact-selector-item-label {
   color: alpha(@window_fg_color, 0.9);
 }
 
 button.compact-selector-item:hover,
 button.compact-selector-item:active,
-button.compact-selector-item:checked {
+button.compact-selector-item:checked,
+button#compact-selector-item:hover,
+button#compact-selector-item:active,
+button#compact-selector-item:checked {
   background: alpha(@window_fg_color, 0.12);
   color: @window_fg_color;
 }
 
 button.compact-selector-item:hover label,
 button.compact-selector-item:active label,
-button.compact-selector-item:checked label {
+button.compact-selector-item:checked label,
+button#compact-selector-item:hover label,
+button#compact-selector-item:active label,
+button#compact-selector-item:checked label {
   color: @window_fg_color;
 }
 

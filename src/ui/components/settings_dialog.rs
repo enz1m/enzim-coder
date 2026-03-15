@@ -12,7 +12,8 @@ use crate::ui::widget_tree;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingsPage {
-    Profiles,
+    Codex,
+    OpenCode,
     VoiceInput,
     SkillsMcp,
     Remote,
@@ -22,7 +23,8 @@ pub enum SettingsPage {
 impl SettingsPage {
     fn title(self) -> &'static str {
         match self {
-            SettingsPage::Profiles => "Profiles",
+            SettingsPage::Codex => "Codex",
+            SettingsPage::OpenCode => "OpenCode",
             SettingsPage::VoiceInput => "Voice Input",
             SettingsPage::SkillsMcp => "Skills & MCP",
             SettingsPage::Remote => "Remote",
@@ -32,7 +34,8 @@ impl SettingsPage {
 
     fn stack_name(self) -> &'static str {
         match self {
-            SettingsPage::Profiles => "profiles",
+            SettingsPage::Codex => "codex",
+            SettingsPage::OpenCode => "opencode",
             SettingsPage::VoiceInput => "voice-input",
             SettingsPage::SkillsMcp => "skills-mcp",
             SettingsPage::Remote => "remote",
@@ -42,17 +45,19 @@ impl SettingsPage {
 
     fn list_index(self) -> i32 {
         match self {
-            SettingsPage::Profiles => 0,
-            SettingsPage::VoiceInput => 1,
-            SettingsPage::SkillsMcp => 2,
-            SettingsPage::Remote => 3,
-            SettingsPage::About => 4,
+            SettingsPage::Codex => 0,
+            SettingsPage::OpenCode => 1,
+            SettingsPage::VoiceInput => 2,
+            SettingsPage::SkillsMcp => 3,
+            SettingsPage::Remote => 4,
+            SettingsPage::About => 5,
         }
     }
 
     fn icon_name(self) -> &'static str {
         match self {
-            SettingsPage::Profiles => "person-symbolic",
+            SettingsPage::Codex => "provider-codex",
+            SettingsPage::OpenCode => "provider-opencode",
             SettingsPage::VoiceInput => "mic-symbolic",
             SettingsPage::SkillsMcp => "3d-box-symbolic",
             SettingsPage::Remote => "waves-and-screen-symbolic",
@@ -266,7 +271,8 @@ pub fn show(
     nav_list.add_css_class("navigation-sidebar");
     nav_list.add_css_class("settings-nav-list");
     nav_list.set_margin_top(12);
-    nav_list.append(&nav_row("person-symbolic", "Profiles"));
+    nav_list.append(&nav_row("provider-codex", "Codex"));
+    nav_list.append(&nav_row("provider-opencode", "OpenCode"));
     nav_list.append(&nav_row("mic-symbolic", "Voice input"));
     nav_list.append(&nav_row("3d-box-symbolic", "Skills & MCP"));
     nav_list.append(&nav_row("waves-and-screen-symbolic", "Remote"));
@@ -297,7 +303,7 @@ pub fn show(
     header.set_start_widget(Some(&title_row));
     let profiles_create_button = gtk::Button::with_label("Create New");
     profiles_create_button.add_css_class("profile-create-button");
-    profiles_create_button.set_visible(initial_page == SettingsPage::Profiles);
+    profiles_create_button.set_visible(initial_page == SettingsPage::Codex);
     header.set_end_widget(Some(&profiles_create_button));
     content_shell.append(&header);
 
@@ -311,8 +317,28 @@ pub fn show(
     stack.set_transition_type(gtk::StackTransitionType::Crossfade);
     stack.set_transition_duration(140);
 
-    let (profiles_page, profiles_create_action) =
-        profile_settings_dialog::build_settings_page(&dialog, db.clone(), manager.clone());
+    let (codex_page, profiles_create_action) = profile_settings_dialog::build_settings_page(
+        &dialog,
+        db.clone(),
+        manager.clone(),
+        Some("codex"),
+        "Codex Profiles",
+        "Manage isolated Codex runtime profiles. Create additional profiles for separate accounts and backend sessions.",
+        true,
+        false,
+        false,
+    );
+    let (opencode_page, _opencode_create_action) = profile_settings_dialog::build_settings_page(
+        &dialog,
+        db.clone(),
+        manager.clone(),
+        Some("opencode"),
+        "OpenCode",
+        "OpenCode uses a single runtime settings page. This page shows its status and provider settings without exposing extra profile creation.",
+        false,
+        false,
+        true,
+    );
     let voice_page = chat::composer::voice::build_settings_page(&dialog, db.clone(), None, false);
     let skills_mcp_page = skills_mcp_settings::build_settings_page(&dialog, db.clone(), manager);
     let remote_page = remote_settings::build_settings_page(&dialog, db.clone());
@@ -328,7 +354,8 @@ pub fn show(
     skills_mcp_scroll.set_hexpand(true);
     skills_mcp_scroll.set_vexpand(true);
     skills_mcp_scroll.set_child(Some(&skills_mcp_page));
-    stack.add_named(&profiles_page, Some(SettingsPage::Profiles.stack_name()));
+    stack.add_named(&codex_page, Some(SettingsPage::Codex.stack_name()));
+    stack.add_named(&opencode_page, Some(SettingsPage::OpenCode.stack_name()));
     stack.add_named(&voice_page, Some(SettingsPage::VoiceInput.stack_name()));
     stack.add_named(
         &skills_mcp_scroll,
@@ -350,30 +377,36 @@ pub fn show(
             };
             match row.index() {
                 0 => {
-                    stack.set_visible_child_name(SettingsPage::Profiles.stack_name());
-                    page_icon.set_icon_name(Some(SettingsPage::Profiles.icon_name()));
-                    page_title.set_text(SettingsPage::Profiles.title());
+                    stack.set_visible_child_name(SettingsPage::Codex.stack_name());
+                    page_icon.set_icon_name(Some(SettingsPage::Codex.icon_name()));
+                    page_title.set_text(SettingsPage::Codex.title());
                     profiles_create_button.set_visible(true);
                 }
                 1 => {
+                    stack.set_visible_child_name(SettingsPage::OpenCode.stack_name());
+                    page_icon.set_icon_name(Some(SettingsPage::OpenCode.icon_name()));
+                    page_title.set_text(SettingsPage::OpenCode.title());
+                    profiles_create_button.set_visible(false);
+                }
+                2 => {
                     stack.set_visible_child_name(SettingsPage::VoiceInput.stack_name());
                     page_icon.set_icon_name(Some(SettingsPage::VoiceInput.icon_name()));
                     page_title.set_text(SettingsPage::VoiceInput.title());
                     profiles_create_button.set_visible(false);
                 }
-                2 => {
+                3 => {
                     stack.set_visible_child_name(SettingsPage::SkillsMcp.stack_name());
                     page_icon.set_icon_name(Some(SettingsPage::SkillsMcp.icon_name()));
                     page_title.set_text(SettingsPage::SkillsMcp.title());
                     profiles_create_button.set_visible(false);
                 }
-                3 => {
+                4 => {
                     stack.set_visible_child_name(SettingsPage::Remote.stack_name());
                     page_icon.set_icon_name(Some(SettingsPage::Remote.icon_name()));
                     page_title.set_text(SettingsPage::Remote.title());
                     profiles_create_button.set_visible(false);
                 }
-                4 => {
+                5 => {
                     stack.set_visible_child_name(SettingsPage::About.stack_name());
                     page_icon.set_icon_name(Some(SettingsPage::About.icon_name()));
                     page_title.set_text(SettingsPage::About.title());

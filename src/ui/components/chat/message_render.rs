@@ -39,12 +39,14 @@ pub(super) struct ToolCallUi {
 }
 
 pub(super) struct GenericItemUi {
+    pub(super) section_label: gtk::Label,
     pub(super) title_label: gtk::Label,
+    pub(super) status_label: gtk::Label,
     pub(super) summary_label: gtk::Label,
     pub(super) output_label: gtk::Label,
+    pub(super) output_scroll: gtk::ScrolledWindow,
     pub(super) details_revealer: gtk::Revealer,
     pub(super) details_enabled: Rc<RefCell<bool>>,
-    pub(super) chevron: gtk::Image,
     pub(super) headline_text: Rc<RefCell<String>>,
     pub(super) is_running: Rc<RefCell<bool>>,
     pub(super) running_wave_source: Rc<RefCell<Option<gtk::glib::SourceId>>>,
@@ -86,6 +88,12 @@ struct ActionSummaryWaveState {
     running_wave_phase: f64,
 }
 
+#[derive(Clone)]
+struct ActionSectionUi {
+    summary_label: gtk::Label,
+    list: gtk::Box,
+}
+
 thread_local! {
     static CHAT_CONTEXT_REGISTRY: RefCell<HashMap<usize, ChatContextEntry>> = RefCell::new(HashMap::new());
     static STREAM_REVEAL_QUEUE: RefCell<RevealQueueState> = RefCell::new(RevealQueueState::default());
@@ -93,6 +101,7 @@ thread_local! {
     static BOTTOM_SCROLL_FOLLOW_REGISTRY: RefCell<HashMap<usize, Rc<RefCell<i64>>>> = RefCell::new(HashMap::new());
     static AUTO_SCROLL_PAUSE_REGISTRY: RefCell<HashMap<usize, bool>> = RefCell::new(HashMap::new());
     static AUTO_SCROLL_TRACKING_REGISTRY: RefCell<HashSet<usize>> = RefCell::new(HashSet::new());
+    static CHAT_REASONING_TOGGLE_REGISTRY: RefCell<HashMap<usize, gtk::glib::WeakRef<gtk::Box>>> = RefCell::new(HashMap::new());
 }
 
 fn process_stream_reveal_queue() -> gtk::glib::ControlFlow {
@@ -158,6 +167,36 @@ fn find_ancestor_messages_scroll(widget: &gtk::Widget) -> Option<gtk::ScrolledWi
         cursor = node.parent();
     }
     None
+}
+
+fn find_ancestor_messages_box(widget: &gtk::Widget) -> Option<gtk::Box> {
+    let mut cursor = widget.parent();
+    while let Some(node) = cursor {
+        if let Ok(messages_box) = node.clone().downcast::<gtk::Box>() {
+            if messages_box.widget_name() == "chat-messages-box" {
+                return Some(messages_box);
+            }
+        }
+        cursor = node.parent();
+    }
+    None
+}
+
+fn find_ancestor_assistant_surface(widget: &gtk::Widget) -> Option<gtk::Box> {
+    let mut cursor = widget.parent();
+    while let Some(node) = cursor {
+        if let Ok(surface) = node.clone().downcast::<gtk::Box>() {
+            if surface.has_css_class("chat-assistant-surface") {
+                return Some(surface);
+            }
+        }
+        cursor = node.parent();
+    }
+    None
+}
+
+pub(super) fn messages_reasoning_visible(messages_box: &gtk::Box) -> bool {
+    messages_box.has_css_class("chat-reasoning-visible")
 }
 
 fn is_scrolled_to_bottom(messages_scroll: &gtk::ScrolledWindow) -> bool {
@@ -411,7 +450,9 @@ fn wave_markup_for_text(text: &str, phase: f64) -> String {
 }
 
 pub(super) fn set_plain_label_text(label: &gtk::Label, text: &str) {
-    let display = if label.has_css_class("chat-command-output") {
+    let display = if label.has_css_class("chat-command-output")
+        && !label.has_css_class("chat-thinking-output")
+    {
         truncate_detail_text(text).0
     } else {
         text.to_string()
@@ -543,6 +584,23 @@ impl ToolCallUi {
 }
 
 impl GenericItemUi {
+    fn sync_output_scroll_layout(&self) {
+        if !self.output_label.has_css_class("chat-thinking-output") {
+            return;
+        }
+
+        let line_count = self.output_text.borrow().lines().count().max(1);
+        if line_count > 10 {
+            self.output_scroll.set_propagate_natural_height(false);
+            self.output_scroll.set_min_content_height(170);
+            self.output_scroll.set_max_content_height(170);
+        } else {
+            self.output_scroll.set_propagate_natural_height(true);
+            self.output_scroll.set_min_content_height(0);
+            self.output_scroll.set_max_content_height(170);
+        }
+    }
+
     pub(super) fn set_title(&self, text: &str) {
         let normalized = normalize_single_line(text);
         let (display, _) = truncate_to_chars(&normalized, COMMAND_PREVIEW_CHARS);
@@ -594,35 +652,70 @@ impl GenericItemUi {
         }
     }
 
+    pub(super) fn set_status(&self, text: &str) {
+        let text = text.trim();
+        if text.is_empty() {
+            self.status_label.set_visible(false);
+            self.status_label.set_text("");
+        } else {
+            self.status_label.set_visible(true);
+            self.status_label.set_text(text);
+        }
+    }
+
     pub(super) fn set_details(&self, summary: &str, output: &str) {
         if !self.details_supported {
             self.summary_label.set_visible(false);
             self.output_label.set_visible(false);
+            self.output_scroll.set_visible(false);
             self.output_text.replace(String::new());
             self.details_enabled.replace(false);
-            self.chevron.set_visible(false);
             self.details_revealer.set_reveal_child(false);
             return;
         }
         set_plain_label_text(&self.summary_label, summary);
         self.output_text.replace(output.to_string());
+        self.sync_output_scroll_layout();
         let show_summary = !summary.trim().is_empty();
         let show_output = !self.output_text.borrow().trim().is_empty();
         if self.details_revealer.reveals_child() {
             let output = self.output_text.borrow();
             set_plain_label_text(&self.output_label, output.as_str());
             self.output_label.set_visible(!output.trim().is_empty());
+            self.output_scroll.set_visible(!output.trim().is_empty());
         } else {
             set_plain_label_text(&self.output_label, "");
             self.output_label.set_visible(false);
+            self.output_scroll.set_visible(false);
         }
         self.summary_label.set_visible(show_summary);
         let enabled = show_summary || show_output;
         self.details_enabled.replace(enabled);
-        self.chevron.set_visible(enabled);
         if !enabled {
             self.details_revealer.set_reveal_child(false);
         }
+    }
+
+    pub(super) fn set_expanded(&self, expanded: bool) {
+        if !*self.details_enabled.borrow() {
+            self.details_revealer.set_reveal_child(false);
+            set_plain_label_text(&self.output_label, "");
+            self.output_label.set_visible(false);
+            self.output_scroll.set_visible(false);
+            return;
+        }
+        if expanded {
+            let output = self.output_text.borrow();
+            self.sync_output_scroll_layout();
+            set_plain_label_text(&self.output_label, output.as_str());
+            self.output_label.set_visible(!output.trim().is_empty());
+            self.output_scroll.set_visible(!output.trim().is_empty());
+        } else {
+            set_plain_label_text(&self.output_label, "");
+            self.output_label.set_visible(false);
+            self.output_scroll.set_visible(false);
+        }
+        self.details_revealer.set_reveal_child(expanded);
     }
 
     pub(super) fn output_text(&self) -> String {
@@ -1364,6 +1457,132 @@ pub(super) fn append_widget_with_reveal<T: IsA<gtk::Widget>>(parent: &gtk::Box, 
     enqueue_stream_revealer(&revealer);
 }
 
+fn visit_widget_tree(root: &gtk::Widget, visitor: &mut dyn FnMut(&gtk::Widget)) {
+    visitor(root);
+    let mut child = root.first_child();
+    while let Some(node) = child {
+        visit_widget_tree(&node, visitor);
+        child = node.next_sibling();
+    }
+}
+
+fn refresh_registered_reasoning_toggle(messages_box: &gtk::Box) {
+    let key = messages_box_registry_key(messages_box);
+    let has_reasoning = {
+        let root: gtk::Widget = messages_box.clone().upcast();
+        let mut has_reasoning = false;
+        visit_widget_tree(&root, &mut |widget| {
+            if widget.has_css_class("chat-inline-reasoning-revealer") {
+                has_reasoning = true;
+            }
+        });
+        has_reasoning
+    };
+    let is_visible = messages_reasoning_visible(messages_box);
+    CHAT_REASONING_TOGGLE_REGISTRY.with(|registry| {
+        let mut registry = registry.borrow_mut();
+        let Some(toggle_weak) = registry.get(&key).cloned() else {
+            return;
+        };
+        let Some(toggle) = toggle_weak.upgrade() else {
+            registry.remove(&key);
+            return;
+        };
+        toggle.set_visible(has_reasoning);
+        toggle.remove_css_class("is-active");
+        if is_visible {
+            toggle.add_css_class("is-active");
+        }
+        toggle.set_tooltip_text(Some(if is_visible {
+            "Hide thinking"
+        } else {
+            "Show thinking"
+        }));
+    });
+}
+
+pub(super) fn register_chat_reasoning_toggle(messages_box: &gtk::Box, toggle: &gtk::Box) {
+    let key = messages_box_registry_key(messages_box);
+    let weak = gtk::glib::WeakRef::new();
+    weak.set(Some(toggle));
+    CHAT_REASONING_TOGGLE_REGISTRY.with(|registry| {
+        registry.borrow_mut().insert(key, weak);
+    });
+    {
+        let key = key;
+        messages_box.connect_destroy(move |_| {
+            CHAT_REASONING_TOGGLE_REGISTRY.with(|registry| {
+                registry.borrow_mut().remove(&key);
+            });
+        });
+    }
+    refresh_registered_reasoning_toggle(messages_box);
+}
+
+fn set_reasoning_entries_visible(messages_box: &gtk::Box, visible: bool) {
+    let root: gtk::Widget = messages_box.clone().upcast();
+    visit_widget_tree(&root, &mut |widget| {
+        if let Ok(revealer) = widget.clone().downcast::<gtk::Revealer>() {
+            if revealer.has_css_class("chat-inline-reasoning-revealer") {
+                revealer.set_reveal_child(visible);
+            }
+        }
+    });
+    visit_widget_tree(&root, &mut |widget| {
+        let Ok(body_box) = widget.clone().downcast::<gtk::Box>() else {
+            return;
+        };
+        if !body_box.has_css_class("chat-command-list") {
+            return;
+        }
+
+        let mut has_non_reasoning_content = false;
+        let mut has_revealed_reasoning = false;
+        let mut child = body_box.first_child();
+        while let Some(node) = child {
+            if let Ok(revealer) = node.clone().downcast::<gtk::Revealer>() {
+                if revealer.has_css_class("chat-inline-reasoning-revealer") {
+                    if revealer.reveals_child() || revealer.is_child_revealed() {
+                        has_revealed_reasoning = true;
+                    }
+                    child = node.next_sibling();
+                    continue;
+                }
+            }
+            if node.is_visible() {
+                has_non_reasoning_content = true;
+                break;
+            }
+            child = node.next_sibling();
+        }
+
+        let should_show = has_non_reasoning_content || has_revealed_reasoning;
+        body_box.set_visible(should_show);
+        if let Some(surface) = find_ancestor_assistant_surface(&body_box.clone().upcast()) {
+            if should_show {
+                surface.remove_css_class("chat-turn-bubble-initial");
+            } else {
+                surface.add_css_class("chat-turn-bubble-initial");
+            }
+        }
+    });
+}
+
+pub(super) fn toggle_chat_reasoning_visibility(messages_box: &gtk::Box) {
+    set_chat_reasoning_visibility(messages_box, !messages_reasoning_visible(messages_box));
+}
+
+pub(super) fn set_chat_reasoning_visibility(messages_box: &gtk::Box, visible: bool) {
+    if visible {
+        messages_box.add_css_class("chat-reasoning-visible");
+        set_reasoning_entries_visible(messages_box, true);
+    } else {
+        messages_box.remove_css_class("chat-reasoning-visible");
+        set_reasoning_entries_visible(messages_box, false);
+    }
+    refresh_registered_reasoning_toggle(messages_box);
+}
+
 fn action_summary_registry_key(summary_label: &gtk::Label) -> usize {
     summary_label.as_ptr() as usize
 }
@@ -1478,12 +1697,17 @@ fn set_action_summary_running(summary_label: &gtk::Label, running: bool) {
     set_plain_label_text(summary_label, &text);
 }
 
-fn action_section_parts(section: &gtk::Box) -> Option<(gtk::Label, gtk::Box)> {
-    let summary_widget = section.first_child()?;
-    let list_widget = summary_widget.next_sibling()?;
+fn action_section_parts(section: &gtk::Box) -> Option<ActionSectionUi> {
+    let header_widget = section.first_child()?;
+    let list_widget = header_widget.next_sibling()?;
+    let header_row = header_widget.downcast::<gtk::Box>().ok()?;
+    let summary_widget = header_row.first_child()?;
     let summary_label = summary_widget.downcast::<gtk::Label>().ok()?;
-    let list_box = list_widget.downcast::<gtk::Box>().ok()?;
-    Some((summary_label, list_box))
+    let list = list_widget.downcast::<gtk::Box>().ok()?;
+    Some(ActionSectionUi {
+        summary_label,
+        list,
+    })
 }
 
 pub(super) fn set_active_action_section_wave(body_box: &gtk::Box, running: bool) {
@@ -1492,18 +1716,20 @@ pub(super) fn set_active_action_section_wave(body_box: &gtk::Box, running: bool)
         if !section.has_css_class("chat-action-section") {
             return None;
         }
-        let (summary_label, _) = action_section_parts(&section)?;
-        Some(action_summary_registry_key(&summary_label))
+        let action_ui = action_section_parts(&section)?;
+        Some(action_summary_registry_key(&action_ui.summary_label))
     });
 
     let mut child = body_box.first_child();
     while let Some(node) = child {
         if let Ok(section) = node.clone().downcast::<gtk::Box>() {
             if section.has_css_class("chat-action-section") {
-                if let Some((summary_label, _)) = action_section_parts(&section) {
+                if let Some(action_ui) = action_section_parts(&section) {
                     let should_run =
-                        running && Some(action_summary_registry_key(&summary_label)) == active_key;
-                    set_action_summary_running(&summary_label, should_run);
+                        running
+                            && Some(action_summary_registry_key(&action_ui.summary_label))
+                                == active_key;
+                    set_action_summary_running(&action_ui.summary_label, should_run);
                 }
             }
         }
@@ -1582,12 +1808,12 @@ fn update_action_section_summary(summary_label: &gtk::Label, list: &gtk::Box) {
     set_action_summary_text(summary_label, &text);
 }
 
-fn ensure_action_section(body_box: &gtk::Box) -> (gtk::Label, gtk::Box) {
+fn ensure_action_section(body_box: &gtk::Box) -> ActionSectionUi {
     if let Some(last) = body_box.last_child() {
         if let Ok(section) = last.clone().downcast::<gtk::Box>() {
             if section.has_css_class("chat-action-section") {
-                if let Some(parts) = action_section_parts(&section) {
-                    return parts;
+                if let Some(action_ui) = action_section_parts(&section) {
+                    return action_ui;
                 }
             }
         }
@@ -1596,10 +1822,16 @@ fn ensure_action_section(body_box: &gtk::Box) -> (gtk::Label, gtk::Box) {
     let section = gtk::Box::new(gtk::Orientation::Vertical, 2);
     section.add_css_class("chat-action-section");
 
+    let header_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    header_row.add_css_class("chat-action-header");
+    header_row.set_hexpand(true);
+
     let summary_label = gtk::Label::new(Some("Actions - 0"));
     summary_label.set_xalign(0.0);
+    summary_label.set_hexpand(true);
     summary_label.add_css_class("chat-action-summary");
-    section.append(&summary_label);
+    header_row.append(&summary_label);
+    section.append(&header_row);
 
     let list = gtk::Box::new(gtk::Orientation::Vertical, 1);
     list.set_spacing(0);
@@ -1607,7 +1839,20 @@ fn ensure_action_section(body_box: &gtk::Box) -> (gtk::Label, gtk::Box) {
     section.append(&list);
 
     body_box.append(&section);
-    (summary_label, list)
+    let action_ui = ActionSectionUi {
+        summary_label: summary_label.clone(),
+        list: list.clone(),
+    };
+    action_ui
+}
+
+fn current_action_section(body_box: &gtk::Box) -> Option<ActionSectionUi> {
+    let last = body_box.last_child()?;
+    let section = last.downcast::<gtk::Box>().ok()?;
+    if !section.has_css_class("chat-action-section") {
+        return None;
+    }
+    action_section_parts(&section)
 }
 
 fn ensure_text_section(body_box: &gtk::Box) -> gtk::Box {
@@ -1635,13 +1880,13 @@ fn append_action_widget_internal<T: IsA<gtk::Widget>>(
     widget.add_css_class("chat-action-entry");
     widget.add_css_class(action_bucket_class(kind));
 
-    let (summary_label, list) = ensure_action_section(body_box);
+    let action_ui = ensure_action_section(body_box);
     if reveal {
-        append_widget_with_reveal(&list, widget);
+        append_widget_with_reveal(&action_ui.list, widget);
     } else {
-        list.append(widget);
+        action_ui.list.append(widget);
     }
-    update_action_section_summary(&summary_label, &list);
+    update_action_section_summary(&action_ui.summary_label, &action_ui.list);
     set_active_action_section_wave(body_box, reveal);
 }
 
@@ -1659,6 +1904,47 @@ pub(super) fn append_action_widget<T: IsA<gtk::Widget>>(
     widget: &T,
 ) {
     append_action_widget_internal(body_box, kind, widget, false);
+}
+
+fn append_reasoning_widget_internal<T: IsA<gtk::Widget>>(
+    body_box: &gtk::Box,
+    widget: &T,
+    reveal: bool,
+) {
+    widget.add_css_class("chat-inline-reasoning-card");
+    let revealer = gtk::Revealer::new();
+    revealer.add_css_class("chat-inline-reasoning-revealer");
+    revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
+    revealer.set_transition_duration(240);
+    revealer.set_reveal_child(false);
+    revealer.set_child(Some(widget));
+    if let Some(action_ui) = current_action_section(body_box) {
+        action_ui.list.append(&revealer);
+    } else {
+        body_box.append(&revealer);
+    }
+
+    if let Some(messages_box) = find_ancestor_messages_box(&body_box.clone().upcast()) {
+        if messages_reasoning_visible(&messages_box) {
+            if reveal {
+                enqueue_stream_revealer(&revealer);
+            } else {
+                revealer.set_reveal_child(true);
+            }
+        }
+        refresh_registered_reasoning_toggle(&messages_box);
+    }
+}
+
+pub(super) fn append_reasoning_widget_with_reveal<T: IsA<gtk::Widget>>(
+    body_box: &gtk::Box,
+    widget: &T,
+) {
+    append_reasoning_widget_internal(body_box, widget, true);
+}
+
+pub(super) fn append_reasoning_widget<T: IsA<gtk::Widget>>(body_box: &gtk::Box, widget: &T) {
+    append_reasoning_widget_internal(body_box, widget, false);
 }
 
 pub(super) fn create_command_widget(command: &str) -> (gtk::Box, CommandUi) {
@@ -1939,12 +2225,6 @@ pub(super) fn create_tool_call_widget(tool_name: &str, arguments: &str) -> (gtk:
     status_label.add_css_class("chat-card-status");
     header_row.append(&status_label);
 
-    let chevron = gtk::Image::from_icon_name("pan-end-symbolic");
-    chevron.add_css_class("chat-command-chevron");
-    chevron.set_pixel_size(11);
-    chevron.set_valign(gtk::Align::Center);
-    header_row.append(&chevron);
-
     wrapper.append(&header_row);
 
     let details = gtk::Box::new(gtk::Orientation::Vertical, 3);
@@ -1982,15 +2262,11 @@ pub(super) fn create_tool_call_widget(tool_name: &str, arguments: &str) -> (gtk:
 
     {
         let details_revealer_weak = details_revealer.downgrade();
-        let chevron_weak = chevron.downgrade();
         let output_label_weak = output_label.downgrade();
         let output_text = output_text.clone();
         let click = gtk::GestureClick::new();
         click.connect_released(move |_, _, _, _| {
             let Some(details_revealer) = details_revealer_weak.upgrade() else {
-                return;
-            };
-            let Some(chevron) = chevron_weak.upgrade() else {
                 return;
             };
             let Some(output_label) = output_label_weak.upgrade() else {
@@ -2006,11 +2282,6 @@ pub(super) fn create_tool_call_widget(tool_name: &str, arguments: &str) -> (gtk:
                 output_label.set_visible(false);
             }
             details_revealer.set_reveal_child(next);
-            chevron.set_icon_name(if next {
-                Some("pan-down-symbolic")
-            } else {
-                Some("pan-end-symbolic")
-            });
         });
         header_row.add_controller(click);
     }
@@ -2037,8 +2308,20 @@ pub(super) fn create_generic_item_widget(
     wrapper.add_css_class("chat-command-card");
     wrapper.add_css_class("chat-activity-card");
 
-    let icon_name = if section == "Web Search" {
+    let icon_name = if section == "Thinking" {
+        "lightbulb-modern-symbolic"
+    } else if section == "Web Search" || section == "Web Fetch" {
         "web-browser-symbolic"
+    } else if section == "File Read" {
+        "document-open-symbolic"
+    } else if section == "File Search" || section == "Code Search" {
+        "system-search-symbolic"
+    } else if section == "Directory List" {
+        "folder-symbolic"
+    } else if section == "Todo" {
+        "view-list-symbolic"
+    } else if section == "Question" {
+        "dialog-question-symbolic"
     } else {
         "applications-system-symbolic"
     };
@@ -2072,12 +2355,17 @@ pub(super) fn create_generic_item_widget(
     title_label.add_css_class("chat-command-header");
     header_row.append(&title_label);
 
+    let status_label = gtk::Label::new(None);
+    status_label.set_xalign(1.0);
+    status_label.set_valign(gtk::Align::Baseline);
+    status_label.add_css_class("chat-card-status");
+    status_label.set_visible(false);
+    header_row.append(&status_label);
+
     let chevron = gtk::Image::from_icon_name("pan-end-symbolic");
     chevron.add_css_class("chat-command-chevron");
     chevron.set_pixel_size(11);
     chevron.set_valign(gtk::Align::Center);
-    chevron.set_visible(false);
-    header_row.append(&chevron);
 
     wrapper.append(&header_row);
 
@@ -2098,7 +2386,32 @@ pub(super) fn create_generic_item_widget(
     output_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     set_chat_label_selectable(&output_label);
     output_label.add_css_class("chat-command-output");
-    details.append(&output_label);
+    let output_scroll = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .propagate_natural_height(true)
+        .min_content_height(0)
+        .max_content_height(180)
+        .child(&output_label)
+        .build();
+    output_scroll.set_has_frame(false);
+    output_scroll.set_visible(false);
+    output_scroll.add_css_class("chat-command-output-scroll");
+    {
+        let scroll_ctrl =
+            gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
+        scroll_ctrl.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let adj = output_scroll.vadjustment();
+        scroll_ctrl.connect_scroll(move |_, _, dy| {
+            let step = adj.step_increment().max(20.0);
+            let new_val = adj.value() + dy * step;
+            let max = (adj.upper() - adj.page_size()).max(adj.lower());
+            adj.set_value(new_val.clamp(adj.lower(), max));
+            gtk::glib::Propagation::Stop
+        });
+        output_scroll.add_controller(scroll_ctrl);
+    }
+    details.append(&output_scroll);
     let output_text: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
 
     let details_revealer = gtk::Revealer::new();
@@ -2111,19 +2424,19 @@ pub(super) fn create_generic_item_widget(
     let details_enabled = Rc::new(RefCell::new(false));
     {
         let details_revealer_weak = details_revealer.downgrade();
-        let chevron_weak = chevron.downgrade();
         let details_enabled = details_enabled.clone();
         let output_label_weak = output_label.downgrade();
+        let output_scroll_weak = output_scroll.downgrade();
         let output_text = output_text.clone();
         let click = gtk::GestureClick::new();
         click.connect_released(move |_, _, _, _| {
             let Some(details_revealer) = details_revealer_weak.upgrade() else {
                 return;
             };
-            let Some(chevron) = chevron_weak.upgrade() else {
+            let Some(output_label) = output_label_weak.upgrade() else {
                 return;
             };
-            let Some(output_label) = output_label_weak.upgrade() else {
+            let Some(output_scroll) = output_scroll_weak.upgrade() else {
                 return;
             };
             if !*details_enabled.borrow() {
@@ -2134,16 +2447,13 @@ pub(super) fn create_generic_item_widget(
                 let output = output_text.borrow();
                 set_plain_label_text(&output_label, output.as_str());
                 output_label.set_visible(!output.trim().is_empty());
+                output_scroll.set_visible(!output.trim().is_empty());
             } else {
                 set_plain_label_text(&output_label, "");
                 output_label.set_visible(false);
+                output_scroll.set_visible(false);
             }
             details_revealer.set_reveal_child(next);
-            chevron.set_icon_name(if next {
-                Some("pan-down-symbolic")
-            } else {
-                Some("pan-end-symbolic")
-            });
         });
         header_row.add_controller(click);
     }
@@ -2165,12 +2475,14 @@ pub(super) fn create_generic_item_widget(
     let wave_enabled = section == "Web Search" || section == "Context Compaction";
     let details_supported = section != "Context Compaction";
     let generic_ui = GenericItemUi {
+        section_label,
         title_label,
+        status_label,
         summary_label,
         output_label,
+        output_scroll,
         details_revealer,
         details_enabled,
-        chevron,
         headline_text,
         is_running,
         running_wave_source,
@@ -2183,6 +2495,26 @@ pub(super) fn create_generic_item_widget(
     generic_ui.set_details(summary, "");
 
     (wrapper, generic_ui)
+}
+
+pub(super) fn create_reasoning_widget() -> (gtk::Box, GenericItemUi) {
+    let (widget, generic_ui) = create_generic_item_widget("Thinking", "Thinking...", "");
+    widget.add_css_class("chat-thinking-card");
+    generic_ui.section_label.set_visible(false);
+    generic_ui.status_label.set_visible(false);
+    generic_ui.output_scroll.set_max_content_height(170);
+    generic_ui.output_scroll.set_widget_name("chat-thinking-output-scroll");
+    generic_ui.output_scroll.set_overlay_scrolling(true);
+    generic_ui
+        .output_scroll
+        .add_css_class("chat-thinking-output-scroll");
+    generic_ui
+        .summary_label
+        .add_css_class("chat-thinking-summary");
+    generic_ui
+        .output_label
+        .add_css_class("chat-thinking-output");
+    (widget, generic_ui)
 }
 
 include!("message_render/file_changes.rs");

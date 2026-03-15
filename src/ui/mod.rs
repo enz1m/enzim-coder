@@ -41,7 +41,8 @@ fn pane_layout_has_saved_thread(db: &AppDb) -> bool {
         .and_then(serde_json::Value::as_array)
         .map(|panes| {
             panes.iter().any(|pane| {
-                pane.get("codexThreadId")
+                pane.get("threadId")
+                    .or_else(|| pane.get("codexThreadId"))
                     .and_then(serde_json::Value::as_str)
                     .map(|id| !id.trim().is_empty())
                     .unwrap_or(false)
@@ -61,21 +62,9 @@ fn start_account_sync_loop(db: Rc<AppDb>, manager: Rc<CodexProfileManager>) {
         let pending_count = pending_count.clone();
         crate::ui::scheduler::every(Duration::from_millis(80), move || {
             while let Ok((profile_id, account)) = rx.try_recv() {
-                let account_type: Option<String> =
-                    account.as_ref().map(|info| info.account_type.clone());
-                let account_email: Option<String> =
-                    account.as_ref().and_then(|info| info.email.clone());
-                let _ = db.update_codex_profile_account(
-                    profile_id,
-                    account_type.as_deref(),
-                    account_email.as_deref(),
+                let _ = crate::ui::components::runtime_auth_dialog::sync_runtime_account_to_db(
+                    &db, profile_id, account,
                 );
-                if db.runtime_profile_id().ok().flatten() == Some(profile_id) {
-                    let _ = db.set_current_codex_account(
-                        account_type.as_deref(),
-                        account_email.as_deref(),
-                    );
-                }
                 let next = pending_count.borrow().saturating_sub(1);
                 pending_count.replace(next);
                 if next == 0 {
@@ -117,7 +106,7 @@ fn start_account_sync_loop(db: Rc<AppDb>, manager: Rc<CodexProfileManager>) {
 fn start_remote_thread_activation_loop(
     db: Rc<AppDb>,
     sidebar: adw::ToolbarView,
-    active_codex_thread_id: Rc<RefCell<Option<String>>>,
+    active_thread_id: Rc<RefCell<Option<String>>>,
     active_workspace_path: Rc<RefCell<Option<String>>>,
 ) {
     crate::ui::scheduler::every(Duration::from_millis(120), move || {
@@ -143,9 +132,9 @@ fn start_remote_thread_activation_loop(
 
         let _ = db.set_runtime_profile_id(thread.profile_id);
         let _ = db.set_active_profile_id(thread.profile_id);
-        let _ = db.set_current_codex_account(
-            thread.codex_account_type.as_deref(),
-            thread.codex_account_email.as_deref(),
+        let _ = db.set_current_profile_account_identity(
+            thread.remote_account_type(),
+            thread.remote_account_email(),
         );
 
         let workspace_path = thread
@@ -165,17 +154,16 @@ fn start_remote_thread_activation_loop(
         }
         let _ = db.set_setting("last_active_thread_id", &local_thread_id.to_string());
 
-        let linked_codex_thread = thread
-            .codex_thread_id
-            .as_deref()
+        let linked_thread_id = thread
+            .remote_thread_id()
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(|value| value.to_string());
-        if let Some(codex_thread_id) = linked_codex_thread {
-            active_codex_thread_id.replace(Some(codex_thread_id));
+        if let Some(thread_id) = linked_thread_id {
+            active_thread_id.replace(Some(thread_id));
             let _ = db.set_setting("pending_profile_thread_id", "");
         } else {
-            active_codex_thread_id.replace(None);
+            active_thread_id.replace(None);
             let _ = db.set_setting("pending_profile_thread_id", &local_thread_id.to_string());
         }
 
@@ -266,6 +254,7 @@ pub fn build_ui(app: &adw::Application) {
     crate::restore::init(&db);
 
     components::style_picker::initialize_theme(&db);
+    crate::ui::components::chat::runtime_controls::preload_opencode_hidden_model_cache(&db);
 
     let _ = db.ensure_default_codex_profile(&app_data_dir);
     let profile_manager = Rc::new(CodexProfileManager::new(db.clone()));
@@ -279,7 +268,9 @@ pub fn build_ui(app: &adw::Application) {
     let _ = db.set_runtime_profile_id(runtime_profile_id);
     let codex = profile_manager.ensure_started(runtime_profile_id).ok();
     if let Some(client) = codex.as_ref() {
-        let _ = client.model_list(false, 50);
+        crate::ui::components::chat::runtime_controls::refresh_model_options_cache_async(Some(
+            client.clone(),
+        ));
     }
     let launch_ts = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -332,7 +323,7 @@ pub fn build_ui(app: &adw::Application) {
         window.add_css_class("no-backdrop-blur");
     }
 
-    let active_codex_thread_id: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
+    let active_thread_id: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
     let active_workspace_path: Rc<RefCell<Option<String>>> =
         Rc::new(RefCell::new(last_workspace_path));
 
@@ -340,7 +331,7 @@ pub fn build_ui(app: &adw::Application) {
         &window,
         db.clone(),
         profile_manager.clone(),
-        active_codex_thread_id.clone(),
+        active_thread_id.clone(),
         active_workspace_path.clone(),
     );
     sidebar.set_width_request(180);
@@ -350,7 +341,7 @@ pub fn build_ui(app: &adw::Application) {
         db.clone(),
         profile_manager.clone(),
         codex.clone(),
-        active_codex_thread_id.clone(),
+        active_thread_id.clone(),
         active_workspace_path.clone(),
     );
 
@@ -445,7 +436,7 @@ pub fn build_ui(app: &adw::Application) {
     start_remote_thread_activation_loop(
         db.clone(),
         sidebar.clone(),
-        active_codex_thread_id.clone(),
+        active_thread_id.clone(),
         active_workspace_path.clone(),
     );
 
@@ -463,27 +454,27 @@ pub fn build_ui(app: &adw::Application) {
                             let sidebar_clone = sidebar.clone();
                             let db_for_restore = db.clone();
                             let active_workspace_path_clone = active_workspace_path.clone();
-                            let active_codex_thread_id_clone = active_codex_thread_id.clone();
+                            let active_thread_id_clone = active_thread_id.clone();
                             let thread_profile_id = thread.profile_id;
-                            let thread_account_type = thread.codex_account_type.clone();
-                            let thread_account_email = thread.codex_account_email.clone();
+                            let thread_account_type = thread.remote_account_type_owned();
+                            let thread_account_email = thread.remote_account_email_owned();
                             let workspace_path = thread
                                 .worktree_path
                                 .as_deref()
                                 .filter(|path| thread.worktree_active && !path.trim().is_empty())
                                 .map(|path| path.to_string())
                                 .unwrap_or_else(|| workspace.workspace.path.clone());
-                            let codex_thread_id = thread.codex_thread_id.clone();
+                            let remote_thread_id = thread.remote_thread_id_owned();
 
                             gtk::glib::idle_add_local_once(move || {
                                 let _ = db_for_restore.set_runtime_profile_id(thread_profile_id);
                                 let _ = db_for_restore.set_active_profile_id(thread_profile_id);
-                                let _ = db_for_restore.set_current_codex_account(
+                                let _ = db_for_restore.set_current_profile_account_identity(
                                     thread_account_type.as_deref(),
                                     thread_account_email.as_deref(),
                                 );
                                 active_workspace_path_clone.replace(Some(workspace_path));
-                                active_codex_thread_id_clone.replace(codex_thread_id);
+                                active_thread_id_clone.replace(remote_thread_id);
                                 if let Some(content) = sidebar_clone.content() {
                                     widget_tree::select_thread_row(&content, last_thread_id);
                                 }
@@ -495,7 +486,7 @@ pub fn build_ui(app: &adw::Application) {
                 }
                 if !restored {
                     let _ = db.set_setting("last_active_thread_id", "");
-                    active_codex_thread_id.replace(None);
+                    active_thread_id.replace(None);
                 }
             }
         }

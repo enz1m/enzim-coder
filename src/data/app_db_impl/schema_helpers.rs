@@ -24,6 +24,7 @@ impl AppDb {
 
             CREATE TABLE IF NOT EXISTS codex_profiles (
                 id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                backend_kind      TEXT NOT NULL DEFAULT 'codex',
                 name              TEXT NOT NULL,
                 icon_name         TEXT NOT NULL DEFAULT '',
                 home_dir          TEXT NOT NULL UNIQUE,
@@ -138,14 +139,15 @@ impl AppDb {
         self.ensure_threads_profile_column()?;
         self.ensure_threads_parent_column()?;
         self.ensure_threads_worktree_columns()?;
+        self.ensure_profiles_backend_kind_column()?;
         self.ensure_profiles_icon_column()?;
         self.ensure_chat_turns_raw_items_column()?;
         Ok(())
     }
 
-    pub(super) fn local_thread_id_for_codex_thread(
+    pub(super) fn local_thread_id_for_remote_thread(
         &self,
-        codex_thread_id: &str,
+        remote_thread_id: &str,
     ) -> rusqlite::Result<Option<i64>> {
         let conn = self.conn.borrow();
         let mut stmt = conn.prepare(
@@ -154,12 +156,20 @@ impl AppDb {
              WHERE codex_thread_id = ?1
              LIMIT 1",
         )?;
-        let mut rows = stmt.query(params![codex_thread_id])?;
+        let mut rows = stmt.query(params![remote_thread_id])?;
         if let Some(row) = rows.next()? {
             Ok(Some(row.get(0)?))
         } else {
             Ok(None)
         }
+    }
+
+    #[allow(dead_code)]
+    pub(super) fn local_thread_id_for_codex_thread(
+        &self,
+        codex_thread_id: &str,
+    ) -> rusqlite::Result<Option<i64>> {
+        self.local_thread_id_for_remote_thread(codex_thread_id)
     }
 
     pub(super) fn list_workspaces(&self) -> rusqlite::Result<Vec<WorkspaceRecord>> {
@@ -257,6 +267,24 @@ impl AppDb {
                 .borrow_mut()
                 .execute("ALTER TABLE threads ADD COLUMN codex_thread_id TEXT", [])?;
         }
+        Ok(())
+    }
+
+    fn ensure_profiles_backend_kind_column(&self) -> rusqlite::Result<()> {
+        let conn = self.conn.borrow();
+        let mut stmt = conn.prepare("PRAGMA table_info(codex_profiles)")?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
+        for row in rows {
+            if row? == "backend_kind" {
+                return Ok(());
+            }
+        }
+        drop(stmt);
+        drop(conn);
+        self.conn.borrow_mut().execute(
+            "ALTER TABLE codex_profiles ADD COLUMN backend_kind TEXT NOT NULL DEFAULT 'codex'",
+            [],
+        )?;
         Ok(())
     }
 

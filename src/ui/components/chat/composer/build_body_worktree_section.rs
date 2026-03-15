@@ -58,7 +58,7 @@
 
     {
         let db = db.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         let active_workspace_path = active_workspace_path.clone();
         let messages_box = messages_box.clone();
         let messages_scroll = messages_scroll.clone();
@@ -67,10 +67,10 @@
         let worktree_button_for_parent = worktree_button.clone();
         let worktree_popover = worktree_popover.clone();
         worktree_button.connect_clicked(move |_| {
-            let active_thread_id = active_codex_thread_id.borrow().clone();
+            let active_thread_id = active_thread_id.borrow().clone();
             if let Some(codex_thread_id) = active_thread_id.as_deref() {
                 if let Some(thread) = db
-                    .get_thread_record_by_codex_thread_id(codex_thread_id)
+                    .get_thread_record_by_remote_thread_id(codex_thread_id)
                     .ok()
                     .flatten()
                 {
@@ -132,16 +132,16 @@
 
     {
         let db = db.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         let worktree_button = worktree_button.clone();
         gtk::glib::timeout_add_local(Duration::from_millis(220), move || {
             if worktree_button.root().is_none() {
                 return gtk::glib::ControlFlow::Break;
             }
-            let is_active_worktree = active_codex_thread_id
+            let is_active_worktree = active_thread_id
                 .borrow()
                 .as_deref()
-                .and_then(|thread_id| db.get_thread_record_by_codex_thread_id(thread_id).ok())
+                .and_then(|thread_id| db.get_thread_record_by_remote_thread_id(thread_id).ok())
                 .flatten()
                 .map(|thread| {
                     thread.worktree_active
@@ -168,7 +168,7 @@
 
     {
         let db = db.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         let thread_lock_note = thread_lock_note.clone();
         let input_view = input_view.clone();
         let add_file = add_file.clone();
@@ -181,10 +181,10 @@
             if send.root().is_none() {
                 return gtk::glib::ControlFlow::Break;
             }
-            let is_locked = active_codex_thread_id
+            let is_locked = active_thread_id
                 .borrow()
                 .as_deref()
-                .and_then(|thread_id| db.is_codex_thread_locked(thread_id).ok())
+                .and_then(|thread_id| db.is_remote_thread_locked(thread_id).ok())
                 .or_else(|| {
                     db.get_setting("last_active_thread_id")
                         .ok()
@@ -197,7 +197,7 @@
                 thread_locked.replace(is_locked);
                 if is_locked {
                     thread_lock_note.set_text(
-                        "This thread was started with a different Codex account. History can't be loaded from Codex. Start a new thread.",
+                        "This thread was started with a different account. History can't be loaded from the runtime. Start a new thread.",
                     );
                     thread_lock_note.set_visible(true);
                     input_view.set_editable(false);
@@ -206,7 +206,7 @@
                     mic.set_sensitive(false);
                     worktree_button.set_sensitive(false);
                     send.set_icon_name("padlock-closed-symbolic");
-                    send.set_tooltip_text(Some("Thread locked to another Codex account"));
+                    send.set_tooltip_text(Some("Thread locked to another account"));
                 } else {
                     thread_lock_note.set_visible(false);
                     input_view.set_editable(true);
@@ -230,17 +230,17 @@
     {
         let send = send.clone();
         let db = db.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         let was_in_progress = Rc::new(RefCell::new(false));
         let was_in_progress_for_timer = was_in_progress.clone();
         gtk::glib::timeout_add_local(Duration::from_millis(80), move || {
             if send.root().is_none() {
                 return gtk::glib::ControlFlow::Break;
             }
-            let active_thread = active_codex_thread_id.borrow().clone();
+            let active_thread = active_thread_id.borrow().clone();
             let thread_locked = active_thread
                 .as_deref()
-                .and_then(|thread_id| db.is_codex_thread_locked(thread_id).ok())
+                .and_then(|thread_id| db.is_remote_thread_locked(thread_id).ok())
                 .or_else(|| {
                     db.get_setting("last_active_thread_id")
                         .ok()
@@ -251,7 +251,7 @@
                 .unwrap_or(false);
             if thread_locked {
                 send.set_icon_name("padlock-closed-symbolic");
-                send.set_tooltip_text(Some("Thread locked to another Codex account"));
+                send.set_tooltip_text(Some("Thread locked to another account"));
                 was_in_progress_for_timer.replace(false);
                 return gtk::glib::ControlFlow::Continue;
             }
@@ -277,7 +277,7 @@
     {
         let db = db.clone();
         let manager = manager.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         let active_workspace_path = active_workspace_path.clone();
         let messages_box = messages_box.clone();
         let messages_scroll = messages_scroll.clone();
@@ -294,14 +294,14 @@
                     &messages_box,
                     Some(&messages_scroll),
                     &conversation_stack,
-                    "This thread is locked to another Codex account. Worktree variants are unavailable.",
+                    "This thread is locked to another account. Worktree variants are unavailable.",
                     false,
                     std::time::SystemTime::now(),
                 );
                 return;
             }
 
-            let Some(source_codex_thread_id) = active_codex_thread_id.borrow().clone() else {
+            let Some(source_thread_id) = active_thread_id.borrow().clone() else {
                 super::message_render::append_message(
                     &messages_box,
                     Some(&messages_scroll),
@@ -314,7 +314,7 @@
             };
 
             let Some(source_thread) = db
-                .get_thread_record_by_codex_thread_id(&source_codex_thread_id)
+                .get_thread_record_by_remote_thread_id(&source_thread_id)
                 .ok()
                 .flatten()
             else {
@@ -337,7 +337,7 @@
                 .map(|path| path.to_string())
                 .or_else(|| active_workspace_path.borrow().clone())
                 .or_else(|| {
-                    db.workspace_path_for_codex_thread(&source_codex_thread_id)
+                    db.workspace_path_for_remote_thread(&source_thread_id)
                         .ok()
                         .flatten()
                 });
@@ -355,7 +355,7 @@
             };
 
             let Some(client) = manager
-                .resolve_client_for_thread_id(&source_codex_thread_id)
+                .resolve_client_for_thread_id(&source_thread_id)
                 .or_else(|| {
                     db.runtime_profile_id()
                         .ok()
@@ -367,12 +367,23 @@
                     &messages_box,
                     Some(&messages_scroll),
                     &conversation_stack,
-                    "Codex app-server is not available for this thread.",
+                    "Runtime backend is not available for this thread.",
                     false,
                     std::time::SystemTime::now(),
                 );
                 return;
             };
+            if !client.capabilities().supports_fork {
+                super::message_render::append_message(
+                    &messages_box,
+                    Some(&messages_scroll),
+                    &conversation_stack,
+                    "This runtime does not support thread forking for worktree variants.",
+                    false,
+                    std::time::SystemTime::now(),
+                );
+                return;
+            }
 
             let count = worktree_count.value_as_int().clamp(1, 8) as usize;
             suggestion_row.set_visible(false);
@@ -393,7 +404,7 @@
                     errors: Vec::new(),
                 };
                 for idx in 1..=count {
-                    let forked_codex_thread_id = match client.thread_fork(&source_codex_thread_id) {
+                    let forked_thread_id = match client.thread_fork(&source_thread_id) {
                         Ok(thread_id) => thread_id,
                         Err(err) => {
                             batch
@@ -408,7 +419,7 @@
                         idx,
                     ) {
                         Ok(created) => batch.entries.push(WorktreeBatchEntry {
-                            forked_codex_thread_id,
+                            forked_thread_id,
                             worktree_path: created.path,
                             worktree_branch: created.branch,
                         }),
@@ -434,14 +445,14 @@
                 let mut created_count = 0usize;
                 let mut errors = batch.errors;
                 for entry in batch.entries {
-                    let created_thread = match db_for_ui.create_thread(
+                    let created_thread = match db_for_ui.create_thread_with_remote_identity(
                         source_thread.workspace_id,
                         source_thread.profile_id,
                         Some(source_thread.id),
                         &source_thread.title,
-                        Some(&entry.forked_codex_thread_id),
-                        source_thread.codex_account_type.as_deref(),
-                        source_thread.codex_account_email.as_deref(),
+                        Some(&entry.forked_thread_id),
+                        source_thread.remote_account_type(),
+                        source_thread.remote_account_email(),
                     ) {
                         Ok(thread) => thread,
                         Err(err) => {

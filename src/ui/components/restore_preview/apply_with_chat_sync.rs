@@ -1,7 +1,7 @@
 pub(crate) fn apply_restore_with_chat_sync(
     db: &AppDb,
-    codex: Option<Arc<CodexAppServer>>,
-    active_codex_thread_id: Option<Rc<RefCell<Option<String>>>>,
+    codex: Option<Arc<RuntimeClient>>,
+    active_thread_id: Option<Rc<RefCell<Option<String>>>>,
     workspace_path: Option<&str>,
     codex_thread_id: &str,
     checkpoint_id: i64,
@@ -11,7 +11,7 @@ pub(crate) fn apply_restore_with_chat_sync(
     parent_window: Option<&gtk::Window>,
     prefill_prompt: Option<&str>,
 ) -> Result<(crate::restore::RestoreApplyResult, String), String> {
-    let apply = crate::restore::apply_restore_to_checkpoint(
+    let apply = crate::restore::apply_restore_to_checkpoint_by_remote_id(
         db,
         codex_thread_id,
         checkpoint_id,
@@ -26,10 +26,21 @@ pub(crate) fn apply_restore_with_chat_sync(
     let rollback_status = if let Some(target_turn_id) = target_turn_id {
         let Some(client) = codex.as_ref() else {
             return Err(
-                "Restore applied, but chat trim failed: Codex client unavailable.".to_string(),
+                "Restore applied, but chat trim failed: runtime client unavailable.".to_string(),
             );
         };
-        if let Some(active) = active_codex_thread_id.as_ref() {
+        if !client.capabilities().supports_rollback {
+            let status = " • Chat trim skipped (runtime does not support rollback)".to_string();
+            if allow_prefill {
+                if let (Some(parent_window), Some(prompt)) = (parent_window, prefill_prompt) {
+                    if !prompt.trim().is_empty() {
+                        set_composer_input_text(parent_window, prompt);
+                    }
+                }
+            }
+            return Ok((result, status));
+        }
+        if let Some(active) = active_thread_id.as_ref() {
             if active.borrow().as_deref() != Some(codex_thread_id) {
                 active.replace(Some(codex_thread_id.to_string()));
             }
@@ -69,7 +80,7 @@ pub(crate) fn apply_restore_with_chat_sync(
                     turn.get("id").and_then(Value::as_str) == Some(target_turn_id)
                 }) else {
                     return Err(
-                        "Restore applied, but chat trim failed: selected turn was not found in Codex thread."
+                        "Restore applied, but chat trim failed: selected turn was not found in the remote thread."
                             .to_string(),
                     );
                 };
@@ -204,7 +215,7 @@ pub(crate) fn apply_restore_with_chat_sync(
             }
         }
     } else {
-        " • Chat trim skipped (no Codex turn context)".to_string()
+        " • Chat trim skipped (no remote turn context)".to_string()
     };
 
     if allow_prefill {

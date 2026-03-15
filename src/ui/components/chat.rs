@@ -1,11 +1,11 @@
-use crate::codex_appserver::CodexAppServer;
+use crate::backend::RuntimeClient;
 use crate::codex_profiles::CodexProfileManager;
-use crate::data::AppDb;
+use crate::data::{AppDb, CodexProfileRecord};
 use crate::ui::widget_tree;
 use adw::prelude::*;
 use serde_json::Value;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::mpsc;
@@ -14,7 +14,7 @@ use std::time::Duration;
 use std::time::SystemTime;
 
 mod checkpoint_restore_popup;
-mod codex_controls;
+pub(crate) mod runtime_controls;
 mod codex_events;
 mod codex_history;
 mod codex_runtime;
@@ -34,9 +34,11 @@ struct TurnUi {
     text_buffers: HashMap<String, String>,
     text_pending_deltas: HashMap<String, String>,
     agent_message_item_ids: HashSet<String>,
+    reasoning_item_ids: HashSet<String>,
     status_buffers: HashMap<String, String>,
     status_last_text: String,
     status_last_updated_micros: i64,
+    reasoning_started_micros: HashMap<String, i64>,
     pending_items: HashMap<String, String>,
     command_widgets: HashMap<String, message_render::CommandUi>,
     file_change_widgets: HashMap<String, gtk::Box>,
@@ -52,11 +54,13 @@ fn create_selector_menu(
     current_label: &str,
     options: &[(String, String)],
     selected_value: Rc<RefCell<String>>,
+    selected_label: Option<Rc<dyn Fn(&str, &str) -> String>>,
     on_change: Option<Rc<dyn Fn(String)>>,
+    position: gtk::PositionType,
 ) -> (gtk::Button, Rc<dyn Fn(&str)>) {
     let button = gtk::Button::new();
+    button.set_widget_name("composer-selector-button");
     button.set_has_frame(false);
-    button.add_css_class("app-flat-button");
     button.add_css_class("composer-selector-button");
 
     let selector = gtk::Box::new(gtk::Orientation::Horizontal, 4);
@@ -64,10 +68,12 @@ fn create_selector_menu(
     selector.set_valign(gtk::Align::Center);
 
     let label_widget = gtk::Label::new(Some(current_label));
+    label_widget.set_widget_name("compact-selector-label");
     label_widget.add_css_class("compact-selector-label");
     selector.append(&label_widget);
 
     let arrow = gtk::Image::from_icon_name("pan-down-symbolic");
+    arrow.set_widget_name("compact-selector-arrow");
     arrow.set_pixel_size(10);
     arrow.add_css_class("compact-selector-arrow");
     selector.append(&arrow);
@@ -75,11 +81,19 @@ fn create_selector_menu(
     button.set_child(Some(&selector));
 
     let popover = gtk::Popover::new();
+    popover.set_widget_name("compact-selector-popover");
     popover.set_has_arrow(true);
     popover.set_autohide(true);
-    popover.set_position(gtk::PositionType::Bottom);
+    popover.set_position(position);
     popover.add_css_class("compact-selector-popover");
     popover.set_parent(&button);
+    {
+        let popover = popover.clone();
+        button.connect_destroy(move |_| {
+            popover.popdown();
+            popover.unparent();
+        });
+    }
 
     let list = gtk::Box::new(gtk::Orientation::Vertical, 2);
     list.add_css_class("compact-selector-menu");
@@ -90,8 +104,8 @@ fn create_selector_menu(
 
     for (display_name, value) in options {
         let item_button = gtk::Button::new();
+        item_button.set_widget_name("compact-selector-item");
         item_button.set_has_frame(false);
-        item_button.add_css_class("app-flat-button");
         item_button.add_css_class("compact-selector-item");
         item_button.set_halign(gtk::Align::Fill);
         item_button.set_hexpand(true);
@@ -99,6 +113,7 @@ fn create_selector_menu(
         let item_row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         item_row.set_hexpand(true);
         let item_label = gtk::Label::new(Some(display_name));
+        item_label.set_widget_name("compact-selector-item-label");
         item_label.set_xalign(0.0);
         item_label.set_hexpand(true);
         item_row.append(&item_label);
@@ -109,10 +124,15 @@ fn create_selector_menu(
         let label_widget = label_widget.clone();
         let display_name = display_name.clone();
         let value = value.clone();
+        let selected_label = selected_label.clone();
         let on_change = on_change.clone();
         item_button.connect_clicked(move |_| {
             selected_value.replace(value.clone());
-            label_widget.set_text(&display_name);
+            let next_label = selected_label
+                .as_ref()
+                .map(|formatter| formatter(&display_name, &value))
+                .unwrap_or_else(|| display_name.clone());
+            label_widget.set_text(&next_label);
             if let Some(on_change) = on_change.as_ref() {
                 on_change(value.clone());
             }
@@ -121,7 +141,19 @@ fn create_selector_menu(
         list.append(&item_button);
     }
 
-    popover.set_child(Some(&list));
+    let list_scroll = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .min_content_width(260)
+        .max_content_height(320)
+        .propagate_natural_height(true)
+        .child(&list)
+        .build();
+    list_scroll.set_widget_name("compact-selector-scroll");
+    list_scroll.set_has_frame(false);
+    list_scroll.add_css_class("compact-selector-scroll");
+
+    popover.set_child(Some(&list_scroll));
     {
         let popover = popover.clone();
         button.connect_clicked(move |_| {
@@ -142,7 +174,258 @@ fn create_selector_menu(
             .find(|(_, value)| value == next_value)
         {
             selected_value_for_setter.replace(value.clone());
-            label_widget_for_setter.set_text(display_name);
+            let next_label = selected_label
+                .as_ref()
+                .map(|formatter| formatter(display_name, value))
+                .unwrap_or_else(|| display_name.clone());
+            label_widget_for_setter.set_text(&next_label);
+        }
+    });
+
+    (button, setter)
+}
+
+pub(super) fn create_grouped_selector_menu(
+    current_label: &str,
+    options: &[(String, String)],
+    selected_value: Rc<RefCell<String>>,
+    selected_label: Option<Rc<dyn Fn(&str, &str) -> String>>,
+    on_change: Option<Rc<dyn Fn(String)>>,
+    position: gtk::PositionType,
+) -> (gtk::Button, Rc<dyn Fn(&str)>) {
+    let button = gtk::Button::new();
+    button.set_widget_name("composer-selector-button");
+    button.set_has_frame(false);
+    button.add_css_class("composer-selector-button");
+
+    let selector = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+    selector.add_css_class("compact-selector");
+    selector.set_valign(gtk::Align::Center);
+
+    let label_widget = gtk::Label::new(Some(current_label));
+    label_widget.set_widget_name("compact-selector-label");
+    label_widget.add_css_class("compact-selector-label");
+    selector.append(&label_widget);
+
+    let arrow = gtk::Image::from_icon_name("pan-down-symbolic");
+    arrow.set_widget_name("compact-selector-arrow");
+    arrow.set_pixel_size(10);
+    arrow.add_css_class("compact-selector-arrow");
+    selector.append(&arrow);
+    button.set_child(Some(&selector));
+
+    let popover = gtk::Popover::new();
+    popover.set_widget_name("compact-selector-popover");
+    popover.set_has_arrow(true);
+    popover.set_autohide(true);
+    popover.set_position(position);
+    popover.add_css_class("compact-selector-popover");
+    popover.set_parent(&button);
+    {
+        let popover = popover.clone();
+        button.connect_destroy(move |_| {
+            popover.popdown();
+            popover.unparent();
+        });
+    }
+
+    let root = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    root.set_margin_start(4);
+    root.set_margin_end(4);
+    root.set_margin_top(4);
+    root.set_margin_bottom(4);
+
+    let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    let back_button = gtk::Button::with_label("Back");
+    back_button.set_has_frame(false);
+    back_button.add_css_class("compact-selector-item");
+    back_button.set_visible(false);
+    let header_label = gtk::Label::new(Some("Providers"));
+    header_label.add_css_class("compact-selector-label");
+    header_label.set_xalign(0.0);
+    header_label.set_hexpand(true);
+    header.append(&back_button);
+    header.append(&header_label);
+    root.append(&header);
+
+    let pages = gtk::Stack::new();
+    pages.set_hhomogeneous(false);
+    pages.set_vhomogeneous(false);
+    pages.set_transition_type(gtk::StackTransitionType::SlideLeftRight);
+    pages.set_transition_duration(160);
+
+    let provider_list = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    provider_list.add_css_class("compact-selector-menu");
+    let model_list = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    model_list.add_css_class("compact-selector-menu");
+    pages.add_named(&provider_list, Some("providers"));
+    pages.add_named(&model_list, Some("models"));
+    pages.set_visible_child_name("providers");
+
+    let pages_scroll = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .min_content_width(260)
+        .max_content_height(320)
+        .propagate_natural_height(true)
+        .child(&pages)
+        .build();
+    pages_scroll.set_widget_name("compact-selector-scroll");
+    pages_scroll.set_has_frame(false);
+    pages_scroll.add_css_class("compact-selector-scroll");
+    root.append(&pages_scroll);
+    popover.set_child(Some(&root));
+
+    let mut grouped = BTreeMap::<String, Vec<(String, String)>>::new();
+    for (display_name, value) in options {
+        let (provider_name, model_name) = display_name
+            .split_once(" / ")
+            .map(|(provider, model)| (provider.to_string(), model.to_string()))
+            .unwrap_or_else(|| ("Other".to_string(), display_name.clone()));
+        grouped
+            .entry(provider_name)
+            .or_default()
+            .push((model_name, value.clone()));
+    }
+    for model_entries in grouped.values_mut() {
+        model_entries.sort_by(|left, right| left.0.cmp(&right.0));
+    }
+
+    let render_model_list: Rc<dyn Fn(&str)> = {
+        let grouped = grouped.clone();
+        let model_list = model_list.clone();
+        let pages = pages.clone();
+        let header_label = header_label.clone();
+        let back_button = back_button.clone();
+        let pages_scroll = pages_scroll.clone();
+        let selected_value = selected_value.clone();
+        let label_widget = label_widget.clone();
+        let selected_label = selected_label.clone();
+        let on_change = on_change.clone();
+        let popover = popover.clone();
+        Rc::new(move |provider_name: &str| {
+            while let Some(child) = model_list.first_child() {
+                model_list.remove(&child);
+            }
+            header_label.set_text(provider_name);
+            back_button.set_visible(true);
+            pages.set_visible_child_name("models");
+            pages_scroll.vadjustment().set_value(0.0);
+            for (model_name, value) in grouped.get(provider_name).cloned().unwrap_or_default() {
+                let item_button = gtk::Button::new();
+                item_button.set_widget_name("compact-selector-item");
+                item_button.set_has_frame(false);
+                item_button.add_css_class("compact-selector-item");
+                item_button.set_halign(gtk::Align::Fill);
+                item_button.set_hexpand(true);
+
+                let item_row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+                item_row.set_hexpand(true);
+                let item_label = gtk::Label::new(Some(&model_name));
+                item_label.set_widget_name("compact-selector-item-label");
+                item_label.set_xalign(0.0);
+                item_label.set_hexpand(true);
+                item_row.append(&item_label);
+                item_button.set_child(Some(&item_row));
+
+                let selected_value = selected_value.clone();
+                let label_widget = label_widget.clone();
+                let selected_label = selected_label.clone();
+                let on_change = on_change.clone();
+                let popover = popover.clone();
+                let full_display_name = format!("{provider_name} / {model_name}");
+                item_button.connect_clicked(move |_| {
+                    selected_value.replace(value.clone());
+                    let next_label = selected_label
+                        .as_ref()
+                        .map(|formatter| formatter(&full_display_name, &value))
+                        .unwrap_or_else(|| full_display_name.clone());
+                    label_widget.set_text(&next_label);
+                    if let Some(on_change) = on_change.as_ref() {
+                        on_change(value.clone());
+                    }
+                    popover.popdown();
+                });
+                model_list.append(&item_button);
+            }
+        })
+    };
+
+    for (provider_name, model_entries) in &grouped {
+        let item_button = gtk::Button::new();
+        item_button.set_widget_name("compact-selector-item");
+        item_button.set_has_frame(false);
+        item_button.add_css_class("compact-selector-item");
+        item_button.set_halign(gtk::Align::Fill);
+        item_button.set_hexpand(true);
+
+        let item_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        item_row.set_hexpand(true);
+        let item_label = gtk::Label::new(Some(provider_name));
+        item_label.set_widget_name("compact-selector-item-label");
+        item_label.set_xalign(0.0);
+        item_label.set_hexpand(true);
+        let item_count = gtk::Label::new(Some(&format!("{}", model_entries.len())));
+        item_count.add_css_class("dim-label");
+        item_row.append(&item_label);
+        item_row.append(&item_count);
+        item_button.set_child(Some(&item_row));
+
+        let render_model_list = render_model_list.clone();
+        let provider_name = provider_name.clone();
+        item_button.connect_clicked(move |_| {
+            render_model_list(&provider_name);
+        });
+        provider_list.append(&item_button);
+    }
+
+    {
+        let pages = pages.clone();
+        let header_label = header_label.clone();
+        let back_button = back_button.clone();
+        let back_button_for_click = back_button.clone();
+        let pages_scroll = pages_scroll.clone();
+        back_button.connect_clicked(move |_| {
+            pages.set_visible_child_name("providers");
+            header_label.set_text("Providers");
+            back_button_for_click.set_visible(false);
+            pages_scroll.vadjustment().set_value(0.0);
+        });
+    }
+
+    {
+        let popover = popover.clone();
+        let pages = pages.clone();
+        let header_label = header_label.clone();
+        let back_button = back_button.clone();
+        let pages_scroll = pages_scroll.clone();
+        button.connect_clicked(move |_| {
+            if popover.is_visible() {
+                popover.popdown();
+            } else {
+                pages.set_visible_child_name("providers");
+                header_label.set_text("Providers");
+                back_button.set_visible(false);
+                pages_scroll.vadjustment().set_value(0.0);
+                popover.popup();
+            }
+        });
+    }
+
+    let options_for_setter = options.to_vec();
+    let selected_value_for_setter = selected_value.clone();
+    let label_widget_for_setter = label_widget.clone();
+    let setter: Rc<dyn Fn(&str)> = Rc::new(move |next_value: &str| {
+        if let Some((display_name, value)) = options_for_setter
+            .iter()
+            .find(|(_, value)| value == next_value)
+        {
+            selected_value_for_setter.replace(value.clone());
+            let next_label = selected_label
+                .as_ref()
+                .map(|formatter| formatter(display_name, value))
+                .unwrap_or_else(|| display_name.clone());
+            label_widget_for_setter.set_text(&next_label);
         }
     });
 
@@ -150,6 +433,18 @@ fn create_selector_menu(
 }
 
 fn refresh_turn_status(turn_ui: &mut TurnUi) {
+    let reasoning_visible = turn_ui
+        .body_box
+        .root()
+        .and_then(|root| {
+            let root_widget: gtk::Widget = root.upcast();
+            crate::ui::widget_tree::find_widget_by_name(&root_widget, "chat-messages-box")
+        })
+        .and_then(|widget| widget.downcast::<gtk::Box>().ok())
+        .is_some_and(|messages_box| message_render::messages_reasoning_visible(&messages_box));
+    let has_visible_generic_items = turn_ui.generic_item_widgets.keys().any(|item_id| {
+        !turn_ui.reasoning_item_ids.contains(item_id) || reasoning_visible
+    });
     let has_content = turn_ui
         .text_buffers
         .values()
@@ -157,7 +452,7 @@ fn refresh_turn_status(turn_ui: &mut TurnUi) {
         || !turn_ui.command_widgets.is_empty()
         || !turn_ui.file_change_widgets.is_empty()
         || !turn_ui.tool_call_widgets.is_empty()
-        || !turn_ui.generic_item_widgets.is_empty();
+        || has_visible_generic_items;
     turn_ui.body_box.set_visible(has_content);
 
     if !turn_ui.in_progress {
@@ -213,6 +508,57 @@ fn refresh_turn_status(turn_ui: &mut TurnUi) {
     }
     turn_ui.status_row.set_visible(true);
     turn_ui.status_label.set_text("Working...");
+}
+
+fn selector_backend_icon_name(backend_kind: &str) -> &'static str {
+    if backend_kind.eq_ignore_ascii_case("opencode") {
+        "provider-opencode"
+    } else {
+        "provider-codex"
+    }
+}
+
+fn selector_profile_identity(profile: &CodexProfileRecord) -> Option<String> {
+    profile
+        .last_email
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            profile
+                .last_account_type
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned)
+        })
+}
+
+fn selector_is_system_profile(profile: &CodexProfileRecord) -> bool {
+    let system_home =
+        crate::data::configured_profile_home_dir(&crate::data::default_app_data_dir());
+    profile.home_dir.trim() == system_home.to_string_lossy().trim()
+}
+
+const CHAT_REASONING_VISIBLE_SETTING: &str = "chat_reasoning_visible";
+
+fn selector_default_model_id(client: &RuntimeClient, backend_kind: &str) -> Option<String> {
+    let client = Arc::new(client.clone());
+    let models = runtime_controls::model_options(Some(&client));
+    if let Some(model) = models.iter().find(|model| model.is_default) {
+        return Some(model.id.clone());
+    }
+    if let Some(model) = models.first() {
+        if !model.id.trim().is_empty() {
+            return Some(model.id.clone());
+        }
+    }
+    if backend_kind.eq_ignore_ascii_case("codex") {
+        Some("gpt-5.3-codex".to_string())
+    } else {
+        None
+    }
 }
 
 fn format_turn_elapsed(total_secs: u64) -> String {
@@ -271,24 +617,24 @@ pub(crate) fn sidebar_wave_status_markup(text: &str, phase: f64) -> String {
     wave_status_markup(text, phase)
 }
 
-pub(crate) fn thread_has_active_turn(codex_thread_id: &str) -> bool {
-    codex_runtime::active_turn_for_thread(codex_thread_id).is_some()
+pub(crate) fn thread_has_active_turn(thread_id: &str) -> bool {
+    codex_runtime::active_turn_for_thread(thread_id).is_some()
 }
 
 pub(crate) fn has_any_active_turn() -> bool {
     codex_runtime::has_any_active_turn()
 }
 
-pub(crate) fn mark_thread_completed_unseen(codex_thread_id: &str) {
-    codex_runtime::mark_thread_completed_unseen(codex_thread_id);
+pub(crate) fn mark_thread_completed_unseen(thread_id: &str) {
+    codex_runtime::mark_thread_completed_unseen(thread_id);
 }
 
-pub(crate) fn clear_thread_completed_unseen(codex_thread_id: &str) {
-    codex_runtime::clear_thread_completed_unseen(codex_thread_id);
+pub(crate) fn clear_thread_completed_unseen(thread_id: &str) {
+    codex_runtime::clear_thread_completed_unseen(thread_id);
 }
 
-pub(crate) fn thread_has_completed_unseen(codex_thread_id: &str) -> bool {
-    codex_runtime::thread_has_completed_unseen(codex_thread_id)
+pub(crate) fn thread_has_completed_unseen(thread_id: &str) -> bool {
+    codex_runtime::thread_has_completed_unseen(thread_id)
 }
 
 fn create_turn_ui(
@@ -345,9 +691,11 @@ fn create_turn_ui(
         text_buffers: HashMap::new(),
         text_pending_deltas: HashMap::new(),
         agent_message_item_ids: HashSet::new(),
+        reasoning_item_ids: HashSet::new(),
         status_buffers: HashMap::new(),
         status_last_text: String::new(),
         status_last_updated_micros: 0,
+        reasoning_started_micros: HashMap::new(),
         pending_items: HashMap::new(),
         command_widgets: HashMap::new(),
         file_change_widgets: HashMap::new(),
@@ -367,16 +715,16 @@ pub struct ChatPaneWidgets {
 pub fn build_chat_pane_without_composer(
     db: Rc<AppDb>,
     manager: Rc<CodexProfileManager>,
-    codex: Option<Arc<CodexAppServer>>,
-    active_codex_thread_id: Rc<RefCell<Option<String>>>,
+    codex: Option<Arc<RuntimeClient>>,
+    active_thread_id: Rc<RefCell<Option<String>>>,
     active_workspace_path: Rc<RefCell<Option<String>>>,
 ) -> Option<ChatPaneWidgets> {
     let root = build_chat_tab_single(
         db,
         manager,
         codex,
-        active_codex_thread_id.clone(),
-        active_codex_thread_id,
+        active_thread_id.clone(),
+        active_thread_id,
         false,
         active_workspace_path,
     );
@@ -489,8 +837,8 @@ pub fn build_chat_pane_without_composer(
 pub fn build_shared_composer_for_chat_target(
     db: Rc<AppDb>,
     manager: Rc<CodexProfileManager>,
-    codex: Option<Arc<CodexAppServer>>,
-    active_codex_thread_id: Rc<RefCell<Option<String>>>,
+    codex: Option<Arc<RuntimeClient>>,
+    active_thread_id: Rc<RefCell<Option<String>>>,
     active_workspace_path: Rc<RefCell<Option<String>>>,
     messages_box: gtk::Box,
     messages_scroll: gtk::ScrolledWindow,
@@ -502,7 +850,7 @@ pub fn build_shared_composer_for_chat_target(
         db,
         manager,
         codex,
-        active_codex_thread_id,
+        active_thread_id,
         active_workspace_path,
         messages_box,
         messages_scroll,
@@ -667,9 +1015,9 @@ pub(crate) fn request_runtime_history_reload(thread_id: &str) {
 fn build_chat_tab_single(
     db: Rc<AppDb>,
     manager: Rc<CodexProfileManager>,
-    codex: Option<Arc<CodexAppServer>>,
-    active_codex_thread_id: Rc<RefCell<Option<String>>>,
-    selected_codex_thread_id: Rc<RefCell<Option<String>>>,
+    codex: Option<Arc<RuntimeClient>>,
+    active_thread_id: Rc<RefCell<Option<String>>>,
+    selected_thread_id: Rc<RefCell<Option<String>>>,
     track_background_completion: bool,
     active_workspace_path: Rc<RefCell<Option<String>>>,
 ) -> gtk::Box {
@@ -704,7 +1052,7 @@ fn build_chat_tab_single(
     install_box.set_halign(gtk::Align::Center);
     install_box.set_visible(false);
 
-    let install_hint = gtk::Label::new(Some("Install Codex CLI first:"));
+    let install_hint = gtk::Label::new(Some("Install a supported runtime CLI first:"));
     install_hint.set_xalign(0.0);
     install_hint.add_css_class("welcome-muted");
     install_box.append(&install_hint);
@@ -712,7 +1060,9 @@ fn build_chat_tab_single(
     let install_command_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     install_command_row.add_css_class("welcome-code-block");
 
-    let install_command = gtk::Label::new(Some("npm i -g @openai/codex"));
+    let install_command = gtk::Label::new(Some(
+        "npm i -g @openai/codex  # or: npm install -g opencode-ai",
+    ));
     install_command.add_css_class("welcome-code-text");
     install_command.set_xalign(0.0);
     install_command.set_hexpand(true);
@@ -729,7 +1079,9 @@ fn build_chat_tab_single(
     copy_install_button.set_child(Some(&copy_install_icon));
     copy_install_button.connect_clicked(move |_| {
         if let Some(display) = gtk::gdk::Display::default() {
-            display.clipboard().set_text("npm i -g @openai/codex");
+            display
+                .clipboard()
+                .set_text("npm i -g @openai/codex  # or: npm install -g opencode-ai");
         }
     });
     install_command_row.append(&copy_install_button);
@@ -816,7 +1168,57 @@ fn build_chat_tab_single(
             message_render::scroll_to_bottom(&messages_scroll);
         });
     }
-    conversation_overlay.add_overlay(&scroll_down_button);
+
+    let reasoning_toggle = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    reasoning_toggle.add_css_class("chat-action-hidden-thinking-button");
+    reasoning_toggle.add_css_class("chat-floating-thinking-toggle");
+    reasoning_toggle.set_can_target(true);
+    reasoning_toggle.set_focusable(false);
+    reasoning_toggle.set_valign(gtk::Align::End);
+    reasoning_toggle.set_visible(false);
+    let reasoning_toggle_overlay = gtk::Overlay::new();
+    let reasoning_toggle_icon = gtk::Image::from_icon_name("lightbulb-modern-symbolic");
+    reasoning_toggle_icon.set_pixel_size(12);
+    reasoning_toggle_overlay.set_child(Some(&reasoning_toggle_icon));
+    let reasoning_toggle_slash = gtk::Label::new(Some("/"));
+    reasoning_toggle_slash.add_css_class("chat-action-hidden-thinking-slash");
+    reasoning_toggle_slash.set_halign(gtk::Align::Center);
+    reasoning_toggle_slash.set_valign(gtk::Align::Center);
+    reasoning_toggle_overlay.add_overlay(&reasoning_toggle_slash);
+    reasoning_toggle.append(&reasoning_toggle_overlay);
+
+    let floating_chat_controls = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    floating_chat_controls.set_halign(gtk::Align::End);
+    floating_chat_controls.set_valign(gtk::Align::End);
+    floating_chat_controls.set_margin_end(14);
+    floating_chat_controls.set_margin_bottom(12);
+    floating_chat_controls.append(&scroll_down_button);
+    floating_chat_controls.append(&reasoning_toggle);
+    conversation_overlay.add_overlay(&floating_chat_controls);
+    message_render::register_chat_reasoning_toggle(&messages_box, &reasoning_toggle);
+    let restore_reasoning_visible = db
+        .get_setting(CHAT_REASONING_VISIBLE_SETTING)
+        .ok()
+        .flatten()
+        .is_some_and(|value| value == "1");
+    if restore_reasoning_visible {
+        message_render::set_chat_reasoning_visibility(&messages_box, true);
+    }
+    {
+        let db = db.clone();
+        let messages_box = messages_box.clone();
+        let click = gtk::GestureClick::new();
+        click.connect_released(move |_, _, _, _| {
+            message_render::toggle_chat_reasoning_visibility(&messages_box);
+            let value = if message_render::messages_reasoning_visible(&messages_box) {
+                "1"
+            } else {
+                "0"
+            };
+            let _ = db.set_setting(CHAT_REASONING_VISIBLE_SETTING, value);
+        });
+        reasoning_toggle.add_controller(click);
+    }
 
     #[derive(Clone)]
     struct WorktreeOverlayState {
@@ -928,7 +1330,7 @@ fn build_chat_tab_single(
     }
     {
         let db = db.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         let active_workspace_path = active_workspace_path.clone();
         let worktree_overlay = worktree_overlay.clone();
         let worktree_overlay_state = worktree_overlay_state.clone();
@@ -937,10 +1339,10 @@ fn build_chat_tab_single(
             if worktree_overlay.root().is_none() {
                 return gtk::glib::ControlFlow::Break;
             }
-            let state = active_codex_thread_id
+            let state = active_thread_id
                 .borrow()
                 .as_deref()
-                .and_then(|thread_id| db.get_thread_record_by_codex_thread_id(thread_id).ok())
+                .and_then(|thread_id| db.get_thread_record_by_remote_thread_id(thread_id).ok())
                 .flatten()
                 .and_then(|thread| {
                     if !thread.worktree_active {
@@ -1021,7 +1423,7 @@ fn build_chat_tab_single(
         db.clone(),
         manager.clone(),
         codex.clone(),
-        active_codex_thread_id.clone(),
+        active_thread_id.clone(),
         active_workspace_path.clone(),
         messages_box.clone(),
         messages_scroll.clone(),
@@ -1064,13 +1466,13 @@ fn build_chat_tab_single(
     profile_selector.set_valign(gtk::Align::Center);
     profile_selector.set_visible(false);
 
-    let selector_title = gtk::Label::new(Some("Choose Profile"));
+    let selector_title = gtk::Label::new(Some("Choose Runtime"));
     selector_title.add_css_class("chat-profile-selector-title");
     selector_title.set_xalign(0.0);
     profile_selector.append(&selector_title);
 
     let selector_subtitle = gtk::Label::new(Some(
-        "Select a running, logged-in profile to start this thread.",
+        "Choose Codex or OpenCode for this thread. If a provider has multiple profiles, pick the specific one.",
     ));
     selector_subtitle.add_css_class("chat-profile-selector-subtitle");
     selector_subtitle.set_wrap(true);
@@ -1093,7 +1495,7 @@ fn build_chat_tab_single(
     {
         let db = db.clone();
         let manager = manager.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         let active_workspace_path = active_workspace_path_for_selector.clone();
         let composer_revealer = composer_revealer.clone();
         let live_turn_status_revealer = live_turn_status_revealer.clone();
@@ -1156,13 +1558,12 @@ fn build_chat_tab_single(
                 .as_ref()
                 .map(|thread| {
                     thread
-                        .codex_thread_id
-                        .as_deref()
+                        .remote_thread_id()
                         .map(|value| value.trim().is_empty())
                         .unwrap_or(true)
                 })
                 .unwrap_or(false);
-            let should_probe_codex = active_codex_thread_id.borrow().is_none() && has_workspaces;
+            let should_probe_codex = active_thread_id.borrow().is_none() && has_workspaces;
             if should_probe_codex && *codex_install_state.borrow() != Some(true) {
                 let now = gtk::glib::monotonic_time();
                 let last_check = *codex_install_last_check_micros.borrow();
@@ -1176,24 +1577,24 @@ fn build_chat_tab_single(
                     codex_install_last_check_micros.replace(now);
                     let tx = codex_install_tx.clone();
                     thread::spawn(move || {
-                        let _ = tx.send(crate::codex_appserver::cli_available());
+                        let _ = tx.send(crate::backend::any_runtime_cli_available());
                     });
                 }
             }
             let codex_missing =
                 should_probe_codex && matches!(*codex_install_state.borrow(), Some(false));
             let show_selector =
-                active_codex_thread_id.borrow().is_none() && pending_unresolved && !codex_missing;
-            let has_active_codex_thread = active_codex_thread_id.borrow().is_some();
+                active_thread_id.borrow().is_none() && pending_unresolved && !codex_missing;
+            let has_active_thread = active_thread_id.borrow().is_some();
             let show_composer = !show_selector
                 && !codex_missing
                 && current_local_thread_id.is_some()
-                && has_active_codex_thread;
+                && has_active_thread;
             profile_selector.set_visible(show_selector);
             install_box.set_visible(codex_missing);
             heading.set_visible(!show_selector);
             if codex_missing {
-                heading.set_text("Install Codex CLI");
+                heading.set_text("Install Runtime CLI");
             }
             composer_revealer.set_visible(show_composer);
             composer_revealer.set_reveal_child(show_composer);
@@ -1229,7 +1630,21 @@ fn build_chat_tab_single(
                 .map(|(profile_id, _)| profile_id)
                 .collect();
             let profiles = db.list_codex_profiles().unwrap_or_default();
+            let selected_opencode_access_mode = composer::default_composer_setting_value(
+                db.as_ref(),
+                "opencode_access_mode",
+            )
+            .unwrap_or_else(|| "workspaceWrite".to_string());
+            let selected_opencode_command_mode = composer::default_composer_setting_value(
+                db.as_ref(),
+                "opencode_command_mode",
+            )
+            .unwrap_or_else(|| "allowAll".to_string());
             let mut key = format!("pending:{pending_thread_id};");
+            key.push_str(&format!(
+                "opencode_access:{};opencode_command:{};",
+                selected_opencode_access_mode, selected_opencode_command_mode
+            ));
             for profile in &profiles {
                 let running_flag = running_ids.contains(&profile.id);
                 let email = profile.last_email.as_deref().unwrap_or("");
@@ -1258,206 +1673,395 @@ fn build_chat_tab_single(
 
             let mut has_selectable = false;
             let mut has_startable = false;
-            for profile in profiles {
-                let is_running = profile.status.eq_ignore_ascii_case("running")
-                    || running_ids.contains(&profile.id);
-                let email = profile
-                    .last_email
-                    .clone()
-                    .unwrap_or_else(|| "Not logged in".to_string());
-                let profile_name = profile.name.clone();
-                let selectable = is_running
-                    && profile
-                        .last_email
-                        .as_deref()
-                        .map(|value| !value.trim().is_empty())
-                        .unwrap_or(false);
-                if !is_running {
-                    has_startable = true;
-                }
-                if selectable {
-                    has_selectable = true;
-                }
+            let mut render_backend_section =
+                |backend_kind: &str, backend_profiles: Vec<CodexProfileRecord>| {
+                    let section = gtk::Box::new(gtk::Orientation::Vertical, 8);
+                    section.add_css_class("chat-profile-section");
 
-                let card = gtk::Box::new(gtk::Orientation::Vertical, 8);
-                card.add_css_class("chat-profile-card");
-                card.set_halign(gtk::Align::Fill);
-                card.set_hexpand(true);
+                    let section_header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+                    section_header.add_css_class("chat-profile-section-header");
+                    let section_icon =
+                        gtk::Image::from_icon_name(selector_backend_icon_name(backend_kind));
+                    section_icon.set_pixel_size(16);
+                    let section_title =
+                        gtk::Label::new(Some(crate::backend::backend_display_name(backend_kind)));
+                    section_title.add_css_class("chat-profile-selector-title");
+                    section_title.set_xalign(0.0);
+                    section_header.append(&section_icon);
+                    section_header.append(&section_title);
+                    section.append(&section_header);
 
-                let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-                header.set_halign(gtk::Align::Fill);
-                header.set_hexpand(true);
+                    let render_profiles = backend_profiles.len() > 1;
+                    let cards_to_render: Vec<Option<CodexProfileRecord>> = if render_profiles {
+                        backend_profiles.into_iter().map(Some).collect()
+                    } else {
+                        vec![backend_profiles.into_iter().next()]
+                    };
 
-                let avatar = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-                avatar.add_css_class("chat-profile-card-avatar");
-                let icon_name = profile.icon_name.trim().to_string();
-                let icon = gtk::Image::from_icon_name(if icon_name.is_empty() {
-                    "person-symbolic"
-                } else {
-                    icon_name.as_str()
-                });
-                icon.set_pixel_size(14);
-                icon.add_css_class("chat-profile-card-avatar-image");
-                avatar.append(&icon);
-                header.append(&avatar);
-
-                let meta = gtk::Box::new(gtk::Orientation::Vertical, 2);
-                meta.set_halign(gtk::Align::Fill);
-                meta.set_hexpand(true);
-
-                let title = gtk::Label::new(Some(&profile_name));
-                title.add_css_class("chat-profile-card-title");
-                title.set_xalign(0.0);
-                meta.append(&title);
-
-                let email_label = gtk::Label::new(Some(&email));
-                email_label.add_css_class("chat-profile-card-email");
-                email_label.set_xalign(0.0);
-                meta.append(&email_label);
-                header.append(&meta);
-
-                let runtime_state = if is_running { "Running" } else { "Stopped" };
-                let state = gtk::Label::new(Some(runtime_state));
-                state.add_css_class("chat-profile-card-state-pill");
-                if is_running {
-                    state.add_css_class("is-running");
-                } else {
-                    state.add_css_class("is-stopped");
-                }
-                state.set_halign(gtk::Align::End);
-                header.append(&state);
-                card.append(&header);
-
-                let actions = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-                actions.add_css_class("chat-profile-card-actions");
-                actions.set_halign(gtk::Align::End);
-
-                if !is_running {
-                    let start_button = gtk::Button::with_label("Start Runtime");
-                    start_button.add_css_class("chat-profile-card-start");
-                    let manager_start = manager.clone();
-                    let selector_status_start = selector_status.clone();
-                    let selector_render_key_start = selector_render_key_flag.clone();
-                    let profile_name_start = profile_name.clone();
-                    let profile_id_start = profile.id;
-                    start_button.connect_clicked(move |_| {
-                        selector_status_start.set_visible(true);
-                        selector_status_start
-                            .set_text(&format!("Starting profile \"{}\"...", profile_name_start));
-                        match manager_start.ensure_started(profile_id_start) {
-                            Ok(_) => {
-                                selector_status_start
-                                    .set_text("Profile started. Select it when runtime is ready.");
-                                selector_render_key_start.borrow_mut().clear();
-                            }
-                            Err(err) => {
-                                selector_status_start
-                                    .set_text(&format!("Failed to start profile: {err}"));
-                            }
-                        }
-                    });
-                    actions.append(&start_button);
-                }
-
-                if selectable {
-                    let select_button = gtk::Button::with_label("Use This Profile");
-                    select_button.add_css_class("chat-profile-card-select");
-                    let manager_click = manager.clone();
-                    let db_click = db.clone();
-                    let selected_codex_thread_id_click = selected_codex_thread_id.clone();
-                    let active_workspace_path_click = active_workspace_path.clone();
-                    let selector_status_click = selector_status.clone();
-                    let composer_revealer_click = composer_revealer.clone();
-                    let profile_selector_click = profile_selector.clone();
-                    let profile_id = profile.id;
-                    let profile_name_click = profile_name.clone();
-                    let account_type = profile.last_account_type.clone();
-                    let account_email = profile.last_email.clone();
-                    select_button.connect_clicked(move |_| {
-                        let workspace = active_workspace_path_click
-                            .borrow()
-                            .clone()
-                            .unwrap_or_else(|| ".".to_string());
-                        selector_status_click.set_visible(true);
-                        selector_status_click.set_text(&format!(
-                            "Starting thread with \"{}\"...",
-                            profile_name_click
-                        ));
-                        let Some(client) = manager_click.client_for_profile(profile_id) else {
-                            selector_status_click.set_text("Profile runtime is not available.");
-                            return;
+                    for profile in cards_to_render {
+                        let profile_id = profile.as_ref().map(|profile| profile.id);
+                        let is_running = profile
+                            .as_ref()
+                            .map(|profile| {
+                                profile.status.eq_ignore_ascii_case("running")
+                                    || running_ids.contains(&profile.id)
+                            })
+                            .unwrap_or(false);
+                        let account_label_text = profile
+                            .as_ref()
+                            .and_then(selector_profile_identity)
+                            .unwrap_or_else(|| "Authentication required".to_string());
+                        let has_identity = profile
+                            .as_ref()
+                            .and_then(selector_profile_identity)
+                            .is_some();
+                        let card_title_text = if render_profiles {
+                            profile
+                                .as_ref()
+                                .map(|profile| profile.name.clone())
+                                .unwrap_or_else(|| {
+                                    crate::backend::backend_display_name(backend_kind).to_string()
+                                })
+                        } else {
+                            crate::backend::backend_display_name(backend_kind).to_string()
                         };
-                        let (tx, rx) = mpsc::channel::<Result<String, String>>();
-                        thread::spawn(move || {
-                            let result =
-                                client.thread_start(Some(&workspace), Some("gpt-5.3-codex"));
-                            let _ = tx.send(result);
-                        });
+                        let card_subtitle_text = if render_profiles {
+                            account_label_text.clone()
+                        } else if let Some(profile) = profile.as_ref() {
+                            if selector_is_system_profile(profile) {
+                                account_label_text.clone()
+                            } else {
+                                format!("{} profile", profile.name)
+                            }
+                        } else {
+                            "No profile yet. Create one on first use.".to_string()
+                        };
 
-                        let db_result = db_click.clone();
-                        let selected_codex_thread_id_result =
-                            selected_codex_thread_id_click.clone();
-                        let selector_status_result = selector_status_click.clone();
-                        let composer_revealer_result = composer_revealer_click.clone();
-                        let profile_selector_result = profile_selector_click.clone();
-                        let account_type_result = account_type.clone();
-                        let account_email_result = account_email.clone();
-                        gtk::glib::timeout_add_local(Duration::from_millis(40), move || {
-                            if profile_selector_result.root().is_none() {
-                                return gtk::glib::ControlFlow::Break;
-                            }
-                            match rx.try_recv() {
-                                Ok(Ok(codex_thread_id)) => {
-                                    let _ = db_result.assign_thread_profile_and_codex(
-                                        pending_thread_id,
-                                        profile_id,
-                                        &codex_thread_id,
-                                        account_type_result.as_deref(),
-                                        account_email_result.as_deref(),
+                        if is_running && has_identity && profile_id.is_some() {
+                            has_selectable = true;
+                        }
+                        if !is_running || profile_id.is_none() {
+                            has_startable = true;
+                        }
+
+                        let card = gtk::Box::new(gtk::Orientation::Vertical, 8);
+                        card.add_css_class("chat-profile-card");
+                        card.set_halign(gtk::Align::Fill);
+                        card.set_hexpand(true);
+
+                        let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+                        header.set_halign(gtk::Align::Fill);
+                        header.set_hexpand(true);
+
+                        let avatar = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+                        avatar.add_css_class("chat-profile-card-avatar");
+                        let avatar_icon_name = profile
+                            .as_ref()
+                            .map(|profile| profile.icon_name.trim().to_string())
+                            .filter(|icon_name| !icon_name.is_empty())
+                            .unwrap_or_else(|| {
+                                selector_backend_icon_name(backend_kind).to_string()
+                            });
+                        let icon = gtk::Image::from_icon_name(&avatar_icon_name);
+                        icon.set_pixel_size(14);
+                        icon.add_css_class("chat-profile-card-avatar-image");
+                        avatar.append(&icon);
+                        header.append(&avatar);
+
+                        let meta = gtk::Box::new(gtk::Orientation::Vertical, 2);
+                        meta.set_halign(gtk::Align::Fill);
+                        meta.set_hexpand(true);
+
+                        let title = gtk::Label::new(Some(&card_title_text));
+                        title.add_css_class("chat-profile-card-title");
+                        title.set_xalign(0.0);
+                        meta.append(&title);
+
+                        if backend_kind.eq_ignore_ascii_case("opencode") {
+                            let access_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+                            access_row.add_css_class("chat-profile-card-access-row");
+                            access_row.set_halign(gtk::Align::Fill);
+                            access_row.set_hexpand(true);
+
+                            let access_label = gtk::Label::new(Some("Access"));
+                            access_label.add_css_class("chat-profile-card-access-label");
+                            access_label.set_xalign(0.0);
+                            access_row.append(&access_label);
+
+                            let access_setting_changed: Rc<dyn Fn(String)> = {
+                                let db = db.clone();
+                                let selector_render_key = selector_render_key_flag.clone();
+                                Rc::new(move |value: String| {
+                                    composer::save_default_composer_setting_value(
+                                        &db,
+                                        "opencode_access_mode",
+                                        &value,
                                     );
-                                    let _ = db_result.set_runtime_profile_id(profile_id);
-                                    let _ = db_result.set_setting("pending_profile_thread_id", "");
-                                    crate::ui::components::thread_list::refresh_all_profile_icon_visibility();
-                                    selected_codex_thread_id_result
-                                        .replace(Some(codex_thread_id));
-                                    profile_selector_result.set_visible(false);
-                                    selector_status_result.set_visible(false);
-                                    composer_revealer_result.set_reveal_child(true);
-                                    gtk::glib::ControlFlow::Break
+                                    selector_render_key.borrow_mut().clear();
+                                })
+                            };
+                            let (access_selector, _selected_access_mode, _set_access_mode) =
+                                runtime_controls::build_access_selector(
+                                    Some(selected_opencode_access_mode.clone()),
+                                    Some(access_setting_changed),
+                                );
+                            access_selector.add_css_class("chat-profile-card-access-selector");
+                            access_row.append(&access_selector);
+                            meta.append(&access_row);
+
+                            let command_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+                            command_row.add_css_class("chat-profile-card-access-row");
+                            command_row.set_halign(gtk::Align::Fill);
+                            command_row.set_hexpand(true);
+
+                            let command_label = gtk::Label::new(Some("Commands"));
+                            command_label.add_css_class("chat-profile-card-access-label");
+                            command_label.set_xalign(0.0);
+                            command_row.append(&command_label);
+
+                            let command_setting_changed: Rc<dyn Fn(String)> = {
+                                let db = db.clone();
+                                let selector_render_key = selector_render_key_flag.clone();
+                                Rc::new(move |value: String| {
+                                    composer::save_default_composer_setting_value(
+                                        &db,
+                                        "opencode_command_mode",
+                                        &value,
+                                    );
+                                    selector_render_key.borrow_mut().clear();
+                                })
+                            };
+                            let (command_selector, _selected_command_mode, _set_command_mode) =
+                                runtime_controls::build_opencode_command_selector(
+                                    Some(selected_opencode_command_mode.clone()),
+                                    Some(command_setting_changed),
+                                );
+                            command_selector.add_css_class("chat-profile-card-access-selector");
+                            command_row.append(&command_selector);
+                            meta.append(&command_row);
+                        }
+
+                        let subtitle = gtk::Label::new(Some(&card_subtitle_text));
+                        subtitle.add_css_class("chat-profile-card-email");
+                        subtitle.set_xalign(0.0);
+                        meta.append(&subtitle);
+                        header.append(&meta);
+
+                        let runtime_state = if is_running { "Running" } else { "Stopped" };
+                        let state = gtk::Label::new(Some(runtime_state));
+                        state.add_css_class("chat-profile-card-state-pill");
+                        if is_running {
+                            state.add_css_class("is-running");
+                        } else {
+                            state.add_css_class("is-stopped");
+                        }
+                        state.set_halign(gtk::Align::End);
+                        header.append(&state);
+                        card.append(&header);
+
+                        let actions = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+                        actions.add_css_class("chat-profile-card-actions");
+                        actions.set_halign(gtk::Align::End);
+
+                        if !is_running || profile_id.is_none() {
+                            let start_label = if profile_id.is_none() {
+                                "Create & Start Runtime"
+                            } else {
+                                "Start Runtime"
+                            };
+                            let start_button = gtk::Button::with_label(start_label);
+                            start_button.add_css_class("chat-profile-card-start");
+                            let db_start = db.clone();
+                            let manager_start = manager.clone();
+                            let selector_status_start = selector_status.clone();
+                            let selector_render_key_start = selector_render_key_flag.clone();
+                            let card_title_start = card_title_text.clone();
+                            let backend_kind_start = backend_kind.to_string();
+                            start_button.connect_clicked(move |_| {
+                                selector_status_start.set_visible(true);
+                                selector_status_start
+                                    .set_text(&format!("Starting \"{}\"...", card_title_start));
+                                let profile = if let Some(profile_id) = profile_id {
+                                    db_start
+                                        .get_codex_profile(profile_id)
+                                        .map_err(|err| err.to_string())
+                                        .and_then(|profile| {
+                                            profile.ok_or_else(|| {
+                                                format!("profile {} not found", profile_id)
+                                            })
+                                        })
+                                } else {
+                                    manager_start.ensure_profile_for_backend(&backend_kind_start)
+                                };
+                                let profile = match profile {
+                                    Ok(profile) => profile,
+                                    Err(err) => {
+                                        selector_status_start
+                                            .set_text(&format!("Failed to prepare runtime: {err}"));
+                                        return;
+                                    }
+                                };
+                                match manager_start.ensure_started(profile.id) {
+                                    Ok(_) => {
+                                        selector_status_start.set_text(
+                                            "Runtime started. Select it when authentication is ready.",
+                                        );
+                                        selector_render_key_start.borrow_mut().clear();
+                                    }
+                                    Err(err) => {
+                                        selector_status_start
+                                            .set_text(&format!("Failed to start runtime: {err}"));
+                                    }
                                 }
-                                Ok(Err(err)) => {
-                                    selector_status_result
-                                        .set_text(&format!("Failed to start thread: {err}"));
-                                    gtk::glib::ControlFlow::Break
-                                }
-                                Err(mpsc::TryRecvError::Empty) => gtk::glib::ControlFlow::Continue,
-                                Err(mpsc::TryRecvError::Disconnected) => {
-                                    gtk::glib::ControlFlow::Break
-                                }
+                            });
+                            actions.append(&start_button);
+                        }
+
+                        if is_running && has_identity {
+                            if let Some(profile_id) = profile_id {
+                                let select_button = gtk::Button::with_label(if render_profiles {
+                                    "Use This Profile"
+                                } else {
+                                    "Use This Provider"
+                                });
+                                select_button.add_css_class("chat-profile-card-select");
+                                let manager_click = manager.clone();
+                                let db_click = db.clone();
+                                let selected_thread_id_click = selected_thread_id.clone();
+                                let active_workspace_path_click = active_workspace_path.clone();
+                                let selector_status_click = selector_status.clone();
+                                let composer_revealer_click = composer_revealer.clone();
+                                let profile_selector_click = profile_selector.clone();
+                                let card_title_click = card_title_text.clone();
+                                let backend_kind_click = backend_kind.to_string();
+                                let selected_opencode_access_mode_for_click =
+                                    selected_opencode_access_mode.clone();
+                                let selected_opencode_command_mode_for_click =
+                                    selected_opencode_command_mode.clone();
+                                let account_type = profile
+                                    .as_ref()
+                                    .and_then(|profile| profile.last_account_type.clone());
+                                let account_email = profile
+                                    .as_ref()
+                                    .and_then(|profile| profile.last_email.clone());
+                                select_button.connect_clicked(move |_| {
+                                    let workspace = active_workspace_path_click
+                                        .borrow()
+                                        .clone()
+                                        .unwrap_or_else(|| ".".to_string());
+                                    selector_status_click.set_visible(true);
+                                    selector_status_click.set_text(&format!(
+                                        "Starting thread with \"{}\"...",
+                                        card_title_click
+                                    ));
+                                    let Some(client) = manager_click.client_for_profile(profile_id) else {
+                                        selector_status_click
+                                            .set_text("Runtime is not available for this selection.");
+                                        return;
+                                    };
+                                    let default_model =
+                                        selector_default_model_id(client.as_ref(), &backend_kind_click);
+                                    let sandbox_policy = if backend_kind_click
+                                        .eq_ignore_ascii_case("opencode")
+                                    {
+                                        Some(runtime_controls::opencode_session_policy_for(
+                                            &selected_opencode_access_mode_for_click,
+                                            &selected_opencode_command_mode_for_click,
+                                        ))
+                                    } else {
+                                        None
+                                    };
+                                    let (tx, rx) = mpsc::channel::<Result<String, String>>();
+                                    thread::spawn(move || {
+                                        let result = client.thread_start(
+                                            Some(&workspace),
+                                            default_model.as_deref(),
+                                            sandbox_policy,
+                                        );
+                                        let _ = tx.send(result);
+                                    });
+
+                                    let db_result = db_click.clone();
+                                    let selected_thread_id_result = selected_thread_id_click.clone();
+                                    let selector_status_result = selector_status_click.clone();
+                                    let composer_revealer_result = composer_revealer_click.clone();
+                                    let profile_selector_result = profile_selector_click.clone();
+                                    let account_type_result = account_type.clone();
+                                    let account_email_result = account_email.clone();
+                                    gtk::glib::timeout_add_local(Duration::from_millis(40), move || {
+                                        if profile_selector_result.root().is_none() {
+                                            return gtk::glib::ControlFlow::Break;
+                                        }
+                                        match rx.try_recv() {
+                                            Ok(Ok(remote_thread_id)) => {
+                                                let _ = db_result.assign_thread_profile_and_remote(
+                                                    pending_thread_id,
+                                                    profile_id,
+                                                    &remote_thread_id,
+                                                    account_type_result.as_deref(),
+                                                    account_email_result.as_deref(),
+                                                );
+                                                let _ = db_result.set_runtime_profile_id(profile_id);
+                                                let _ = db_result.set_setting("pending_profile_thread_id", "");
+                                                crate::ui::components::thread_list::refresh_all_profile_icon_visibility();
+                                                selected_thread_id_result.replace(Some(remote_thread_id));
+                                                profile_selector_result.set_visible(false);
+                                                selector_status_result.set_visible(false);
+                                                composer_revealer_result.set_reveal_child(true);
+                                                gtk::glib::ControlFlow::Break
+                                            }
+                                            Ok(Err(err)) => {
+                                                selector_status_result
+                                                    .set_text(&format!("Failed to start thread: {err}"));
+                                                gtk::glib::ControlFlow::Break
+                                            }
+                                            Err(mpsc::TryRecvError::Empty) => gtk::glib::ControlFlow::Continue,
+                                            Err(mpsc::TryRecvError::Disconnected) => {
+                                                gtk::glib::ControlFlow::Break
+                                            }
+                                        }
+                                    });
+                                });
+                                actions.append(&select_button);
                             }
-                        });
-                    });
-                    actions.append(&select_button);
-                } else if is_running {
-                    let hint =
-                        gtk::Label::new(Some("Login required before this profile can be used."));
-                    hint.add_css_class("chat-profile-card-hint");
-                    hint.set_xalign(0.0);
-                    actions.append(&hint);
-                }
-                card.append(&actions);
-                profile_cards.append(&card);
-            }
+                        } else if is_running {
+                            let hint = gtk::Label::new(Some(
+                                "Authentication is required before this runtime can be used.",
+                            ));
+                            hint.add_css_class("chat-profile-card-hint");
+                            hint.set_xalign(0.0);
+                            actions.append(&hint);
+                        }
+
+                        card.append(&actions);
+                        section.append(&card);
+                    }
+
+                    profile_cards.append(&section);
+                };
+
+            let codex_profiles: Vec<CodexProfileRecord> = profiles
+                .iter()
+                .filter(|profile| profile.backend_kind.eq_ignore_ascii_case("codex"))
+                .cloned()
+                .collect();
+            let opencode_profiles: Vec<CodexProfileRecord> = profiles
+                .iter()
+                .filter(|profile| profile.backend_kind.eq_ignore_ascii_case("opencode"))
+                .cloned()
+                .collect();
+            render_backend_section("codex", codex_profiles);
+            render_backend_section("opencode", opencode_profiles);
 
             if !has_selectable {
                 selector_status.set_visible(true);
                 if has_startable {
                     selector_status.set_text(
-                        "Start a profile runtime, then select a logged-in profile for this thread.",
+                        "Start a runtime first, then select it once authentication is available.",
                     );
                 } else {
                     selector_status.set_text(
-                        "No running logged-in profiles available. Login a running profile first.",
+                        "No authenticated runtime is available yet. Open profile settings if you need to sign in.",
                     );
                 }
             } else if !selector_status.is_visible() {
@@ -1491,7 +2095,7 @@ fn build_chat_tab_single(
             conversation_stack.clone(),
             suggestion_row.clone(),
             track_background_completion,
-            active_codex_thread_id.clone(),
+            active_thread_id.clone(),
             turn_uis.clone(),
             item_turns.clone(),
             item_kinds.clone(),
@@ -1512,7 +2116,7 @@ fn build_chat_tab_single(
         let turn_uis = turn_uis.clone();
         let turn_threads = turn_threads.clone();
         let active_turn = active_turn.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         let composer_revealer = composer_revealer.clone();
         let live_turn_status_revealer = live_turn_status_revealer.clone();
         let live_turn_status_label = live_turn_status_label.clone();
@@ -1527,7 +2131,7 @@ fn build_chat_tab_single(
                 return gtk::glib::ControlFlow::Continue;
             }
 
-            let active_thread_id = active_codex_thread_id.borrow().clone();
+            let active_thread_id = active_thread_id.borrow().clone();
             let now_micros = gtk::glib::monotonic_time();
 
             let selected_turn_id = {
@@ -1638,8 +2242,8 @@ fn build_thread_stack_state(label_text: &str, _show_spinner: bool) -> (gtk::Box,
 pub fn build_chat_tab(
     db: Rc<AppDb>,
     manager: Rc<CodexProfileManager>,
-    codex: Option<Arc<CodexAppServer>>,
-    active_codex_thread_id: Rc<RefCell<Option<String>>>,
+    codex: Option<Arc<RuntimeClient>>,
+    active_thread_id: Rc<RefCell<Option<String>>>,
     active_workspace_path: Rc<RefCell<Option<String>>>,
 ) -> gtk::Box {
     let host = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -1668,14 +2272,16 @@ pub fn build_chat_tab(
     empty_install_box.set_visible(false);
     if let Some(chat_frame) = empty_state.first_child().and_downcast::<gtk::Box>() {
         if let Some(center) = chat_frame.first_child().and_downcast::<gtk::Box>() {
-            let install_hint = gtk::Label::new(Some("Install Codex CLI first:"));
+            let install_hint = gtk::Label::new(Some("Install a supported runtime CLI first:"));
             install_hint.set_xalign(0.0);
             install_hint.add_css_class("welcome-muted");
             empty_install_box.append(&install_hint);
 
             let install_command_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
             install_command_row.add_css_class("welcome-code-block");
-            let install_command = gtk::Label::new(Some("npm i -g @openai/codex"));
+            let install_command = gtk::Label::new(Some(
+                "npm i -g @openai/codex  # or: npm install -g opencode-ai",
+            ));
             install_command.add_css_class("welcome-code-text");
             install_command.set_xalign(0.0);
             install_command.set_hexpand(true);
@@ -1692,7 +2298,9 @@ pub fn build_chat_tab(
             copy_install_button.set_child(Some(&copy_install_icon));
             copy_install_button.connect_clicked(move |_| {
                 if let Some(display) = gtk::gdk::Display::default() {
-                    display.clipboard().set_text("npm i -g @openai/codex");
+                    display
+                        .clipboard()
+                        .set_text("npm i -g @openai/codex  # or: npm install -g opencode-ai");
                 }
             });
             install_command_row.append(&copy_install_button);
@@ -1710,7 +2318,7 @@ pub fn build_chat_tab(
         .flatten()
         .and_then(|value| value.parse::<i64>().ok())
         .and_then(|thread_id| db.get_thread_record(thread_id).ok().flatten())
-        .and_then(|thread| thread.codex_thread_id)
+        .and_then(|thread| thread.remote_thread_id_owned())
         .is_some();
     pane_stack.set_visible_child_name(if restoring_last_thread {
         "loading"
@@ -1731,7 +2339,7 @@ pub fn build_chat_tab(
         let db = db.clone();
         let manager = manager.clone();
         let codex = codex.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         let active_workspace_path = active_workspace_path.clone();
         let pane_stack = pane_stack.clone();
         let empty_heading = empty_heading.clone();
@@ -1755,7 +2363,7 @@ pub fn build_chat_tab(
                 .list_workspaces_with_threads()
                 .map(|items| !items.is_empty())
                 .unwrap_or(false);
-            let should_probe_codex = has_workspaces && active_codex_thread_id.borrow().is_none();
+            let should_probe_codex = has_workspaces && active_thread_id.borrow().is_none();
             if should_probe_codex && *codex_install_state.borrow() != Some(true) {
                 let now = gtk::glib::monotonic_time();
                 let last_check = *codex_install_last_check_micros.borrow();
@@ -1769,7 +2377,7 @@ pub fn build_chat_tab(
                     codex_install_last_check_micros.replace(now);
                     let tx = codex_install_tx.clone();
                     thread::spawn(move || {
-                        let _ = tx.send(crate::codex_appserver::cli_available());
+                        let _ = tx.send(crate::backend::any_runtime_cli_available());
                     });
                 }
             }
@@ -1777,13 +2385,13 @@ pub fn build_chat_tab(
                 should_probe_codex && matches!(*codex_install_state.borrow(), Some(false));
             empty_install_box.set_visible(codex_missing);
             empty_heading.set_text(if codex_missing {
-                "Install Codex CLI"
+                "Install Runtime CLI"
             } else if has_workspaces {
                 "Select a Thread"
             } else {
                 "Add a Workspace"
             });
-            let active_thread = active_codex_thread_id.borrow().clone();
+            let active_thread = active_thread_id.borrow().clone();
             let pending_view_key = if active_thread.is_none() {
                 db.get_setting("pending_profile_thread_id")
                     .ok()
@@ -1792,8 +2400,7 @@ pub fn build_chat_tab(
                     .and_then(|thread_id| db.get_thread_record(thread_id).ok().flatten())
                     .and_then(|thread| {
                         let unresolved = thread
-                            .codex_thread_id
-                            .as_deref()
+                            .remote_thread_id()
                             .map(|value| value.trim().is_empty())
                             .unwrap_or(true);
                         unresolved.then(|| format!("pending-local:{}", thread.id))
@@ -1834,7 +2441,7 @@ pub fn build_chat_tab(
                         manager.clone(),
                         codex.clone(),
                         pane_active_thread_id,
-                        active_codex_thread_id.clone(),
+                        active_thread_id.clone(),
                         true,
                         pane_active_workspace_path,
                     );
@@ -1853,16 +2460,14 @@ pub fn build_chat_tab(
                 let db = db.clone();
                 let manager = manager.clone();
                 let codex = codex.clone();
-                let active_codex_thread_id = active_codex_thread_id.clone();
+                let active_thread_id = active_thread_id.clone();
                 let active_workspace_path = active_workspace_path.clone();
                 let pane_stack = pane_stack.clone();
                 let panes_by_thread = panes_by_thread.clone();
                 let visible_thread_id = visible_thread_id.clone();
                 let thread_id_for_build = thread_id.clone();
                 crate::ui::scheduler::once(Duration::from_millis(120), move || {
-                    if active_codex_thread_id.borrow().as_deref()
-                        != Some(thread_id_for_build.as_str())
-                    {
+                    if active_thread_id.borrow().as_deref() != Some(thread_id_for_build.as_str()) {
                         return;
                     }
                     if panes_by_thread.borrow().contains_key(&thread_id_for_build) {
@@ -1873,7 +2478,7 @@ pub fn build_chat_tab(
                     let pane_active_thread_id =
                         Rc::new(RefCell::new(Some(thread_id_for_build.clone())));
                     let pane_workspace = db
-                        .workspace_path_for_codex_thread(&thread_id_for_build)
+                        .workspace_path_for_remote_thread(&thread_id_for_build)
                         .ok()
                         .flatten()
                         .or_else(|| active_workspace_path.borrow().clone());
@@ -1883,7 +2488,7 @@ pub fn build_chat_tab(
                         manager.clone(),
                         codex.clone(),
                         pane_active_thread_id,
-                        active_codex_thread_id.clone(),
+                        active_thread_id.clone(),
                         true,
                         pane_active_workspace_path,
                     );

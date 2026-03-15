@@ -11,6 +11,84 @@ type HistorySyncMessage = (
     Result<Value, String>,
 );
 
+type PendingRequestSyncMessage = (String, Result<Vec<Value>, String>);
+
+#[allow(clippy::too_many_arguments)]
+fn replace_pending_requests_for_thread(
+    db: &Rc<AppDb>,
+    manager: &Rc<CodexProfileManager>,
+    thread_id: &str,
+    entries: Vec<Value>,
+    turn_uis: &Rc<RefCell<HashMap<String, super::TurnUi>>>,
+    pending_server_requests_by_id: &Rc<RefCell<HashMap<i64, PendingServerRequestUi>>>,
+    pending_request_thread_by_id: &Rc<RefCell<HashMap<i64, String>>>,
+    messages_box: &gtk::Box,
+    messages_scroll: &gtk::ScrolledWindow,
+    conversation_stack: &gtk::Stack,
+    cached_pending_requests_for_thread: &Rc<RefCell<Vec<Value>>>,
+) {
+    let request_ids_for_thread = pending_request_thread_by_id
+        .borrow()
+        .iter()
+        .filter_map(|(request_id, owner_thread_id)| {
+            if owner_thread_id == thread_id {
+                Some(*request_id)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    for request_id in request_ids_for_thread {
+        pending_request_thread_by_id.borrow_mut().remove(&request_id);
+        if let Some(pending) = pending_server_requests_by_id
+            .borrow_mut()
+            .remove(&request_id)
+        {
+            remove_request_card(turn_uis, &pending.turn_id, &pending.card);
+        }
+    }
+
+    cached_pending_requests_for_thread.replace(entries.clone());
+    super::codex_history::save_cached_pending_requests(db, thread_id, &entries);
+
+    let Some(client) = manager.resolve_running_client_for_thread_id(thread_id) else {
+        return;
+    };
+    for pending in &entries {
+        let Some(request_id) = pending.get("requestId").and_then(Value::as_i64) else {
+            continue;
+        };
+        let Some(turn_id) = pending.get("turnId").and_then(Value::as_str) else {
+            continue;
+        };
+        let method = pending
+            .get("method")
+            .and_then(Value::as_str)
+            .unwrap_or("item/tool/requestUserInput");
+        let params = pending
+            .get("params")
+            .cloned()
+            .unwrap_or(Value::Object(Default::default()));
+        pending_request_thread_by_id
+            .borrow_mut()
+            .insert(request_id, thread_id.to_string());
+        show_pending_request_card(
+            &client,
+            turn_uis,
+            pending_server_requests_by_id,
+            messages_box,
+            messages_scroll,
+            conversation_stack,
+            thread_id,
+            turn_id,
+            request_id,
+            method,
+            &params,
+            false,
+        );
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn handle_active_thread_transition(
     db: &Rc<AppDb>,
@@ -42,13 +120,14 @@ fn handle_active_thread_transition(
     history_snapshot_tx:
         &mpsc::Sender<(String, Result<super::codex_history::ThreadHistoryRenderSnapshot, String>)>,
     history_tx: &mpsc::Sender<HistorySyncMessage>,
+    pending_request_tx: &mpsc::Sender<PendingRequestSyncMessage>,
 ) {
     super::clear_messages(messages_box);
 
     if let Some(thread_id) = active_thread_now.clone() {
         mark_history_load_started(&thread_id, "thread switch");
         super::message_render::set_messages_box_thread_context(messages_box, Some(&thread_id));
-        let thread_locked = db.is_codex_thread_locked(&thread_id).unwrap_or(false);
+        let thread_locked = db.is_remote_thread_locked(&thread_id).unwrap_or(false);
 
         let mut preloaded_snapshot = pending_history_snapshots
             .borrow_mut()
@@ -174,6 +253,17 @@ fn handle_active_thread_transition(
             );
         }
 
+        if let Some(client) = manager.resolve_running_client_for_thread_id(&thread_id) {
+            if client.backend_kind() == "opencode" {
+                let pending_request_tx = pending_request_tx.clone();
+                let thread_id_for_worker = thread_id.clone();
+                thread::spawn(move || {
+                    let result = client.pending_server_requests_for_thread(&thread_id_for_worker);
+                    let _ = pending_request_tx.send((thread_id_for_worker, result));
+                });
+            }
+        }
+
         if thread_locked {
             loading_history_thread_id.replace(None);
             loaded_history_thread_id.replace(Some(thread_id.clone()));
@@ -201,7 +291,7 @@ fn handle_active_thread_transition(
             let history_tx = history_tx.clone();
             log_history_load_step(&thread_id, "dispatching appserver thread/read");
             let log_source = db
-                .get_thread_record_by_codex_thread_id(&thread_id)
+                .get_thread_record_by_remote_thread_id(&thread_id)
                 .ok()
                 .flatten()
                 .and_then(|thread| {

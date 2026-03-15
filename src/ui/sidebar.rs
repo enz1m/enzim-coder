@@ -117,7 +117,7 @@ pub fn build_sidebar(
     window: &adw::ApplicationWindow,
     db: Rc<AppDb>,
     manager: Rc<CodexProfileManager>,
-    active_codex_thread_id: Rc<RefCell<Option<String>>>,
+    active_thread_id: Rc<RefCell<Option<String>>>,
     active_workspace_path: Rc<RefCell<Option<String>>>,
 ) -> adw::ToolbarView {
     let toolbar = adw::ToolbarView::new();
@@ -173,7 +173,7 @@ pub fn build_sidebar(
         list_container.append(&build_workspace(
             db.clone(),
             manager.clone(),
-            active_codex_thread_id.clone(),
+            active_thread_id.clone(),
             active_workspace_path.clone(),
             workspace,
             true,
@@ -267,7 +267,7 @@ pub fn build_sidebar(
     {
         let db = db.clone();
         let manager = manager.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         let active_workspace_path = active_workspace_path.clone();
         let window = window.clone();
         let list_container = list_container.clone();
@@ -276,7 +276,7 @@ pub fn build_sidebar(
                 &window,
                 db.clone(),
                 manager.clone(),
-                active_codex_thread_id.clone(),
+                active_thread_id.clone(),
                 active_workspace_path.clone(),
                 list_container.clone(),
             );
@@ -349,7 +349,7 @@ pub fn build_sidebar(
 fn build_workspace(
     db: Rc<AppDb>,
     manager: Rc<CodexProfileManager>,
-    active_codex_thread_id: Rc<RefCell<Option<String>>>,
+    active_thread_id: Rc<RefCell<Option<String>>>,
     active_workspace_path: Rc<RefCell<Option<String>>>,
     workspace: WorkspaceWithThreads,
     expanded: bool,
@@ -451,7 +451,7 @@ fn build_workspace(
     let thread_list = ThreadList::new(
         db.clone(),
         manager.clone(),
-        active_codex_thread_id.clone(),
+        active_thread_id.clone(),
         active_workspace_path.clone(),
         workspace_path.clone(),
         &workspace.threads,
@@ -507,8 +507,7 @@ fn build_workspace(
         let thread_list = thread_list.clone();
         let chevron = chevron.clone();
         let db = db.clone();
-        let manager = manager.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         let active_workspace_path = active_workspace_path.clone();
         let workspace_path = workspace_path.clone();
         Rc::new(move || {
@@ -518,81 +517,30 @@ fn build_workspace(
                 chevron.set_icon_name(Some("pan-down-symbolic"));
             }
             let profiles = db.list_codex_profiles().unwrap_or_default();
-            let only_system_profile = profiles.len() == 1
-                && profiles
-                    .first()
-                    .map(|profile| profile.name.eq_ignore_ascii_case("System"))
-                    .unwrap_or(false);
-            if !only_system_profile {
-                let default_profile_id = db
-                    .runtime_profile_id()
-                    .ok()
-                    .flatten()
-                    .or_else(|| profiles.first().map(|profile| profile.id))
-                    .or_else(|| db.active_profile_id().ok().flatten())
-                    .unwrap_or(1);
-                match db.create_thread(
-                    workspace_id,
-                    default_profile_id,
-                    None,
-                    "New thread",
-                    None,
-                    None,
-                    None,
-                ) {
-                    Ok(thread) => {
-                        let _ = db.set_setting("last_active_thread_id", &thread.id.to_string());
-                        let _ = db.set_setting("last_active_workspace_path", &workspace_path);
-                        let _ = db.set_setting("pending_profile_thread_id", &thread.id.to_string());
-                        active_codex_thread_id.replace(None);
-                        let _ = thread_list.append_thread(thread);
-                    }
-                    Err(err) => eprintln!("failed to create pending thread: {err}"),
-                }
-                return;
-            }
-
             let profile_id = profiles
                 .first()
                 .map(|profile| profile.id)
                 .or_else(|| db.runtime_profile_id().ok().flatten())
                 .or_else(|| db.active_profile_id().ok().flatten())
                 .unwrap_or(1);
-            let profile = db.get_codex_profile(profile_id).ok().flatten();
-            let account_type = profile
-                .as_ref()
-                .and_then(|profile| profile.last_account_type.as_deref());
-            let account_email = profile
-                .as_ref()
-                .and_then(|profile| profile.last_email.as_deref());
-            let initial_codex_thread_id =
-                manager.client_for_profile(profile_id).and_then(|client| {
-                    client
-                        .thread_start(Some(&workspace_path), Some("gpt-5.3-codex"))
-                        .map_err(|err| {
-                            eprintln!("failed to start Codex thread on create: {err}");
-                            err
-                        })
-                        .ok()
-                });
 
-            match db.create_thread(
+            match db.create_thread_with_remote_identity(
                 workspace_id,
                 profile_id,
                 None,
                 "New thread",
-                initial_codex_thread_id.as_deref(),
-                account_type,
-                account_email,
+                None,
+                None,
+                None,
             ) {
                 Ok(thread) => {
                     let _ = db.set_setting("last_active_thread_id", &thread.id.to_string());
                     let _ = db.set_setting("last_active_workspace_path", &workspace_path);
-                    let _ = db.set_setting("pending_profile_thread_id", "");
-                    active_codex_thread_id.replace(thread.codex_thread_id.clone());
+                    let _ = db.set_setting("pending_profile_thread_id", &thread.id.to_string());
+                    active_thread_id.replace(None);
                     let _ = thread_list.append_thread(thread);
                 }
-                Err(err) => eprintln!("failed to create thread: {err}"),
+                Err(err) => eprintln!("failed to create pending thread: {err}"),
             }
         })
     };
@@ -609,7 +557,7 @@ fn build_workspace(
     let close_workspace_action: Rc<dyn Fn()> = {
         let db = db.clone();
         let manager = manager.clone();
-        let active_codex_thread_id = active_codex_thread_id.clone();
+        let active_thread_id = active_thread_id.clone();
         let active_workspace_path = active_workspace_path.clone();
         let workspace_box = workspace_box.clone();
         let workspace_path = workspace_path.clone();
@@ -618,11 +566,11 @@ fn build_workspace(
                 .list_threads_for_workspace_all(workspace_id)
                 .unwrap_or_default();
             let mut removed_local_thread_ids = HashSet::new();
-            let mut removed_codex_thread_ids = Vec::new();
+            let mut removed_remote_thread_ids = Vec::new();
             for thread in &threads {
                 removed_local_thread_ids.insert(thread.id);
-                if let Some(codex_thread_id) = thread.codex_thread_id.as_ref() {
-                    removed_codex_thread_ids.push(codex_thread_id.clone());
+                if let Some(remote_thread_id) = thread.remote_thread_id() {
+                    removed_remote_thread_ids.push(remote_thread_id.to_string());
                 }
             }
 
@@ -677,24 +625,24 @@ fn build_workspace(
             let workspace_path_for_result = workspace_path.clone();
             let db_for_result = db.clone();
             let manager_for_result = manager.clone();
-            let active_codex_thread_id_for_result = active_codex_thread_id.clone();
+            let active_thread_id_for_result = active_thread_id.clone();
             let active_workspace_path_for_result = active_workspace_path.clone();
             gtk::glib::timeout_add_local(Duration::from_millis(40), move || {
                 match cleanup_rx.try_recv() {
                     Ok(Ok(())) => {
-                        for codex_thread_id in &removed_codex_thread_ids {
+                        for remote_thread_id in &removed_remote_thread_ids {
                             if let Some(client) =
-                                manager_for_result.resolve_client_for_thread_id(codex_thread_id)
+                                manager_for_result.resolve_client_for_thread_id(remote_thread_id)
                             {
                                 let client = client.clone();
-                                let codex_thread_id_bg = codex_thread_id.clone();
+                                let remote_thread_id_bg = remote_thread_id.clone();
                                 thread::spawn(move || {
-                                    let _ = client.thread_archive(&codex_thread_id_bg);
+                                    let _ = client.thread_archive(&remote_thread_id_bg);
                                 });
                             }
-                            crate::ui::components::thread_list::remove_codex_thread_from_multiview_layout(
+                            crate::ui::components::thread_list::remove_thread_from_multiview_layout(
                                 db_for_result.as_ref(),
-                                codex_thread_id,
+                                remote_thread_id,
                             );
                         }
 
@@ -710,14 +658,12 @@ fn build_workspace(
                             active_workspace_path_for_result.replace(None);
                         }
 
-                        if let Some(active_codex) =
-                            active_codex_thread_id_for_result.borrow().clone()
-                        {
-                            if removed_codex_thread_ids
+                        if let Some(active_thread) = active_thread_id_for_result.borrow().clone() {
+                            if removed_remote_thread_ids
                                 .iter()
-                                .any(|id| id == &active_codex)
+                                .any(|id| id == &active_thread)
                             {
-                                active_codex_thread_id_for_result.replace(None);
+                                active_thread_id_for_result.replace(None);
                             }
                         }
 
@@ -834,7 +780,7 @@ fn open_workspace_picker(
     window: &adw::ApplicationWindow,
     db: Rc<AppDb>,
     manager: Rc<CodexProfileManager>,
-    active_codex_thread_id: Rc<RefCell<Option<String>>>,
+    active_thread_id: Rc<RefCell<Option<String>>>,
     active_workspace_path: Rc<RefCell<Option<String>>>,
     list_container: gtk::Box,
 ) {
@@ -867,11 +813,6 @@ fn open_workspace_picker(
                     let _ = db.set_setting("last_workspace_path", &display_path(&path));
                     let workspace_path = workspace.path.clone();
                     let profiles = db.list_codex_profiles().unwrap_or_default();
-                    let only_system_profile = profiles.len() == 1
-                        && profiles
-                            .first()
-                            .map(|profile| profile.name.eq_ignore_ascii_case("System"))
-                            .unwrap_or(false);
                     let default_profile_id = db
                         .runtime_profile_id()
                         .ok()
@@ -879,39 +820,14 @@ fn open_workspace_picker(
                         .or_else(|| profiles.first().map(|profile| profile.id))
                         .or_else(|| db.active_profile_id().ok().flatten())
                         .unwrap_or(1);
-                    let (initial_codex_thread_id, account_type, account_email) =
-                        if only_system_profile {
-                            let account = db.current_codex_account().ok().flatten();
-                            let account_type =
-                                account.as_ref().map(|(kind, _)| kind.to_string());
-                            let account_email = account
-                                .as_ref()
-                                .and_then(|(_, email)| email.as_ref().map(ToString::to_string));
-                            let thread_id =
-                                manager.client_for_profile(default_profile_id).and_then(|client| {
-                                    client
-                                        .thread_start(Some(&workspace_path), Some("gpt-5.3-codex"))
-                                        .map_err(|err| {
-                                            eprintln!(
-                                                "failed to start Codex thread for new workspace: {err}"
-                                            );
-                                            err
-                                        })
-                                        .ok()
-                                });
-                            (thread_id, account_type, account_email)
-                        } else {
-                            (None, None, None)
-                        };
-
-                    let first_thread = match db.create_thread(
+                    let first_thread = match db.create_thread_with_remote_identity(
                         workspace.id,
                         default_profile_id,
                         None,
                         "New thread",
-                        initial_codex_thread_id.as_deref(),
-                        account_type.as_deref(),
-                        account_email.as_deref(),
+                        None,
+                        None,
+                        None,
                     ) {
                         Ok(thread) => thread,
                         Err(err) => {
@@ -926,14 +842,9 @@ fn open_workspace_picker(
                     let _ = db.set_setting("last_active_thread_id", &first_thread.id.to_string());
                     let _ = db.set_setting("last_active_workspace_path", &workspace_path);
                     active_workspace_path.replace(Some(workspace_path.clone()));
-                    if only_system_profile {
-                        let _ = db.set_setting("pending_profile_thread_id", "");
-                        active_codex_thread_id.replace(first_thread.codex_thread_id.clone());
-                    } else {
-                        let _ = db
-                            .set_setting("pending_profile_thread_id", &first_thread.id.to_string());
-                        active_codex_thread_id.replace(None);
-                    }
+                    let _ =
+                        db.set_setting("pending_profile_thread_id", &first_thread.id.to_string());
+                    active_thread_id.replace(None);
 
                     let first_thread_id = first_thread.id;
                     let workspace = WorkspaceWithThreads {
@@ -943,7 +854,7 @@ fn open_workspace_picker(
                     list_container.prepend(&build_workspace(
                         db.clone(),
                         manager.clone(),
-                        active_codex_thread_id.clone(),
+                        active_thread_id.clone(),
                         active_workspace_path.clone(),
                         workspace,
                         true,
