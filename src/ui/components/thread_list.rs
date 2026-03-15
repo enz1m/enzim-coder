@@ -172,6 +172,13 @@ fn profile_icon_name_for_profile(db: &AppDb, profile_id: i64) -> String {
         .unwrap_or_else(|| "person-symbolic".to_string())
 }
 
+fn thread_uses_codex_profile(db: &AppDb, thread: &ThreadRecord) -> bool {
+    db.get_codex_profile(thread.profile_id)
+        .ok()
+        .flatten()
+        .is_some_and(|profile| profile.backend_kind.eq_ignore_ascii_case("codex"))
+}
+
 fn thread_has_linked_profile(thread: &ThreadRecord) -> bool {
     thread
         .remote_thread_id()
@@ -188,19 +195,19 @@ fn thread_has_linked_profile(thread: &ThreadRecord) -> bool {
 }
 
 fn profile_icon_name_for_thread(db: &AppDb, thread: &ThreadRecord) -> Option<String> {
-    thread_has_linked_profile(thread).then(|| profile_icon_name_for_profile(db, thread.profile_id))
+    (thread_uses_codex_profile(db, thread) && thread_has_linked_profile(thread))
+        .then(|| profile_icon_name_for_profile(db, thread.profile_id))
 }
 
-fn has_non_system_profile(db: &AppDb) -> bool {
-    let system_home =
-        crate::data::configured_profile_home_dir(&crate::data::default_app_data_dir());
-    let system_home = system_home.to_string_lossy().to_string();
+fn has_multiple_codex_profiles(db: &AppDb) -> bool {
     db.list_codex_profiles()
         .ok()
         .map(|profiles| {
             profiles
                 .iter()
-                .any(|profile| profile.home_dir.trim() != system_home.trim())
+                .filter(|profile| profile.backend_kind.eq_ignore_ascii_case("codex"))
+                .count()
+                > 1
         })
         .unwrap_or(true)
 }
@@ -475,13 +482,15 @@ impl ThreadList {
                 continue;
             };
             if let Ok(Some(thread)) = self.db.get_thread_record(local_thread_id) {
-                if thread_has_linked_profile(&thread) {
+                if thread_uses_codex_profile(self.db.as_ref(), &thread)
+                    && thread_has_linked_profile(&thread)
+                {
                     profile_ids.insert(thread.profile_id);
                 }
             }
         }
 
-        let show_icons = !profile_ids.is_empty() && has_non_system_profile(self.db.as_ref());
+        let show_icons = !profile_ids.is_empty() && has_multiple_codex_profiles(self.db.as_ref());
         self.show_profile_icons.set(show_icons);
 
         let mut row_index = 0;
