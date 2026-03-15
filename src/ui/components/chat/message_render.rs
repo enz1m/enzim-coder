@@ -59,6 +59,9 @@ pub(super) struct GenericItemUi {
 const COMMAND_PREVIEW_CHARS: usize = 120;
 const DETAIL_TEXT_MAX_LINES: usize = 80;
 const DETAIL_TEXT_MAX_CHARS: usize = 12_000;
+const THINKING_OUTPUT_MAX_LINES: i32 = 20;
+const COMMAND_OUTPUT_MIN_HEIGHT: i32 = 180;
+const COMMAND_OUTPUT_MAX_HEIGHT: i32 = 360;
 const STREAM_REVEAL_IDLE_MS: u64 = 120;
 const STREAM_REVEAL_POLL_MS: u64 = 35;
 const AUTO_SCROLL_FOLLOW_POLL_MS: u64 = 16;
@@ -585,20 +588,21 @@ impl ToolCallUi {
 
 impl GenericItemUi {
     fn sync_output_scroll_layout(&self) {
+        let output = self.output_text.borrow();
+        sync_thinking_output_scroll_layout(&self.output_label, &self.output_scroll, output.trim());
+    }
+
+    fn schedule_output_scroll_layout_sync(&self) {
         if !self.output_label.has_css_class("chat-thinking-output") {
             return;
         }
 
-        let line_count = self.output_text.borrow().lines().count().max(1);
-        if line_count > 10 {
-            self.output_scroll.set_propagate_natural_height(false);
-            self.output_scroll.set_min_content_height(170);
-            self.output_scroll.set_max_content_height(170);
-        } else {
-            self.output_scroll.set_propagate_natural_height(true);
-            self.output_scroll.set_min_content_height(0);
-            self.output_scroll.set_max_content_height(170);
-        }
+        schedule_thinking_output_scroll_layout_sync(
+            self.output_label.clone(),
+            self.output_scroll.clone(),
+            self.output_text.clone(),
+            0,
+        );
     }
 
     pub(super) fn set_title(&self, text: &str) {
@@ -675,10 +679,16 @@ impl GenericItemUi {
         }
         set_plain_label_text(&self.summary_label, summary);
         self.output_text.replace(output.to_string());
-        self.sync_output_scroll_layout();
         let show_summary = !summary.trim().is_empty();
         let show_output = !self.output_text.borrow().trim().is_empty();
-        if self.details_revealer.reveals_child() {
+        if self.output_label.has_css_class("chat-thinking-output") {
+            let output = self.output_text.borrow();
+            set_plain_label_text(&self.output_label, output.as_str());
+            self.output_label.set_visible(show_output);
+            self.output_scroll.set_visible(show_output);
+            drop(output);
+            self.sync_output_scroll_layout();
+        } else if self.details_revealer.reveals_child() {
             let output = self.output_text.borrow();
             set_plain_label_text(&self.output_label, output.as_str());
             self.output_label.set_visible(!output.trim().is_empty());
@@ -693,6 +703,10 @@ impl GenericItemUi {
         self.details_enabled.replace(enabled);
         if !enabled {
             self.details_revealer.set_reveal_child(false);
+        } else if self.output_label.has_css_class("chat-thinking-output")
+            || self.details_revealer.reveals_child()
+        {
+            self.schedule_output_scroll_layout_sync();
         }
     }
 
@@ -710,17 +724,94 @@ impl GenericItemUi {
             set_plain_label_text(&self.output_label, output.as_str());
             self.output_label.set_visible(!output.trim().is_empty());
             self.output_scroll.set_visible(!output.trim().is_empty());
-        } else {
+        } else if !self.output_label.has_css_class("chat-thinking-output") {
             set_plain_label_text(&self.output_label, "");
             self.output_label.set_visible(false);
             self.output_scroll.set_visible(false);
         }
         self.details_revealer.set_reveal_child(expanded);
+        if expanded {
+            self.schedule_output_scroll_layout_sync();
+        }
     }
 
     pub(super) fn output_text(&self) -> String {
         self.output_text.borrow().clone()
     }
+}
+
+fn sync_thinking_output_scroll_layout(
+    output_label: &gtk::Label,
+    output_scroll: &gtk::ScrolledWindow,
+    output: &str,
+) -> bool {
+    if !output_label.has_css_class("chat-thinking-output") {
+        return true;
+    }
+
+    let output = output.trim();
+    let line_height = output_label
+        .create_pango_layout(Some("Ag"))
+        .pixel_size()
+        .1
+        .max(1);
+    let max_height = line_height * THINKING_OUTPUT_MAX_LINES;
+    let available_width = output_scroll.width().max(output_label.width());
+
+    if output.is_empty() {
+        output_scroll.set_propagate_natural_height(false);
+        output_scroll.set_min_content_height(0);
+        output_scroll.set_max_content_height(0);
+        return true;
+    }
+
+    if available_width <= 1 {
+        output_scroll.set_propagate_natural_height(false);
+        output_scroll.set_min_content_height(line_height * 3);
+        output_scroll.set_max_content_height(max_height);
+        return false;
+    }
+
+    let previous_text = output_label.text().to_string();
+    set_plain_label_text(output_label, output);
+    let (_, rendered_height, _, _) =
+        output_label.measure(gtk::Orientation::Vertical, available_width.max(1));
+    if previous_text != output {
+        set_plain_label_text(output_label, &previous_text);
+    }
+    let visible_height = rendered_height.min(max_height).max(line_height);
+
+    output_scroll.set_propagate_natural_height(false);
+    output_scroll.set_min_content_height(visible_height);
+    output_scroll.set_max_content_height(visible_height);
+    true
+}
+
+fn schedule_thinking_output_scroll_layout_sync(
+    output_label: gtk::Label,
+    output_scroll: gtk::ScrolledWindow,
+    output_text: Rc<RefCell<String>>,
+    attempt: u8,
+) {
+    gtk::glib::idle_add_local_once(move || {
+        let settled = {
+            let output = output_text.borrow();
+            sync_thinking_output_scroll_layout(&output_label, &output_scroll, output.trim())
+        };
+        if !settled && attempt < 6 {
+            let output_label = output_label.clone();
+            let output_scroll = output_scroll.clone();
+            let output_text = output_text.clone();
+            gtk::glib::timeout_add_local_once(Duration::from_millis(16), move || {
+                schedule_thinking_output_scroll_layout_sync(
+                    output_label,
+                    output_scroll,
+                    output_text,
+                    attempt + 1,
+                );
+            });
+        }
+    });
 }
 
 const FIRST_MESSAGE_TOP_MARGIN: i32 = 18;
@@ -2024,8 +2115,8 @@ pub(super) fn create_command_widget(command: &str) -> (gtk::Box, CommandUi) {
     let output_scroll = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Automatic)
         .vscrollbar_policy(gtk::PolicyType::Automatic)
-        .min_content_height(90)
-        .max_content_height(180)
+        .min_content_height(COMMAND_OUTPUT_MIN_HEIGHT)
+        .max_content_height(COMMAND_OUTPUT_MAX_HEIGHT)
         .child(&output_label)
         .build();
     output_scroll.add_css_class("chat-command-output-scroll");
@@ -2501,7 +2592,6 @@ pub(super) fn create_reasoning_widget() -> (gtk::Box, GenericItemUi) {
     widget.add_css_class("chat-thinking-card");
     generic_ui.section_label.set_visible(false);
     generic_ui.status_label.set_visible(false);
-    generic_ui.output_scroll.set_max_content_height(170);
     generic_ui
         .output_scroll
         .set_widget_name("chat-thinking-output-scroll");
@@ -2515,6 +2605,49 @@ pub(super) fn create_reasoning_widget() -> (gtk::Box, GenericItemUi) {
     generic_ui
         .output_label
         .add_css_class("chat-thinking-output");
+    {
+        let output_label = generic_ui.output_label.clone();
+        let output_scroll = generic_ui.output_scroll.clone();
+        let output_text = generic_ui.output_text.clone();
+        generic_ui.output_scroll.connect_map(move |_| {
+            schedule_thinking_output_scroll_layout_sync(
+                output_label.clone(),
+                output_scroll.clone(),
+                output_text.clone(),
+                0,
+            );
+        });
+    }
+    {
+        let output_label = generic_ui.output_label.clone();
+        let output_scroll = generic_ui.output_scroll.clone();
+        let output_text = generic_ui.output_text.clone();
+        generic_ui
+            .output_scroll
+            .connect_notify_local(Some("width"), move |_, _| {
+                schedule_thinking_output_scroll_layout_sync(
+                    output_label.clone(),
+                    output_scroll.clone(),
+                    output_text.clone(),
+                    0,
+                );
+            });
+    }
+    {
+        let output_label = generic_ui.output_label.clone();
+        let output_scroll = generic_ui.output_scroll.clone();
+        let output_text = generic_ui.output_text.clone();
+        generic_ui
+            .output_label
+            .connect_notify_local(Some("width"), move |_, _| {
+                schedule_thinking_output_scroll_layout_sync(
+                    output_label.clone(),
+                    output_scroll.clone(),
+                    output_text.clone(),
+                    0,
+                );
+            });
+    }
     (widget, generic_ui)
 }
 
