@@ -339,8 +339,8 @@ fn append_history_assistant_turn(
 
     if !has_content {
         if let Some(message) = turn_error {
-            let label = super::message_render::create_text_segment(&body_box);
-            super::markdown::set_markdown(&label, &format!("**Turn failed**\n\n{message}"));
+            let widget = super::message_render::create_error_widget("Turn failed", message);
+            body_box.append(&widget);
             has_content = true;
         }
     }

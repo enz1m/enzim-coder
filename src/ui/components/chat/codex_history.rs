@@ -185,18 +185,113 @@ fn resolve_checkpoint_map_for_turns(
     resolved
 }
 
-fn map_cached_turn_errors_by_turn_id(entries: Vec<Value>) -> HashMap<String, String> {
-    let mut mapped = HashMap::new();
+fn resolve_cached_turn_errors_for_local_turns(
+    turns: &[LocalChatTurnRecord],
+    entries: Vec<Value>,
+) -> HashMap<String, String> {
+    let turn_ids = turns
+        .iter()
+        .map(|turn| turn.external_turn_id.as_str())
+        .collect::<HashSet<_>>();
+    let mut resolved = HashMap::new();
+    let mut unmatched_messages = Vec::new();
+
     for entry in entries {
-        let Some(turn_id) = entry.get("turnId").and_then(Value::as_str) else {
-            continue;
-        };
         let Some(message) = entry.get("message").and_then(Value::as_str) else {
             continue;
         };
-        mapped.insert(turn_id.to_string(), message.to_string());
+        if let Some(turn_id) = entry.get("turnId").and_then(Value::as_str) {
+            if turn_ids.contains(turn_id) {
+                resolved.insert(turn_id.to_string(), message.to_string());
+                continue;
+            }
+        }
+        unmatched_messages.push(message.to_string());
     }
-    mapped
+
+    if unmatched_messages.is_empty() {
+        return resolved;
+    }
+
+    let mut unmatched_failed_turns = turns
+        .iter()
+        .filter(|turn| turn.status == "failed")
+        .filter(|turn| !resolved.contains_key(turn.external_turn_id.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    unmatched_failed_turns.sort_by(|a, b| {
+        turn_sort_timestamp(a)
+            .cmp(&turn_sort_timestamp(b))
+            .then_with(|| a.created_at.cmp(&b.created_at))
+            .then_with(|| a.external_turn_id.cmp(&b.external_turn_id))
+    });
+
+    for (turn, message) in unmatched_failed_turns
+        .into_iter()
+        .zip(unmatched_messages.into_iter())
+    {
+        resolved.insert(turn.external_turn_id, message);
+    }
+
+    resolved
+}
+
+fn resolve_cached_turn_errors_for_remote_turns(
+    turns: &[Value],
+    entries: Vec<Value>,
+) -> HashMap<String, String> {
+    let turn_ids = turns
+        .iter()
+        .filter_map(|turn| turn.get("id").and_then(Value::as_str))
+        .collect::<HashSet<_>>();
+    let mut resolved = HashMap::new();
+    let mut unmatched_messages = Vec::new();
+
+    for entry in entries {
+        let Some(message) = entry.get("message").and_then(Value::as_str) else {
+            continue;
+        };
+        if let Some(turn_id) = entry.get("turnId").and_then(Value::as_str) {
+            if turn_ids.contains(turn_id) {
+                resolved.insert(turn_id.to_string(), message.to_string());
+                continue;
+            }
+        }
+        unmatched_messages.push(message.to_string());
+    }
+
+    if unmatched_messages.is_empty() {
+        return resolved;
+    }
+
+    let mut unmatched_failed_turns = turns
+        .iter()
+        .filter(|turn| turn.get("error").is_some())
+        .filter_map(|turn| {
+            let id = turn.get("id").and_then(Value::as_str)?;
+            if resolved.contains_key(id) {
+                return None;
+            }
+            let created_at = parse_timestamp(turn.get("createdAt"));
+            let completed_at =
+                parse_timestamp_opt(turn.get("completedAt").filter(|value| !value.is_null()));
+            Some((id.to_string(), created_at, completed_at))
+        })
+        .collect::<Vec<_>>();
+    unmatched_failed_turns.sort_by(|a, b| {
+        a.1.cmp(&b.1)
+            .then_with(|| a.2.unwrap_or(i64::MAX).cmp(&b.2.unwrap_or(i64::MAX)))
+            .then_with(|| a.0.cmp(&b.0))
+    });
+
+    for ((turn_id, _, _), message) in unmatched_failed_turns
+        .into_iter()
+        .zip(unmatched_messages.into_iter())
+    {
+        resolved.insert(turn_id, message);
+    }
+
+    resolved
 }
 
 fn set_local_history_lazy_state(
@@ -724,7 +819,8 @@ pub(super) fn render_thread_history(
     let cached_commands_by_turn = group_cached_entries_by_turn_id(cached_commands.to_vec());
     let cached_file_changes_by_turn = group_cached_entries_by_turn_id(cached_file_changes.to_vec());
     let cached_tool_items_by_turn = group_cached_entries_by_turn_id(cached_tool_items.to_vec());
-    let cached_turn_errors_by_turn = map_cached_turn_errors_by_turn_id(cached_turn_errors.to_vec());
+    let cached_turn_errors_by_turn =
+        resolve_cached_turn_errors_for_remote_turns(turns, cached_turn_errors.to_vec());
 
     let mut has_any = false;
     for turn in turns {
@@ -1364,7 +1460,8 @@ pub(super) fn render_local_thread_history_from_db(
     let cached_commands_by_turn = group_cached_entries_by_turn_id(cached_commands);
     let cached_file_changes_by_turn = group_cached_entries_by_turn_id(cached_file_changes);
     let cached_tool_items_by_turn = group_cached_entries_by_turn_id(cached_tool_items);
-    let cached_turn_errors_by_turn = map_cached_turn_errors_by_turn_id(cached_turn_errors);
+    let cached_turn_errors_by_turn =
+        resolve_cached_turn_errors_for_local_turns(&turns, cached_turn_errors);
 
     let generation = begin_local_history_render(messages_box);
     clear_local_history_lazy_state(messages_box);
