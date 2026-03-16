@@ -25,6 +25,7 @@
         let rebuild_layout_drop = rebuild_layout.clone();
         let open_or_focus_thread = open_or_focus_thread.clone();
         let dragging_pane_id_drop = dragging_pane_id.clone();
+        let db_for_drop = db.clone();
         drop_target.connect_drop(move |_, value, _, _| {
             if dragging_pane_id_drop.borrow().is_some() {
                 show_drop_slot_drop.replace(false);
@@ -43,7 +44,7 @@
             };
             if codex_thread
                 .as_deref()
-                .map(|id| !thread_exists(db.as_ref(), id))
+                .map(|id| !thread_exists(db_for_drop.as_ref(), id))
                 .unwrap_or(true)
             {
                 show_drop_slot_drop.replace(false);

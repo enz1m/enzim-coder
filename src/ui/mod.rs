@@ -36,7 +36,7 @@ fn pane_layout_has_saved_thread(db: &AppDb) -> bool {
     let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&raw) else {
         return false;
     };
-    parsed
+    let has_saved_thread = parsed
         .get("panes")
         .and_then(serde_json::Value::as_array)
         .map(|panes| {
@@ -48,7 +48,28 @@ fn pane_layout_has_saved_thread(db: &AppDb) -> bool {
                     .unwrap_or(false)
             })
         })
-        .unwrap_or(false)
+        .unwrap_or(false);
+    if has_saved_thread {
+        return true;
+    }
+    let has_pending_profile_thread = db
+        .get_setting("pending_profile_thread_id")
+        .ok()
+        .flatten()
+        .and_then(|value| value.parse::<i64>().ok())
+        .and_then(|thread_id| db.get_thread_record(thread_id).ok().flatten())
+        .map(|thread| {
+            thread
+                .remote_thread_id()
+                .map(|value| value.trim().is_empty())
+                .unwrap_or(true)
+        })
+        .unwrap_or(false);
+    has_pending_profile_thread
+        && parsed
+            .get("panes")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|panes| !panes.is_empty())
 }
 
 fn start_account_sync_loop(db: Rc<AppDb>, manager: Rc<CodexProfileManager>) {

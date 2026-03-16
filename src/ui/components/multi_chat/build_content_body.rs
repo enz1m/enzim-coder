@@ -936,8 +936,105 @@ fn build_multi_chat_content_inner(
         let thread_drop_for_slots = thread_drop_for_slots.clone();
         Rc::new(
             move |codex_thread: Option<String>, workspace_path: Option<String>| {
-                let Some(codex_thread) = codex_thread.filter(|value| !value.trim().is_empty())
-                else {
+                let codex_thread = codex_thread.filter(|value| !value.trim().is_empty());
+                if codex_thread.is_none() {
+                    let pending_workspace = pending_profile_thread_local_id(db.as_ref()).and_then(
+                        |local_id| {
+                            db.workspace_path_for_local_thread(local_id)
+                                .ok()
+                                .flatten()
+                                .or_else(|| workspace_path.clone())
+                        },
+                    );
+                    let next_workspace = pending_workspace.or(workspace_path.clone());
+                    if pending_profile_thread_local_id(db.as_ref()).is_none() {
+                        sync_global_active();
+                        rebuild_shared_composer();
+                        apply_focus_styles();
+                        persist_layout();
+                        return;
+                    }
+
+                    {
+                        let panes = panes_state.borrow();
+                        if let Some(existing) =
+                            panes.iter().find(|pane| pane.active_thread_id.borrow().is_none())
+                        {
+                            let was_focused = existing.id == *focused_pane_id.borrow();
+                            let workspace_changed = if let Some(next_workspace) =
+                                next_workspace.clone()
+                            {
+                                let changed = existing.active_workspace_path.borrow().as_deref()
+                                    != Some(next_workspace.as_str());
+                                if changed {
+                                    existing.active_workspace_path.replace(Some(next_workspace));
+                                }
+                                changed
+                            } else {
+                                false
+                            };
+                            if was_focused && !workspace_changed {
+                                return;
+                            }
+                            focused_pane_id.replace(existing.id);
+                            drop(panes);
+                            if workspace_changed {
+                                rebuild_layout();
+                            }
+                            apply_focus_styles();
+                            rebuild_shared_composer();
+                            sync_global_active();
+                            persist_layout();
+                            return;
+                        }
+                    }
+
+                    let pane_id = *next_pane_id.borrow();
+                    next_pane_id.replace(pane_id + 1);
+                    let thread_state = Rc::new(RefCell::new(None));
+                    let workspace_state = Rc::new(RefCell::new(next_workspace));
+
+                    if let Some(pane) = build_pane_ui(
+                        pane_id,
+                        db.clone(),
+                        manager.clone(),
+                        codex.clone(),
+                        thread_state,
+                        workspace_state,
+                    ) {
+                        attach_pane_handlers(
+                            &pane,
+                            pane.id,
+                            db.clone(),
+                            focused_pane_id.clone(),
+                            dragging_pane_id.clone(),
+                            clear_drop_markers.clone(),
+                            set_insert_target.clone(),
+                            can_vertical_drop.clone(),
+                            can_vertical_thread_drop.clone(),
+                            thread_drop_for_slots.clone(),
+                            set_reorder_drag_active.clone(),
+                            move_pane_horizontal.clone(),
+                            move_pane_vertical.clone(),
+                            apply_focus_styles.clone(),
+                            rebuild_shared_composer.clone(),
+                            sync_global_active.clone(),
+                            persist_layout.clone(),
+                            close_pane.clone(),
+                        );
+                        panes_state.borrow_mut().push(pane);
+                        columns_state.borrow_mut().push(vec![pane_id]);
+                        focused_pane_id.replace(pane_id);
+                        rebuild_layout();
+                        apply_focus_styles();
+                        rebuild_shared_composer();
+                        sync_global_active();
+                        persist_layout();
+                    }
+                    return;
+                }
+
+                let Some(codex_thread) = codex_thread else {
                     sync_global_active();
                     rebuild_shared_composer();
                     apply_focus_styles();
@@ -1062,6 +1159,39 @@ fn build_multi_chat_content_inner(
     include!("build_content_drop_slot_section.rs");
 
     include!("build_content_focus_poll_section.rs");
+
+    {
+        let panes_row = panes_row.clone();
+        let db = db.clone();
+        let panes_state = panes_state.clone();
+        let rebuild_layout = rebuild_layout.clone();
+        let rebuild_shared_composer = rebuild_shared_composer.clone();
+        let sync_global_active = sync_global_active.clone();
+        let persist_layout = persist_layout.clone();
+        gtk::glib::timeout_add_local(Duration::from_millis(150), move || {
+            if panes_row.root().is_none() {
+                return gtk::glib::ControlFlow::Break;
+            }
+            let mut changed = false;
+            for pane in panes_state.borrow().iter() {
+                let Some(thread_id) = pane.active_thread_id.borrow().clone() else {
+                    continue;
+                };
+                if thread_exists(db.as_ref(), &thread_id) {
+                    continue;
+                }
+                pane.active_thread_id.replace(None);
+                changed = true;
+            }
+            if changed {
+                rebuild_layout();
+                rebuild_shared_composer();
+                sync_global_active();
+                persist_layout();
+            }
+            gtk::glib::ControlFlow::Continue
+        });
+    }
 
     rebuild_layout();
     apply_focus_styles();

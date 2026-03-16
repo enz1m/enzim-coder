@@ -158,6 +158,20 @@ pub(super) fn thread_exists(db: &AppDb, thread_id: &str) -> bool {
         .unwrap_or(false)
 }
 
+fn pending_profile_thread_local_id(db: &AppDb) -> Option<i64> {
+    let pending_local_id = db
+        .get_setting("pending_profile_thread_id")
+        .ok()
+        .flatten()
+        .and_then(|value| value.parse::<i64>().ok())?;
+    let thread = db.get_thread_record(pending_local_id).ok().flatten()?;
+    let unresolved = thread
+        .remote_thread_id()
+        .map(|value| value.trim().is_empty())
+        .unwrap_or(true);
+    unresolved.then_some(pending_local_id)
+}
+
 fn resolve_workspace_path(
     db: &AppDb,
     thread_id: Option<&str>,
@@ -374,6 +388,14 @@ fn load_initial_layout(
     } = parsed;
 
     let mut seen_threads = HashSet::new();
+    let pending_local_id = pending_profile_thread_local_id(db);
+    let pending_workspace = pending_local_id.and_then(|local_id| {
+        db.workspace_path_for_local_thread(local_id)
+            .ok()
+            .flatten()
+            .or_else(|| fallback_workspace.clone())
+    });
+    let mut pending_pane_restored = false;
     let mut panes = Vec::new();
     for pane in parsed_panes {
         let thread_id = pane
@@ -397,6 +419,21 @@ fn load_initial_layout(
                 column: pane.column,
                 row: pane.row,
             });
+        } else if pending_local_id.is_some() && !pending_pane_restored {
+            panes.push(PersistedPane {
+                id: pane.id,
+                thread_id: None,
+                workspace_path: resolve_workspace_path(
+                    db,
+                    None,
+                    pane.workspace_path,
+                    pending_workspace.clone(),
+                ),
+                tab: normalize_tab_name(&pane.tab),
+                column: pane.column,
+                row: pane.row,
+            });
+            pending_pane_restored = true;
         }
     }
 
@@ -407,8 +444,16 @@ fn load_initial_layout(
             .or_else(|| fallback_thread.filter(|value| !value.trim().is_empty()));
         panes.push(PersistedPane {
             id: 1,
-            thread_id,
-            workspace_path: fallback_workspace,
+            thread_id: if pending_local_id.is_some() {
+                None
+            } else {
+                thread_id
+            },
+            workspace_path: if pending_local_id.is_some() {
+                pending_workspace
+            } else {
+                fallback_workspace
+            },
             tab: "chat".to_string(),
             column: Some(0),
             row: Some(0),
