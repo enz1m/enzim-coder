@@ -508,6 +508,10 @@
                             None
                         };
                         let turn_started_ui_tx_for_thread = turn_started_ui_tx_for_steer.clone();
+                        let baseline_thread_id = thread_id.clone();
+                        thread::spawn(move || {
+                            let _ = crate::data::background_repo::BackgroundRepo::ensure_remote_thread_baseline_checkpoint(&baseline_thread_id);
+                        });
                         thread::spawn(move || {
                             if let Some(turn_id) = steer_turn_id.clone() {
                                 match client.turn_steer(
@@ -533,7 +537,6 @@
                                 thread::sleep(Duration::from_millis(200));
                             }
 
-                            let _ = crate::data::background_repo::BackgroundRepo::ensure_remote_thread_baseline_checkpoint(&thread_id);
                             let workspace_path_for_turn =
                                 crate::data::background_repo::BackgroundRepo::workspace_path_for_remote_thread(&thread_id);
                             if let Some(workspace_path) = workspace_path_for_turn.as_deref() {
@@ -784,9 +787,12 @@
                 .collect();
             let image_paths_for_turn: Vec<String> =
                 attached_images.iter().map(|image| image.path.clone()).collect();
+            let baseline_thread_id = thread_id.clone();
 
             thread::spawn(move || {
-                let _ = crate::data::background_repo::BackgroundRepo::ensure_remote_thread_baseline_checkpoint(&thread_id);
+                let _ = crate::data::background_repo::BackgroundRepo::ensure_remote_thread_baseline_checkpoint(&baseline_thread_id);
+            });
+            thread::spawn(move || {
                 let workspace_path_for_turn =
                     crate::data::background_repo::BackgroundRepo::workspace_path_for_remote_thread(&thread_id);
                 if let Some(workspace_path) = workspace_path_for_turn.as_deref() {
