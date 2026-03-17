@@ -762,7 +762,7 @@ fn append_tool_item_from_value(body_box: &gtk::Box, value: &Value) -> bool {
                 super::codex_events::extract_dynamic_tool_call_fields(value);
             let (widget, tool_ui) =
                 super::message_render::create_tool_call_widget(&tool_name, &arguments);
-            tool_ui.status_label.set_text(if status == "failed" {
+            tool_ui.set_status_label(if status == "failed" {
                 "Failed"
             } else {
                 "Completed"

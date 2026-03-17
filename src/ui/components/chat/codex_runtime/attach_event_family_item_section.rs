@@ -539,7 +539,7 @@
                             }
                             if let Some(tool_ui) = turn_ui.tool_call_widgets.get_mut(&item_id) {
                                 tool_ui.append_output_delta(&delta);
-                                tool_ui.status_label.set_text("Running...");
+                                tool_ui.set_status_label("Running...");
                             }
                         }
                         kind if is_generic_item_kind(kind) => {
@@ -963,12 +963,9 @@
                                 turn_ui.tool_call_widgets.insert(item_id.clone(), tool_ui);
                             }
                             if let Some(tool_ui) = turn_ui.tool_call_widgets.get_mut(&item_id) {
-                                tool_ui.tool_label.set_text(&tool_name);
-                                super::message_render::set_plain_label_text(
-                                    &tool_ui.args_label,
-                                    &arguments,
-                                );
-                                tool_ui.status_label.set_text(if status == "failed" {
+                                tool_ui.set_tool_name(&tool_name);
+                                tool_ui.set_arguments(&arguments);
+                                tool_ui.set_status_label(if status == "failed" {
                                     "Failed"
                                 } else {
                                     "Completed"

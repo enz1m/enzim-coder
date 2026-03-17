@@ -253,7 +253,7 @@ fn append_history_assistant_turn(
                     super::codex_events::extract_dynamic_tool_call_fields(item);
                 let (widget, tool_ui) =
                     super::message_render::create_tool_call_widget(&tool_name, &arguments);
-                tool_ui.status_label.set_text(if status == "failed" {
+                tool_ui.set_status_label(if status == "failed" {
                     "Failed"
                 } else {
                     "Completed"

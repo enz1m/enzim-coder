@@ -26,6 +26,21 @@ struct CommandDetailsUi {
     output_chevron: gtk::Image,
 }
 
+#[derive(Clone)]
+struct ToolCallDetailsUi {
+    details_revealer: gtk::Revealer,
+    args_label: gtk::Label,
+    output_label: gtk::Label,
+}
+
+#[derive(Clone)]
+struct GenericDetailsUi {
+    details_revealer: gtk::Revealer,
+    summary_label: gtk::Label,
+    output_label: gtk::Label,
+    output_scroll: gtk::ScrolledWindow,
+}
+
 pub(super) struct CommandUi {
     pub(super) wrapper: gtk::Box,
     pub(super) header_label: gtk::Label,
@@ -44,22 +59,18 @@ pub(super) struct CommandUi {
 
 pub(super) struct ToolCallUi {
     pub(super) tool_label: gtk::Label,
-    pub(super) args_label: gtk::Label,
     pub(super) status_label: gtk::Label,
-    pub(super) output_label: gtk::Label,
-    pub(super) details_revealer: gtk::Revealer,
+    pub(super) arguments_text: Rc<RefCell<String>>,
+    details_ui: Rc<RefCell<Option<ToolCallDetailsUi>>>,
     pub(super) output_text: Rc<RefCell<String>>,
     pub(super) output_flush_source: Rc<RefCell<Option<gtk::glib::SourceId>>>,
 }
 
 pub(super) struct GenericItemUi {
+    pub(super) wrapper: gtk::Box,
     pub(super) section_label: gtk::Label,
     pub(super) title_label: gtk::Label,
     pub(super) status_label: gtk::Label,
-    pub(super) summary_label: gtk::Label,
-    pub(super) output_label: gtk::Label,
-    pub(super) output_scroll: gtk::ScrolledWindow,
-    pub(super) details_revealer: gtk::Revealer,
     pub(super) details_enabled: Rc<RefCell<bool>>,
     pub(super) headline_text: Rc<RefCell<String>>,
     pub(super) is_running: Rc<RefCell<bool>>,
@@ -68,6 +79,8 @@ pub(super) struct GenericItemUi {
     pub(super) running_wave_frames: Rc<RefCell<Vec<String>>>,
     pub(super) wave_enabled: bool,
     pub(super) details_supported: bool,
+    pub(super) summary_text: Rc<RefCell<String>>,
+    details_ui: Rc<RefCell<Option<GenericDetailsUi>>>,
     pub(super) output_text: Rc<RefCell<String>>,
     pub(super) details_flush_source: Rc<RefCell<Option<gtk::glib::SourceId>>>,
 }
@@ -795,6 +808,132 @@ fn refresh_tool_call_output_widgets(
     }
 }
 
+fn build_tool_call_details_ui(
+    wrapper: &gtk::Box,
+    arguments_text: &Rc<RefCell<String>>,
+    output_text: &Rc<RefCell<String>>,
+) -> ToolCallDetailsUi {
+    let details = gtk::Box::new(gtk::Orientation::Vertical, 3);
+    details.add_css_class("chat-activity-details");
+
+    let args_title = gtk::Label::new(Some("Arguments"));
+    args_title.set_xalign(0.0);
+    args_title.add_css_class("chat-command-output-toggle-label");
+    details.append(&args_title);
+
+    let args_label = gtk::Label::new(None);
+    args_label.set_xalign(0.0);
+    args_label.set_wrap(true);
+    args_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    set_chat_label_selectable(&args_label);
+    args_label.add_css_class("chat-command-output");
+    set_plain_label_text(&args_label, &arguments_text.borrow());
+    details.append(&args_label);
+
+    let output_label = gtk::Label::new(Some(""));
+    output_label.set_xalign(0.0);
+    output_label.set_wrap(true);
+    output_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    set_chat_label_selectable(&output_label);
+    output_label.add_css_class("chat-command-output");
+    output_label.set_visible(false);
+    details.append(&output_label);
+
+    let details_revealer = gtk::Revealer::new();
+    details_revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
+    details_revealer.set_transition_duration(180);
+    details_revealer.set_reveal_child(false);
+    details_revealer.set_child(Some(&details));
+    wrapper.append(&details_revealer);
+
+    let details = ToolCallDetailsUi {
+        details_revealer,
+        args_label,
+        output_label,
+    };
+
+    refresh_tool_call_output_widgets(&details.details_revealer, &details.output_label, output_text);
+    details
+}
+
+fn build_generic_details_ui(
+    wrapper: &gtk::Box,
+    summary_text: &Rc<RefCell<String>>,
+    output_text: &Rc<RefCell<String>>,
+    details_enabled: &Rc<RefCell<bool>>,
+    details_supported: bool,
+) -> GenericDetailsUi {
+    let details = gtk::Box::new(gtk::Orientation::Vertical, 3);
+    details.add_css_class("chat-activity-details");
+
+    let summary_label = gtk::Label::new(None);
+    summary_label.set_xalign(0.0);
+    summary_label.set_wrap(true);
+    summary_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    set_chat_label_selectable(&summary_label);
+    summary_label.add_css_class("chat-command-output");
+    set_plain_label_text(&summary_label, &summary_text.borrow());
+    details.append(&summary_label);
+
+    let output_label = gtk::Label::new(Some(""));
+    output_label.set_xalign(0.0);
+    output_label.set_wrap(true);
+    output_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    set_chat_label_selectable(&output_label);
+    output_label.add_css_class("chat-command-output");
+    let output_scroll = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .propagate_natural_height(true)
+        .min_content_height(0)
+        .max_content_height(180)
+        .child(&output_label)
+        .build();
+    output_scroll.set_has_frame(false);
+    output_scroll.set_visible(false);
+    output_scroll.add_css_class("chat-command-output-scroll");
+    {
+        let scroll_ctrl =
+            gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
+        scroll_ctrl.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let adj = output_scroll.vadjustment();
+        scroll_ctrl.connect_scroll(move |_, _, dy| {
+            let step = adj.step_increment().max(20.0);
+            let new_val = adj.value() + dy * step;
+            let max = (adj.upper() - adj.page_size()).max(adj.lower());
+            adj.set_value(new_val.clamp(adj.lower(), max));
+            gtk::glib::Propagation::Stop
+        });
+        output_scroll.add_controller(scroll_ctrl);
+    }
+    details.append(&output_scroll);
+
+    let details_revealer = gtk::Revealer::new();
+    details_revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
+    details_revealer.set_transition_duration(180);
+    details_revealer.set_reveal_child(false);
+    details_revealer.set_child(Some(&details));
+    wrapper.append(&details_revealer);
+
+    let details = GenericDetailsUi {
+        details_revealer,
+        summary_label,
+        output_label,
+        output_scroll,
+    };
+
+    refresh_generic_item_details_widgets(
+        &details.summary_label,
+        &details.output_label,
+        &details.output_scroll,
+        &details.details_revealer,
+        details_enabled,
+        details_supported,
+        output_text,
+    );
+    details
+}
+
 fn refresh_generic_item_details_widgets(
     summary_label: &gtk::Label,
     output_label: &gtk::Label,
@@ -1038,26 +1177,51 @@ impl CommandUi {
 }
 
 impl ToolCallUi {
+    pub(super) fn set_tool_name(&self, tool_name: &str) {
+        if self.tool_label.text().as_str() != tool_name {
+            self.tool_label.set_text(tool_name);
+        }
+    }
+
+    pub(super) fn set_arguments(&self, arguments: &str) {
+        self.arguments_text.replace(arguments.to_string());
+        if let Some(details) = self.details_ui.borrow().as_ref() {
+            set_plain_label_text(&details.args_label, arguments);
+        }
+    }
+
+    pub(super) fn set_status_label(&self, status: &str) {
+        if self.status_label.text().as_str() != status {
+            self.status_label.set_text(status);
+        }
+    }
+
     pub(super) fn set_output(&self, output: &str) {
         if let Some(source_id) = self.output_flush_source.borrow_mut().take() {
             source_id.remove();
         }
         self.output_text.replace(output.to_string());
+        let Some(details) = self.details_ui.borrow().as_ref().cloned() else {
+            return;
+        };
         refresh_tool_call_output_widgets(
-            &self.details_revealer,
-            &self.output_label,
+            &details.details_revealer,
+            &details.output_label,
             &self.output_text,
         );
     }
 
     pub(super) fn append_output_delta(&self, delta: &str) {
         self.output_text.borrow_mut().push_str(delta);
+        let Some(details) = self.details_ui.borrow().as_ref().cloned() else {
+            return;
+        };
         if self.output_flush_source.borrow().is_some() {
             return;
         }
 
-        let details_revealer = self.details_revealer.clone();
-        let output_label = self.output_label.clone();
+        let details_revealer = details.details_revealer.clone();
+        let output_label = details.output_label.clone();
         let output_text = self.output_text.clone();
         let output_flush_source = self.output_flush_source.clone();
         let source = gtk::glib::timeout_add_local(
@@ -1073,19 +1237,40 @@ impl ToolCallUi {
 }
 
 impl GenericItemUi {
+    fn ensure_details_ui(&self) -> GenericDetailsUi {
+        if let Some(existing) = self.details_ui.borrow().as_ref() {
+            return existing.clone();
+        }
+        let details = build_generic_details_ui(
+            &self.wrapper,
+            &self.summary_text,
+            &self.output_text,
+            &self.details_enabled,
+            self.details_supported,
+        );
+        self.details_ui.replace(Some(details.clone()));
+        details
+    }
+
     fn sync_output_scroll_layout(&self) {
+        let Some(details) = self.details_ui.borrow().as_ref().cloned() else {
+            return;
+        };
         let output = self.output_text.borrow();
-        sync_thinking_output_scroll_layout(&self.output_label, &self.output_scroll, output.trim());
+        sync_thinking_output_scroll_layout(&details.output_label, &details.output_scroll, output.trim());
     }
 
     fn schedule_output_scroll_layout_sync(&self) {
-        if !self.output_label.has_css_class("chat-thinking-output") {
+        let Some(details) = self.details_ui.borrow().as_ref().cloned() else {
+            return;
+        };
+        if !details.output_label.has_css_class("chat-thinking-output") {
             return;
         }
 
         schedule_thinking_output_scroll_layout_sync(
-            self.output_label.clone(),
-            self.output_scroll.clone(),
+            details.output_label.clone(),
+            details.output_scroll.clone(),
             self.output_text.clone(),
             0,
         );
@@ -1149,11 +1334,19 @@ impl GenericItemUi {
     pub(super) fn set_status(&self, text: &str) {
         let text = text.trim();
         if text.is_empty() {
-            self.status_label.set_visible(false);
-            self.status_label.set_text("");
+            if self.status_label.is_visible() {
+                self.status_label.set_visible(false);
+            }
+            if !self.status_label.text().is_empty() {
+                self.status_label.set_text("");
+            }
         } else {
-            self.status_label.set_visible(true);
-            self.status_label.set_text(text);
+            if !self.status_label.is_visible() {
+                self.status_label.set_visible(true);
+            }
+            if self.status_label.text().as_str() != text {
+                self.status_label.set_text(text);
+            }
         }
     }
 
@@ -1161,22 +1354,30 @@ impl GenericItemUi {
         if let Some(source_id) = self.details_flush_source.borrow_mut().take() {
             source_id.remove();
         }
+        self.summary_text.replace(summary.to_string());
         if !self.details_supported {
-            self.summary_label.set_visible(false);
-            self.output_label.set_visible(false);
-            self.output_scroll.set_visible(false);
             self.output_text.replace(String::new());
             self.details_enabled.replace(false);
-            self.details_revealer.set_reveal_child(false);
+            if let Some(details) = self.details_ui.borrow().as_ref() {
+                details.summary_label.set_visible(false);
+                details.output_label.set_visible(false);
+                details.output_scroll.set_visible(false);
+                details.details_revealer.set_reveal_child(false);
+            }
             return;
         }
-        set_plain_label_text(&self.summary_label, summary);
         self.output_text.replace(output.to_string());
+        let enabled = !summary.trim().is_empty() || !output.trim().is_empty();
+        self.details_enabled.replace(enabled);
+        let Some(details) = self.details_ui.borrow().as_ref().cloned() else {
+            return;
+        };
+        set_plain_label_text(&details.summary_label, summary);
         refresh_generic_item_details_widgets(
-            &self.summary_label,
-            &self.output_label,
-            &self.output_scroll,
-            &self.details_revealer,
+            &details.summary_label,
+            &details.output_label,
+            &details.output_scroll,
+            &details.details_revealer,
             &self.details_enabled,
             self.details_supported,
             &self.output_text,
@@ -1185,14 +1386,20 @@ impl GenericItemUi {
 
     pub(super) fn append_output_delta(&self, delta: &str) {
         self.output_text.borrow_mut().push_str(delta);
+        self.details_enabled.replace(
+            !self.summary_text.borrow().trim().is_empty() || !self.output_text.borrow().trim().is_empty(),
+        );
+        let Some(details) = self.details_ui.borrow().as_ref().cloned() else {
+            return;
+        };
         if self.details_flush_source.borrow().is_some() {
             return;
         }
 
-        let summary_label = self.summary_label.clone();
-        let output_label = self.output_label.clone();
-        let output_scroll = self.output_scroll.clone();
-        let details_revealer = self.details_revealer.clone();
+        let summary_label = details.summary_label.clone();
+        let output_label = details.output_label.clone();
+        let output_scroll = details.output_scroll.clone();
+        let details_revealer = details.details_revealer.clone();
         let details_enabled = self.details_enabled.clone();
         let output_text = self.output_text.clone();
         let details_flush_source = self.details_flush_source.clone();
@@ -1218,24 +1425,51 @@ impl GenericItemUi {
 
     pub(super) fn set_expanded(&self, expanded: bool) {
         if !*self.details_enabled.borrow() {
-            self.details_revealer.set_reveal_child(false);
-            set_plain_label_text(&self.output_label, "");
-            self.output_label.set_visible(false);
-            self.output_scroll.set_visible(false);
+            if let Some(details) = self.details_ui.borrow().as_ref() {
+                details.details_revealer.set_reveal_child(false);
+                set_plain_label_text(&details.output_label, "");
+                details.output_label.set_visible(false);
+                details.output_scroll.set_visible(false);
+            }
             return;
         }
+        let Some(details) = self.details_ui.borrow().as_ref().cloned() else {
+            if expanded {
+                let details = self.ensure_details_ui();
+                details.details_revealer.set_reveal_child(true);
+                if details.output_label.has_css_class("chat-thinking-output") {
+                    let output = self.output_text.borrow();
+                    set_plain_label_text(&details.output_label, output.as_str());
+                    details.output_label.set_visible(!output.trim().is_empty());
+                    details.output_scroll.set_visible(!output.trim().is_empty());
+                    drop(output);
+                    self.schedule_output_scroll_layout_sync();
+                } else {
+                    refresh_generic_item_details_widgets(
+                        &details.summary_label,
+                        &details.output_label,
+                        &details.output_scroll,
+                        &details.details_revealer,
+                        &self.details_enabled,
+                        self.details_supported,
+                        &self.output_text,
+                    );
+                }
+            }
+            return;
+        };
         if expanded {
             let output = self.output_text.borrow();
             self.sync_output_scroll_layout();
-            set_plain_label_text(&self.output_label, output.as_str());
-            self.output_label.set_visible(!output.trim().is_empty());
-            self.output_scroll.set_visible(!output.trim().is_empty());
-        } else if !self.output_label.has_css_class("chat-thinking-output") {
-            set_plain_label_text(&self.output_label, "");
-            self.output_label.set_visible(false);
-            self.output_scroll.set_visible(false);
+            set_plain_label_text(&details.output_label, output.as_str());
+            details.output_label.set_visible(!output.trim().is_empty());
+            details.output_scroll.set_visible(!output.trim().is_empty());
+        } else if !details.output_label.has_css_class("chat-thinking-output") {
+            set_plain_label_text(&details.output_label, "");
+            details.output_label.set_visible(false);
+            details.output_scroll.set_visible(false);
         }
-        self.details_revealer.set_reveal_child(expanded);
+        details.details_revealer.set_reveal_child(expanded);
         if expanded {
             self.schedule_output_scroll_layout_sync();
         }
@@ -2807,31 +3041,8 @@ pub(super) fn create_tool_call_widget(tool_name: &str, arguments: &str) -> (gtk:
     header_row.append(&status_label);
 
     wrapper.append(&header_row);
-
-    let details = gtk::Box::new(gtk::Orientation::Vertical, 3);
-    details.add_css_class("chat-activity-details");
-
-    let args_title = gtk::Label::new(Some("Arguments"));
-    args_title.set_xalign(0.0);
-    args_title.add_css_class("chat-command-output-toggle-label");
-    details.append(&args_title);
-
-    let args_label = gtk::Label::new(Some(arguments));
-    args_label.set_xalign(0.0);
-    args_label.set_wrap(true);
-    args_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
-    set_chat_label_selectable(&args_label);
-    args_label.add_css_class("chat-command-output");
-    details.append(&args_label);
-
-    let output_label = gtk::Label::new(Some(""));
-    output_label.set_xalign(0.0);
-    output_label.set_wrap(true);
-    output_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
-    set_chat_label_selectable(&output_label);
-    output_label.add_css_class("chat-command-output");
-    output_label.set_visible(false);
-    details.append(&output_label);
+    let arguments_text: Rc<RefCell<String>> = Rc::new(RefCell::new(arguments.to_string()));
+    let details_ui: Rc<RefCell<Option<ToolCallDetailsUi>>> = Rc::new(RefCell::new(None));
     let output_text: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
     let output_flush_source: Rc<RefCell<Option<gtk::glib::SourceId>>> =
         Rc::new(RefCell::new(None));
@@ -2845,47 +3056,46 @@ pub(super) fn create_tool_call_widget(tool_name: &str, arguments: &str) -> (gtk:
         });
     }
 
-    let details_revealer = gtk::Revealer::new();
-    details_revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
-    details_revealer.set_transition_duration(180);
-    details_revealer.set_reveal_child(false);
-    details_revealer.set_child(Some(&details));
-    wrapper.append(&details_revealer);
-
     {
-        let details_revealer_weak = details_revealer.downgrade();
-        let output_label_weak = output_label.downgrade();
+        let wrapper = wrapper.clone();
+        let details_ui = details_ui.clone();
+        let arguments_text = arguments_text.clone();
         let output_text = output_text.clone();
         let click = gtk::GestureClick::new();
         click.connect_released(move |_, _, _, _| {
-            let Some(details_revealer) = details_revealer_weak.upgrade() else {
-                return;
-            };
-            let Some(output_label) = output_label_weak.upgrade() else {
-                return;
-            };
-            let next = !details_revealer.reveals_child();
-            if next {
-                let output = output_text.borrow();
-                set_plain_label_text(&output_label, output.as_str());
-                output_label.set_visible(!output.trim().is_empty());
-            } else {
-                set_plain_label_text(&output_label, "");
-                output_label.set_visible(false);
+            let existing = details_ui.borrow().as_ref().cloned();
+            let next = existing
+                .as_ref()
+                .map(|details| !details.details_revealer.reveals_child())
+                .unwrap_or(true);
+            let details = existing.unwrap_or_else(|| {
+                let built = build_tool_call_details_ui(&wrapper, &arguments_text, &output_text);
+                details_ui.replace(Some(built.clone()));
+                built
+            });
+            if !next {
+                set_plain_label_text(&details.output_label, "");
+                details.output_label.set_visible(false);
             }
-            details_revealer.set_reveal_child(next);
+            details.details_revealer.set_reveal_child(next);
+            if next {
+                refresh_tool_call_output_widgets(
+                    &details.details_revealer,
+                    &details.output_label,
+                    &output_text,
+                );
+            }
         });
         header_row.add_controller(click);
     }
 
     (
-        wrapper,
+        wrapper.clone(),
         ToolCallUi {
             tool_label,
-            args_label,
             status_label,
-            output_label,
-            details_revealer,
+            arguments_text,
+            details_ui,
             output_text,
             output_flush_source,
         },
@@ -2961,92 +3171,54 @@ pub(super) fn create_generic_item_widget(
     chevron.set_valign(gtk::Align::Center);
 
     wrapper.append(&header_row);
-
-    let details = gtk::Box::new(gtk::Orientation::Vertical, 3);
-    details.add_css_class("chat-activity-details");
-
-    let summary_label = gtk::Label::new(Some(summary));
-    summary_label.set_xalign(0.0);
-    summary_label.set_wrap(true);
-    summary_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
-    set_chat_label_selectable(&summary_label);
-    summary_label.add_css_class("chat-command-output");
-    details.append(&summary_label);
-
-    let output_label = gtk::Label::new(Some(""));
-    output_label.set_xalign(0.0);
-    output_label.set_wrap(true);
-    output_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
-    set_chat_label_selectable(&output_label);
-    output_label.add_css_class("chat-command-output");
-    let output_scroll = gtk::ScrolledWindow::builder()
-        .hscrollbar_policy(gtk::PolicyType::Never)
-        .vscrollbar_policy(gtk::PolicyType::Automatic)
-        .propagate_natural_height(true)
-        .min_content_height(0)
-        .max_content_height(180)
-        .child(&output_label)
-        .build();
-    output_scroll.set_has_frame(false);
-    output_scroll.set_visible(false);
-    output_scroll.add_css_class("chat-command-output-scroll");
-    {
-        let scroll_ctrl =
-            gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
-        scroll_ctrl.set_propagation_phase(gtk::PropagationPhase::Capture);
-        let adj = output_scroll.vadjustment();
-        scroll_ctrl.connect_scroll(move |_, _, dy| {
-            let step = adj.step_increment().max(20.0);
-            let new_val = adj.value() + dy * step;
-            let max = (adj.upper() - adj.page_size()).max(adj.lower());
-            adj.set_value(new_val.clamp(adj.lower(), max));
-            gtk::glib::Propagation::Stop
-        });
-        output_scroll.add_controller(scroll_ctrl);
-    }
-    details.append(&output_scroll);
+    let summary_text: Rc<RefCell<String>> = Rc::new(RefCell::new(summary.to_string()));
+    let details_ui: Rc<RefCell<Option<GenericDetailsUi>>> = Rc::new(RefCell::new(None));
     let output_text: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
-
-    let details_revealer = gtk::Revealer::new();
-    details_revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
-    details_revealer.set_transition_duration(180);
-    details_revealer.set_reveal_child(false);
-    details_revealer.set_child(Some(&details));
-    wrapper.append(&details_revealer);
-
     let details_enabled = Rc::new(RefCell::new(false));
     {
-        let details_revealer_weak = details_revealer.downgrade();
+        let wrapper = wrapper.clone();
+        let summary_text = summary_text.clone();
+        let details_ui = details_ui.clone();
         let details_enabled = details_enabled.clone();
-        let output_label_weak = output_label.downgrade();
-        let output_scroll_weak = output_scroll.downgrade();
         let output_text = output_text.clone();
+        let details_supported = section != "Context Compaction";
         let click = gtk::GestureClick::new();
         click.connect_released(move |_, _, _, _| {
-            let Some(details_revealer) = details_revealer_weak.upgrade() else {
-                return;
-            };
-            let Some(output_label) = output_label_weak.upgrade() else {
-                return;
-            };
-            let Some(output_scroll) = output_scroll_weak.upgrade() else {
-                return;
-            };
             if !*details_enabled.borrow() {
                 return;
             }
-            let next = !details_revealer.reveals_child();
+            let existing = details_ui.borrow().as_ref().cloned();
+            let next = existing
+                .as_ref()
+                .map(|details| !details.details_revealer.reveals_child())
+                .unwrap_or(true);
+            let details = existing.unwrap_or_else(|| {
+                let built = build_generic_details_ui(
+                    &wrapper,
+                    &summary_text,
+                    &output_text,
+                    &details_enabled,
+                    details_supported,
+                );
+                details_ui.replace(Some(built.clone()));
+                built
+            });
             if next {
-                let output = output_text.borrow();
-                set_plain_label_text(&output_label, output.as_str());
-                output_label.set_visible(!output.trim().is_empty());
-                output_scroll.set_visible(!output.trim().is_empty());
+                refresh_generic_item_details_widgets(
+                    &details.summary_label,
+                    &details.output_label,
+                    &details.output_scroll,
+                    &details.details_revealer,
+                    &details_enabled,
+                    details_supported,
+                    &output_text,
+                );
             } else {
-                set_plain_label_text(&output_label, "");
-                output_label.set_visible(false);
-                output_scroll.set_visible(false);
+                set_plain_label_text(&details.output_label, "");
+                details.output_label.set_visible(false);
+                details.output_scroll.set_visible(false);
             }
-            details_revealer.set_reveal_child(next);
+            details.details_revealer.set_reveal_child(next);
         });
         header_row.add_controller(click);
     }
@@ -3075,13 +3247,10 @@ pub(super) fn create_generic_item_widget(
     let wave_enabled = section == "Web Search" || section == "Context Compaction";
     let details_supported = section != "Context Compaction";
     let generic_ui = GenericItemUi {
+        wrapper: wrapper.clone(),
         section_label,
         title_label,
         status_label,
-        summary_label,
-        output_label,
-        output_scroll,
-        details_revealer,
         details_enabled,
         headline_text,
         is_running,
@@ -3090,6 +3259,8 @@ pub(super) fn create_generic_item_widget(
         running_wave_frames,
         wave_enabled,
         details_supported,
+        summary_text,
+        details_ui,
         output_text,
         details_flush_source,
     };
@@ -3104,24 +3275,21 @@ pub(super) fn create_reasoning_widget() -> (gtk::Box, GenericItemUi) {
     widget.add_css_class("chat-thinking-card");
     generic_ui.section_label.set_visible(false);
     generic_ui.status_label.set_visible(false);
-    generic_ui
+    let details = generic_ui.ensure_details_ui();
+    details
         .output_scroll
         .set_widget_name("chat-thinking-output-scroll");
-    generic_ui.output_scroll.set_overlay_scrolling(true);
-    generic_ui
+    details.output_scroll.set_overlay_scrolling(true);
+    details
         .output_scroll
         .add_css_class("chat-thinking-output-scroll");
-    generic_ui
-        .summary_label
-        .add_css_class("chat-thinking-summary");
-    generic_ui
-        .output_label
-        .add_css_class("chat-thinking-output");
+    details.summary_label.add_css_class("chat-thinking-summary");
+    details.output_label.add_css_class("chat-thinking-output");
     {
-        let output_label = generic_ui.output_label.clone();
-        let output_scroll = generic_ui.output_scroll.clone();
+        let output_label = details.output_label.clone();
+        let output_scroll = details.output_scroll.clone();
         let output_text = generic_ui.output_text.clone();
-        generic_ui.output_scroll.connect_map(move |_| {
+        details.output_scroll.connect_map(move |_| {
             schedule_thinking_output_scroll_layout_sync(
                 output_label.clone(),
                 output_scroll.clone(),
@@ -3131,12 +3299,10 @@ pub(super) fn create_reasoning_widget() -> (gtk::Box, GenericItemUi) {
         });
     }
     {
-        let output_label = generic_ui.output_label.clone();
-        let output_scroll = generic_ui.output_scroll.clone();
+        let output_label = details.output_label.clone();
+        let output_scroll = details.output_scroll.clone();
         let output_text = generic_ui.output_text.clone();
-        generic_ui
-            .output_scroll
-            .connect_notify_local(Some("width"), move |_, _| {
+        details.output_scroll.connect_notify_local(Some("width"), move |_, _| {
                 schedule_thinking_output_scroll_layout_sync(
                     output_label.clone(),
                     output_scroll.clone(),
@@ -3146,12 +3312,10 @@ pub(super) fn create_reasoning_widget() -> (gtk::Box, GenericItemUi) {
             });
     }
     {
-        let output_label = generic_ui.output_label.clone();
-        let output_scroll = generic_ui.output_scroll.clone();
+        let output_label = details.output_label.clone();
+        let output_scroll = details.output_scroll.clone();
         let output_text = generic_ui.output_text.clone();
-        generic_ui
-            .output_label
-            .connect_notify_local(Some("width"), move |_, _| {
+        details.output_label.connect_notify_local(Some("width"), move |_, _| {
                 schedule_thinking_output_scroll_layout_sync(
                     output_label.clone(),
                     output_scroll.clone(),
