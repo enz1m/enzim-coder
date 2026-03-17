@@ -24,6 +24,25 @@ fn hidden_model_cache() -> &'static Mutex<HashMap<i64, HashSet<String>>> {
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+fn model_cache_refresh_inflight() -> &'static Mutex<HashSet<String>> {
+    static CACHE: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+fn try_begin_model_cache_refresh(key: &str) -> bool {
+    model_cache_refresh_inflight()
+        .lock()
+        .ok()
+        .map(|mut inflight| inflight.insert(key.to_string()))
+        .unwrap_or(false)
+}
+
+fn finish_model_cache_refresh(key: &str) {
+    if let Ok(mut inflight) = model_cache_refresh_inflight().lock() {
+        inflight.remove(key);
+    }
+}
+
 fn fetch_model_options(client: &Arc<RuntimeClient>) -> Vec<ModelInfo> {
     let is_opencode = client.backend_kind().eq_ignore_ascii_case("opencode");
     let limit = if is_opencode { 500 } else { 50 };
@@ -150,12 +169,16 @@ pub(crate) fn refresh_model_options_cache_async(runtime_client: Option<Arc<Runti
     let Some(client) = runtime_client else {
         return;
     };
+    let key = client.model_cache_key();
+    if !try_begin_model_cache_refresh(&key) {
+        return;
+    }
     thread::spawn(move || {
-        let key = client.model_cache_key();
         let models = fetch_model_options(&client);
         if let Ok(mut cache) = model_cache().lock() {
-            cache.insert(key, models);
+            cache.insert(key.clone(), models);
         }
+        finish_model_cache_refresh(&key);
         bump_model_options_cache_version();
     });
 }
@@ -170,7 +193,8 @@ pub(super) fn model_options(runtime_client: Option<&Arc<RuntimeClient>>) -> Vec<
             return visible_models_for_client(client, models.clone());
         }
     }
-    visible_models_for_client(client, refresh_model_options_cache(Some(client)))
+    refresh_model_options_cache_async(Some(client.clone()));
+    Vec::new()
 }
 
 pub(crate) fn model_options_unfiltered(
@@ -185,7 +209,8 @@ pub(crate) fn model_options_unfiltered(
             return models.clone();
         }
     }
-    refresh_model_options_cache(Some(client))
+    refresh_model_options_cache_async(Some(client.clone()));
+    Vec::new()
 }
 
 fn variant_rank(value: &str) -> usize {

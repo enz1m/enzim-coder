@@ -245,6 +245,31 @@ fn set_request_card_submission_state(
     card.append(&root);
 }
 
+fn submit_server_request_async(
+    client: Arc<RuntimeClient>,
+    request_id: i64,
+    payload: Value,
+    on_complete: Rc<dyn Fn(Result<(), String>)>,
+) {
+    let (tx, rx) = mpsc::channel::<Result<(), String>>();
+    thread::spawn(move || {
+        let _ = tx.send(client.respond_to_server_request(request_id, payload));
+    });
+    gtk::glib::timeout_add_local(Duration::from_millis(30), move || match rx.try_recv() {
+        Ok(result) => {
+            on_complete(result);
+            gtk::glib::ControlFlow::Break
+        }
+        Err(mpsc::TryRecvError::Empty) => gtk::glib::ControlFlow::Continue,
+        Err(mpsc::TryRecvError::Disconnected) => {
+            on_complete(Err(
+                "request response worker disconnected before returning".to_string(),
+            ));
+            gtk::glib::ControlFlow::Break
+        }
+    });
+}
+
 fn remove_request_card(
     turn_uis: &Rc<RefCell<HashMap<String, super::TurnUi>>>,
     turn_id: &str,
@@ -639,26 +664,38 @@ fn show_pending_request_card(
                         false,
                     );
                 }
-                if let Err(err) = client_for_submit.respond_to_server_request(request_id, payload) {
-                    if let Some(pending_ui) = pending_map_for_submit.borrow().get(&request_id) {
-                        set_request_card_submission_state(
-                            &pending_ui.card,
-                            "Failed to send response",
-                            &err,
-                            true,
-                        );
-                    }
-                    if let Some(pending_ui) = pending_map_for_submit.borrow().get(&request_id) {
-                        if let Some(turn_ui) = turn_uis_for_submit
-                            .borrow_mut()
-                            .get_mut(&pending_ui.turn_id)
-                        {
-                            turn_ui.status_row.set_visible(true);
-                            turn_ui.status_label.set_text("Response submit failed");
+                let pending_map_for_submit = pending_map_for_submit.clone();
+                let turn_uis_for_submit = turn_uis_for_submit.clone();
+                submit_server_request_async(
+                    client_for_submit.clone(),
+                    request_id,
+                    payload,
+                    Rc::new(move |result| {
+                        let Err(err) = result else {
+                            return;
+                        };
+                        if let Some(pending_ui) = pending_map_for_submit.borrow().get(&request_id) {
+                            set_request_card_submission_state(
+                                &pending_ui.card,
+                                "Failed to send response",
+                                &err,
+                                true,
+                            );
                         }
-                    }
-                    eprintln!("failed to send tool/call response request_id={request_id}: {err}");
-                }
+                        if let Some(pending_ui) = pending_map_for_submit.borrow().get(&request_id) {
+                            if let Some(turn_ui) = turn_uis_for_submit
+                                .borrow_mut()
+                                .get_mut(&pending_ui.turn_id)
+                            {
+                                turn_ui.status_row.set_visible(true);
+                                turn_ui.status_label.set_text("Response submit failed");
+                            }
+                        }
+                        eprintln!(
+                            "failed to send tool/call response request_id={request_id}: {err}"
+                        );
+                    }),
+                );
             }),
         )
     } else {
@@ -711,28 +748,38 @@ fn show_pending_request_card(
                 } else {
                     decision_payload
                 };
-                if let Err(err) =
-                    client_for_submit.respond_to_server_request(request_id, final_payload)
-                {
-                    if let Some(pending_ui) = pending_map_for_submit.borrow().get(&request_id) {
-                        set_request_card_submission_state(
-                            &pending_ui.card,
-                            "Failed to send decision",
-                            &err,
-                            true,
-                        );
-                    }
-                    if let Some(pending_ui) = pending_map_for_submit.borrow().get(&request_id) {
-                        if let Some(turn_ui) = turn_uis_for_submit
-                            .borrow_mut()
-                            .get_mut(&pending_ui.turn_id)
-                        {
-                            turn_ui.status_row.set_visible(true);
-                            turn_ui.status_label.set_text("Decision submit failed");
+                let pending_map_for_submit = pending_map_for_submit.clone();
+                let turn_uis_for_submit = turn_uis_for_submit.clone();
+                submit_server_request_async(
+                    client_for_submit.clone(),
+                    request_id,
+                    final_payload,
+                    Rc::new(move |result| {
+                        let Err(err) = result else {
+                            return;
+                        };
+                        if let Some(pending_ui) = pending_map_for_submit.borrow().get(&request_id) {
+                            set_request_card_submission_state(
+                                &pending_ui.card,
+                                "Failed to send decision",
+                                &err,
+                                true,
+                            );
                         }
-                    }
-                    eprintln!("failed to send approval response request_id={request_id}: {err}");
-                }
+                        if let Some(pending_ui) = pending_map_for_submit.borrow().get(&request_id) {
+                            if let Some(turn_ui) = turn_uis_for_submit
+                                .borrow_mut()
+                                .get_mut(&pending_ui.turn_id)
+                            {
+                                turn_ui.status_row.set_visible(true);
+                                turn_ui.status_label.set_text("Decision submit failed");
+                            }
+                        }
+                        eprintln!(
+                            "failed to send approval response request_id={request_id}: {err}"
+                        );
+                    }),
+                );
             }),
         )
     };

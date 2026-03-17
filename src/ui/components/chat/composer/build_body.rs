@@ -768,7 +768,11 @@ fn build_inner(
             if let Some(thread_id) = active_thread_id.borrow().clone() {
                 save_thread_setting(&db, &thread_id, "opencode_command_mode", &value);
                 if let Some(client) = resolve_client_for_thread(&thread_id) {
-                    let _ = client.thread_set_command_mode(&thread_id, &value);
+                    let thread_id = thread_id.clone();
+                    let value = value.clone();
+                    std::thread::spawn(move || {
+                        let _ = client.thread_set_command_mode(&thread_id, &value);
+                    });
                 }
             }
         })
@@ -895,7 +899,13 @@ fn build_inner(
                             .unwrap_or_else(|| "allowAll".to_string());
                     set_opencode_command_mode(&saved_command_mode);
                     if let Some(client) = resolve_client_for_thread(&thread_id) {
-                        let _ = client.thread_set_command_mode(&thread_id, &saved_command_mode);
+                        let thread_id = thread_id.clone();
+                        std::thread::spawn(move || {
+                            let _ = client.thread_set_command_mode(
+                                &thread_id,
+                                &saved_command_mode,
+                            );
+                        });
                     }
                 } else {
                     let saved_effort = thread_setting_value(&db, &thread_id, "effort")

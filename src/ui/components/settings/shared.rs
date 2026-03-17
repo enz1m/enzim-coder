@@ -28,6 +28,11 @@ const PROFILE_ICON_CHOICES: [(&str, &str); 15] = [
     ("car-side-symbolic", "Car"),
 ];
 
+enum LogoutRpcResult {
+    LoggedOut,
+    ProviderLoggedOut(Option<crate::codex_appserver::AccountInfo>),
+}
+
 fn normalize_profile_icon_name(icon_name: Option<&str>) -> String {
     let value = icon_name
         .map(str::trim)
@@ -2238,9 +2243,9 @@ pub(super) fn build_profile_settings_page(
                 refresh_ui();
                 return;
             }
+            operation_label.set_visible(true);
             if runtime_only {
                 let Some(selected_id) = selected_provider_id.borrow().clone() else {
-                    operation_label.set_visible(true);
                     operation_label.set_text("Select an OpenCode provider first.");
                     return;
                 };
@@ -2250,42 +2255,112 @@ pub(super) fn build_profile_settings_page(
                     .find(|provider| provider.provider_id == selected_id)
                     .cloned();
                 let Some(provider) = provider else {
-                    operation_label.set_visible(true);
                     operation_label.set_text("Selected OpenCode provider is unavailable.");
                     return;
                 };
                 if !provider.connected && !provider.has_saved_auth {
-                    operation_label.set_visible(true);
                     operation_label.set_text("Selected provider has no saved auth to remove.");
                     return;
                 }
-                let _ = client.account_logout_provider(&provider.provider_id);
-                let account = client.account_read(true).ok().flatten();
-                let _ = crate::ui::components::runtime_auth_dialog::sync_runtime_account_to_db(
-                    &db, profile_id, account,
-                );
-                crate::ui::components::runtime_auth_dialog::reload_opencode_runtime_after_auth(
-                    &manager, profile_id,
-                );
-                operation_label.set_visible(true);
                 operation_label.set_text(&format!(
-                    "Removed {} from OpenCode.",
+                    "Removing {} from OpenCode...",
                     provider.provider_name
                 ));
+                let provider_id = provider.provider_id.clone();
+                let provider_name = provider.provider_name.clone();
+                let (tx, rx) = mpsc::channel::<Result<LogoutRpcResult, String>>();
+                thread::spawn(move || {
+                    let result = client
+                        .account_logout_provider(&provider_id)
+                        .map_err(|err| err.to_string())
+                        .map(|_| {
+                            LogoutRpcResult::ProviderLoggedOut(
+                                client.account_read(true).ok().flatten(),
+                            )
+                        });
+                    let _ = tx.send(result);
+                });
+                let db = db.clone();
+                let manager = manager.clone();
+                let profile_ids = profile_ids.clone();
+                let sync_profile_dropdown = sync_profile_dropdown.clone();
+                let refresh_ui = refresh_ui.clone();
+                let operation_label = operation_label.clone();
+                let reload_runtime_only_providers = reload_runtime_only_providers.clone();
+                gtk::glib::timeout_add_local(Duration::from_millis(40), move || {
+                    if operation_label.root().is_none() {
+                        return gtk::glib::ControlFlow::Break;
+                    }
+                    match rx.try_recv() {
+                        Ok(Ok(LogoutRpcResult::ProviderLoggedOut(account))) => {
+                            let _ = crate::ui::components::runtime_auth_dialog::sync_runtime_account_to_db(
+                                &db, profile_id, account,
+                            );
+                            crate::ui::components::runtime_auth_dialog::reload_opencode_runtime_after_auth(
+                                &manager, profile_id,
+                            );
+                            operation_label.set_text(&format!(
+                                "Removed {} from OpenCode.",
+                                provider_name
+                            ));
+                            let next_ids = sync_profile_dropdown(Some(profile_id));
+                            profile_ids.replace(next_ids);
+                            refresh_ui();
+                            reload_runtime_only_providers();
+                            gtk::glib::ControlFlow::Break
+                        }
+                        Ok(Ok(LogoutRpcResult::LoggedOut)) => gtk::glib::ControlFlow::Break,
+                        Ok(Err(err)) => {
+                            operation_label.set_text(&format!("Logout failed: {err}"));
+                            gtk::glib::ControlFlow::Break
+                        }
+                        Err(mpsc::TryRecvError::Empty) => gtk::glib::ControlFlow::Continue,
+                        Err(mpsc::TryRecvError::Disconnected) => gtk::glib::ControlFlow::Break,
+                    }
+                });
+                return;
             } else {
-                let _ = client.account_logout();
-                let _ =
-                    crate::ui::components::runtime_auth_dialog::clear_runtime_account_for_profile(
-                        &db, profile_id,
-                    );
-                operation_label.set_visible(true);
-                operation_label.set_text("Logged out from this profile.");
-            }
-            let next_ids = sync_profile_dropdown(Some(profile_id));
-            profile_ids.replace(next_ids);
-            refresh_ui();
-            if runtime_only {
-                reload_runtime_only_providers();
+                operation_label.set_text("Logging out...");
+                let (tx, rx) = mpsc::channel::<Result<LogoutRpcResult, String>>();
+                thread::spawn(move || {
+                    let result = client
+                        .account_logout()
+                        .map_err(|err| err.to_string())
+                        .map(|_| LogoutRpcResult::LoggedOut);
+                    let _ = tx.send(result);
+                });
+                let db = db.clone();
+                let profile_ids = profile_ids.clone();
+                let sync_profile_dropdown = sync_profile_dropdown.clone();
+                let refresh_ui = refresh_ui.clone();
+                let operation_label = operation_label.clone();
+                gtk::glib::timeout_add_local(Duration::from_millis(40), move || {
+                    if operation_label.root().is_none() {
+                        return gtk::glib::ControlFlow::Break;
+                    }
+                    match rx.try_recv() {
+                        Ok(Ok(LogoutRpcResult::LoggedOut)) => {
+                            let _ = crate::ui::components::runtime_auth_dialog::clear_runtime_account_for_profile(
+                                &db, profile_id,
+                            );
+                            operation_label.set_text("Logged out from this profile.");
+                            let next_ids = sync_profile_dropdown(Some(profile_id));
+                            profile_ids.replace(next_ids);
+                            refresh_ui();
+                            gtk::glib::ControlFlow::Break
+                        }
+                        Ok(Ok(LogoutRpcResult::ProviderLoggedOut(_))) => {
+                            gtk::glib::ControlFlow::Break
+                        }
+                        Ok(Err(err)) => {
+                            operation_label.set_text(&format!("Logout failed: {err}"));
+                            gtk::glib::ControlFlow::Break
+                        }
+                        Err(mpsc::TryRecvError::Empty) => gtk::glib::ControlFlow::Continue,
+                        Err(mpsc::TryRecvError::Disconnected) => gtk::glib::ControlFlow::Break,
+                    }
+                });
+                return;
             }
         });
     }

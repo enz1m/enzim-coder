@@ -9,8 +9,18 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
 use std::rc::Rc;
+use std::sync::mpsc;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+#[path = "restore_preview/worker.rs"]
+mod worker;
+use worker::{
+    apply_opencode_restore_worker, apply_restore_worker, undo_opencode_restore_worker,
+    undo_restore_worker, ApplyRestoreWorkerOutcome, ChatRestoreWorkerOutcome,
+    ThreadSyncOutcome, UndoRestoreWorkerOutcome,
+};
 
 #[derive(Clone, Copy)]
 enum GitRiskLevel {
@@ -647,7 +657,47 @@ fn set_composer_input_text(parent_window: &gtk::Window, text: &str) {
     input_view.grab_focus();
 }
 
-include!("restore_preview/apply_with_chat_sync.rs");
+fn apply_synced_thread_view(
+    db: &AppDb,
+    parent_window: Option<&gtk::Window>,
+    thread_id: &str,
+    thread: &Value,
+) -> Result<(), String> {
+    if let Some(parent_window) = parent_window {
+        if super::chat::refresh_visible_history_for_thread(db, parent_window, thread_id, thread) {
+            return Ok(());
+        }
+        return Err("failed to refresh visible chat UI.".to_string());
+    }
+
+    if super::chat::sync_local_history_for_thread(db, thread_id, thread) {
+        return Ok(());
+    }
+
+    Err("failed to persist local chat history.".to_string())
+}
+
+fn apply_thread_sync_outcome(
+    db: &AppDb,
+    parent_window: Option<&gtk::Window>,
+    active_thread_id: Option<Rc<RefCell<Option<String>>>>,
+    thread_id: &str,
+    outcome: Option<&ThreadSyncOutcome>,
+) -> Result<(), String> {
+    let Some(outcome) = outcome else {
+        return Ok(());
+    };
+    if let Some(active) = active_thread_id.as_ref() {
+        if active.borrow().as_deref() != Some(thread_id) {
+            active.replace(Some(thread_id.to_string()));
+        }
+    }
+    apply_synced_thread_view(db, parent_window, thread_id, &outcome.thread)?;
+    if outcome.request_runtime_history_reload {
+        super::chat::request_runtime_history_reload(thread_id);
+    }
+    Ok(())
+}
 
 fn set_snapshot_summary_text(
     summary: &gtk::Box,
@@ -1513,56 +1563,111 @@ pub fn open_restore_preview_dialog(
                         selected_turn_id_value,
                         active_thread_id.borrow().clone()
                     );
-                    match apply_restore_with_chat_sync(
-                        &db,
-                        codex.clone(),
-                        Some(active_thread_id.clone()),
-                        Some(&workspace_path),
-                        &codex_thread_id,
-                        checkpoint_id,
-                        selected_turn_id_value.as_deref(),
-                        &selected_path_list,
-                        &forced_paths_from_confirm,
-                        parent_window.as_ref(),
-                        selected_user_prompt_value.as_deref(),
-                    ) {
-                        Ok((result, rollback_status)) => {
-                            last_backup_checkpoint_id.replace(Some(result.backup_checkpoint_id));
-                            undo_btn.set_sensitive(true);
-                            status.set_text(&format_restore_result_text(
-                                &format!(
-                                    "Restore applied to checkpoint {}",
-                                    result.target_checkpoint_id
-                                ),
-                                result.restored_count,
-                                result.deleted_count,
-                                result.recreated_count,
-                                result.skipped_conflicts,
-                                result.backup_checkpoint_id,
-                                &rollback_status,
-                            ));
-                            if let Some(reload) = reload_checkpoint_choices.borrow().as_ref() {
-                                reload(Some(checkpoint_id));
-                            } else {
-                                let preview = crate::restore::preview_restore_to_checkpoint_by_remote_id(
+                    status.set_text("Applying restore...");
+                    let (tx, rx) =
+                        mpsc::channel::<Result<ApplyRestoreWorkerOutcome, String>>();
+                    let codex_thread_id_for_worker = codex_thread_id.clone();
+                    let workspace_path_for_worker = workspace_path.clone();
+                    let selected_turn_id_for_worker = selected_turn_id_value.clone();
+                    let selected_path_list_for_worker = selected_path_list.clone();
+                    let codex_for_worker = codex.clone();
+                    thread::spawn(move || {
+                        let background_db = AppDb::open_default();
+                        let result = apply_restore_worker(
+                            background_db.as_ref(),
+                            codex_for_worker,
+                            Some(workspace_path_for_worker.as_str()),
+                            &codex_thread_id_for_worker,
+                            checkpoint_id,
+                            selected_turn_id_for_worker.as_deref(),
+                            &selected_path_list_for_worker,
+                            &forced_paths_from_confirm,
+                        );
+                        let _ = tx.send(result);
+                    });
+                    let db = db.clone();
+                    let codex_thread_id = codex_thread_id.clone();
+                    let status = status.clone();
+                    let undo_btn = undo_btn.clone();
+                    let last_backup_checkpoint_id = last_backup_checkpoint_id.clone();
+                    let listbox = listbox.clone();
+                    let summary = summary.clone();
+                    let forced_paths_for_refresh = forced_paths_for_refresh.clone();
+                    let selected_paths_for_refresh = selected_paths_for_refresh.clone();
+                    let reload_checkpoint_choices = reload_checkpoint_choices.clone();
+                    let active_thread_id = active_thread_id.clone();
+                    let parent_window = parent_window.clone();
+                    let workspace_path = workspace_path.clone();
+                    let selected_user_prompt_value = selected_user_prompt_value.clone();
+                    gtk::glib::timeout_add_local(Duration::from_millis(40), move || {
+                        if status.root().is_none() {
+                            return gtk::glib::ControlFlow::Break;
+                        }
+                        match rx.try_recv() {
+                            Ok(Ok(outcome)) => {
+                                if let Err(err) = apply_thread_sync_outcome(
                                     &db,
+                                    parent_window.as_ref(),
+                                    Some(active_thread_id.clone()),
                                     &codex_thread_id,
-                                    checkpoint_id,
-                                );
-                                refresh_preview_list(
-                                    preview,
-                                    &listbox,
-                                    &summary,
-                                    &forced_paths_for_refresh,
-                                    &selected_paths_for_refresh,
-                                    &workspace_path,
-                                );
+                                    outcome.thread_sync.as_ref(),
+                                ) {
+                                    status.set_text(&format!("Restore applied, but {err}"));
+                                    return gtk::glib::ControlFlow::Break;
+                                }
+                                if let (Some(parent_window), Some(prompt)) = (
+                                    parent_window.as_ref(),
+                                    selected_user_prompt_value.as_deref(),
+                                ) {
+                                    if !prompt.trim().is_empty() {
+                                        set_composer_input_text(parent_window, prompt);
+                                    }
+                                }
+                                let result = outcome.result;
+                                last_backup_checkpoint_id.replace(Some(result.backup_checkpoint_id));
+                                undo_btn.set_sensitive(true);
+                                status.set_text(&format_restore_result_text(
+                                    &format!(
+                                        "Restore applied to checkpoint {}",
+                                        result.target_checkpoint_id
+                                    ),
+                                    result.restored_count,
+                                    result.deleted_count,
+                                    result.recreated_count,
+                                    result.skipped_conflicts,
+                                    result.backup_checkpoint_id,
+                                    &outcome.rollback_status,
+                                ));
+                                if let Some(reload) = reload_checkpoint_choices.borrow().as_ref() {
+                                    reload(Some(checkpoint_id));
+                                } else {
+                                    let preview = crate::restore::preview_restore_to_checkpoint_by_remote_id(
+                                        &db,
+                                        &codex_thread_id,
+                                        checkpoint_id,
+                                    );
+                                    refresh_preview_list(
+                                        preview,
+                                        &listbox,
+                                        &summary,
+                                        &forced_paths_for_refresh,
+                                        &selected_paths_for_refresh,
+                                        &workspace_path,
+                                    );
+                                }
+                                gtk::glib::ControlFlow::Break
+                            }
+                            Ok(Err(err)) => {
+                                status.set_text(&err);
+                                gtk::glib::ControlFlow::Break
+                            }
+                            Err(mpsc::TryRecvError::Empty) => gtk::glib::ControlFlow::Continue,
+                            Err(mpsc::TryRecvError::Disconnected) => {
+                                status.set_text("Restore apply stopped unexpectedly.");
+                                gtk::glib::ControlFlow::Break
                             }
                         }
-                        Err(err) => {
-                            status.set_text(&err);
-                        }
-                    }
+                    });
                 })
             };
 
@@ -1603,29 +1708,78 @@ pub fn open_restore_preview_dialog(
                     let parent_window = parent_window.clone();
                     let reload_checkpoint_choices = reload_checkpoint_choices.clone();
                     Rc::new(move |_| {
-                        match undo_opencode_restore_with_chat_sync(
-                            &db,
-                            codex.clone(),
-                            Some(&workspace_path),
-                            &codex_thread_id,
-                            parent_window.as_ref(),
-                        ) {
-                            Ok(status_text) => {
-                                native_restore_active.replace(false);
-                                native_restore_btn.set_label("Restore With OpenCode");
-                                let detail =
-                                    status_text.trim().trim_start_matches('•').trim().to_string();
-                                native_status.set_text(if detail.is_empty() {
-                                    "OpenCode restore undone."
-                                } else {
-                                    &detail
-                                });
-                                if let Some(reload) = reload_checkpoint_choices.borrow().as_ref() {
-                                    reload(None);
+                        native_status.set_text("Undoing OpenCode restore...");
+                        let (tx, rx) =
+                            mpsc::channel::<Result<ChatRestoreWorkerOutcome, String>>();
+                        let codex_thread_id_for_worker = codex_thread_id.clone();
+                        let workspace_path_for_worker = workspace_path.clone();
+                        let codex_for_worker = codex.clone();
+                        thread::spawn(move || {
+                            let result = undo_opencode_restore_worker(
+                                codex_for_worker,
+                                Some(workspace_path_for_worker.as_str()),
+                                &codex_thread_id_for_worker,
+                            );
+                            let _ = tx.send(result);
+                        });
+                        let db = db.clone();
+                        let codex_thread_id = codex_thread_id.clone();
+                        let native_status = native_status.clone();
+                        let native_restore_btn = native_restore_btn.clone();
+                        let native_restore_active = native_restore_active.clone();
+                        let parent_window = parent_window.clone();
+                        let reload_checkpoint_choices = reload_checkpoint_choices.clone();
+                        gtk::glib::timeout_add_local(Duration::from_millis(40), move || {
+                            if native_status.root().is_none() {
+                                return gtk::glib::ControlFlow::Break;
+                            }
+                            match rx.try_recv() {
+                                Ok(Ok(outcome)) => {
+                                    if let Err(err) = apply_thread_sync_outcome(
+                                        &db,
+                                        parent_window.as_ref(),
+                                        None,
+                                        &codex_thread_id,
+                                        outcome.thread_sync.as_ref(),
+                                    ) {
+                                        native_status
+                                            .set_text(&format!("OpenCode undo completed, but {err}"));
+                                        return gtk::glib::ControlFlow::Break;
+                                    }
+                                    native_restore_active.replace(false);
+                                    native_restore_btn.set_label("Restore With OpenCode");
+                                    let detail = outcome
+                                        .status_text
+                                        .trim()
+                                        .trim_start_matches('•')
+                                        .trim()
+                                        .to_string();
+                                    native_status.set_text(if detail.is_empty() {
+                                        "OpenCode restore undone."
+                                    } else {
+                                        &detail
+                                    });
+                                    if let Some(reload) = reload_checkpoint_choices.borrow().as_ref()
+                                    {
+                                        reload(None);
+                                    }
+                                    gtk::glib::ControlFlow::Break
+                                }
+                                Ok(Err(err)) => {
+                                    native_status.set_text(&err);
+                                    gtk::glib::ControlFlow::Break
+                                }
+                                Err(mpsc::TryRecvError::Empty) => {
+                                    gtk::glib::ControlFlow::Continue
+                                }
+                                Err(mpsc::TryRecvError::Disconnected) => {
+                                    native_status.set_text(
+                                        "OpenCode undo request stopped unexpectedly.",
+                                    );
+                                    gtk::glib::ControlFlow::Break
                                 }
                             }
-                            Err(err) => native_status.set_text(&err),
-                        }
+                        });
                     })
                 };
 
@@ -1659,32 +1813,90 @@ pub fn open_restore_preview_dialog(
                 let native_restore_active = native_restore_active.clone();
                 let reload_checkpoint_choices = reload_checkpoint_choices.clone();
                 Rc::new(move |_| {
-                    match apply_opencode_restore_with_chat_sync(
-                        &db,
-                        codex.clone(),
-                        Some(active_thread_id.clone()),
-                        Some(&workspace_path),
-                        &codex_thread_id,
-                        Some(selected_turn_id_value.as_str()),
-                        parent_window.as_ref(),
-                        selected_user_prompt_value.as_deref(),
-                    ) {
-                        Ok(rollback_status) => {
-                            native_restore_active.replace(true);
-                            native_restore_btn.set_label("Undo OpenCode Restore");
-                            let detail =
-                                rollback_status.trim().trim_start_matches('•').trim().to_string();
-                            if detail.is_empty() {
-                                native_status.set_text("OpenCode restore completed.");
-                            } else {
-                                native_status.set_text(&detail);
+                    native_status.set_text("Applying OpenCode restore...");
+                    let (tx, rx) =
+                        mpsc::channel::<Result<ChatRestoreWorkerOutcome, String>>();
+                    let codex_thread_id_for_worker = codex_thread_id.clone();
+                    let workspace_path_for_worker = workspace_path.clone();
+                    let selected_turn_id_for_worker = selected_turn_id_value.clone();
+                    let codex_for_worker = codex.clone();
+                    thread::spawn(move || {
+                        let result = apply_opencode_restore_worker(
+                            codex_for_worker,
+                            Some(workspace_path_for_worker.as_str()),
+                            &codex_thread_id_for_worker,
+                            Some(selected_turn_id_for_worker.as_str()),
+                        );
+                        let _ = tx.send(result);
+                    });
+                    let db = db.clone();
+                    let codex_thread_id = codex_thread_id.clone();
+                    let active_thread_id = active_thread_id.clone();
+                    let native_status = native_status.clone();
+                    let native_restore_btn = native_restore_btn.clone();
+                    let native_restore_active = native_restore_active.clone();
+                    let parent_window = parent_window.clone();
+                    let reload_checkpoint_choices = reload_checkpoint_choices.clone();
+                    let selected_user_prompt_value = selected_user_prompt_value.clone();
+                    gtk::glib::timeout_add_local(Duration::from_millis(40), move || {
+                        if native_status.root().is_none() {
+                            return gtk::glib::ControlFlow::Break;
+                        }
+                        match rx.try_recv() {
+                            Ok(Ok(outcome)) => {
+                                if let Err(err) = apply_thread_sync_outcome(
+                                    &db,
+                                    parent_window.as_ref(),
+                                    Some(active_thread_id.clone()),
+                                    &codex_thread_id,
+                                    outcome.thread_sync.as_ref(),
+                                ) {
+                                    native_status.set_text(&format!(
+                                        "OpenCode restore completed, but {err}"
+                                    ));
+                                    return gtk::glib::ControlFlow::Break;
+                                }
+                                if let (Some(parent_window), Some(prompt)) = (
+                                    parent_window.as_ref(),
+                                    selected_user_prompt_value.as_deref(),
+                                ) {
+                                    if !prompt.trim().is_empty() {
+                                        set_composer_input_text(parent_window, prompt);
+                                    }
+                                }
+                                native_restore_active.replace(true);
+                                native_restore_btn.set_label("Undo OpenCode Restore");
+                                let detail = outcome
+                                    .status_text
+                                    .trim()
+                                    .trim_start_matches('•')
+                                    .trim()
+                                    .to_string();
+                                if detail.is_empty() {
+                                    native_status.set_text("OpenCode restore completed.");
+                                } else {
+                                    native_status.set_text(&detail);
+                                }
+                                if let Some(reload) = reload_checkpoint_choices.borrow().as_ref() {
+                                    reload(None);
+                                }
+                                gtk::glib::ControlFlow::Break
                             }
-                            if let Some(reload) = reload_checkpoint_choices.borrow().as_ref() {
-                                reload(None);
+                            Ok(Err(err)) => {
+                                native_status.set_text(&err);
+                                gtk::glib::ControlFlow::Break
+                            }
+                            Err(mpsc::TryRecvError::Empty) => {
+                                gtk::glib::ControlFlow::Continue
+                            }
+                            Err(mpsc::TryRecvError::Disconnected) => {
+                                native_status.set_text(
+                                    "OpenCode restore request stopped unexpectedly.",
+                                );
+                                gtk::glib::ControlFlow::Break
                             }
                         }
-                        Err(err) => native_status.set_text(&err),
-                    }
+                    });
                 })
             };
 
@@ -1764,82 +1976,76 @@ pub fn open_restore_preview_dialog(
                 let workspace_path = workspace_path.clone();
                 let parent_window = parent_window.clone();
                 Rc::new(move |undo_forced_paths| {
-                    let mut chat_restore_status = String::new();
-                    if codex.as_ref().is_some_and(|client| {
-                        client.backend_kind().eq_ignore_ascii_case("opencode")
-                    }) {
-                        match undo_opencode_restore_with_chat_sync(
-                            &db,
-                            codex.clone(),
-                            Some(&workspace_path),
-                            &codex_thread_id,
-                            parent_window.as_ref(),
-                        ) {
-                            Ok(status_text) => chat_restore_status = status_text,
-                            Err(err) => {
-                                eprintln!(
-                                    "[restore] warning: opencode chat undo failed thread_id={}: {}",
-                                    codex_thread_id, err
-                                );
-                                chat_restore_status = format!(" • Chat restore skipped ({err})");
-                            }
+                    status.set_text("Undoing restore...");
+                    let (tx, rx) =
+                        mpsc::channel::<Result<Option<UndoRestoreWorkerOutcome>, String>>();
+                    let codex_thread_id_for_worker = codex_thread_id.clone();
+                    let workspace_path_for_worker = workspace_path.clone();
+                    let codex_for_worker = codex.clone();
+                    thread::spawn(move || {
+                        let background_db = AppDb::open_default();
+                        let result = undo_restore_worker(
+                            background_db.as_ref(),
+                            codex_for_worker,
+                            Some(workspace_path_for_worker.as_str()),
+                            &codex_thread_id_for_worker,
+                            backup_checkpoint_id,
+                            &undo_forced_paths,
+                        );
+                        let _ = tx.send(result);
+                    });
+                    let db = db.clone();
+                    let codex_thread_id = codex_thread_id.clone();
+                    let status = status.clone();
+                    let listbox = listbox.clone();
+                    let summary = summary.clone();
+                    let forced_paths = forced_paths.clone();
+                    let selected_paths = selected_paths.clone();
+                    let selected_checkpoint_id = selected_checkpoint_id.clone();
+                    let last_backup_checkpoint_id = last_backup_checkpoint_id.clone();
+                    let checkpoint_dropdown = checkpoint_dropdown.clone();
+                    let parent_window = parent_window.clone();
+                    let reload_checkpoint_choices = reload_checkpoint_choices.clone();
+                    let workspace_path = workspace_path.clone();
+                    gtk::glib::timeout_add_local(Duration::from_millis(40), move || {
+                        if status.root().is_none() {
+                            return gtk::glib::ControlFlow::Break;
                         }
-                    }
+                        match rx.try_recv() {
+                            Ok(Ok(Some(outcome))) => {
+                                if let Err(err) = apply_thread_sync_outcome(
+                                    &db,
+                                    parent_window.as_ref(),
+                                    None,
+                                    &codex_thread_id,
+                                    outcome.thread_sync.as_ref(),
+                                ) {
+                                    status.set_text(&format!("Undo restore applied, but {err}"));
+                                    return gtk::glib::ControlFlow::Break;
+                                }
+                                let result = outcome.result;
+                                last_backup_checkpoint_id.replace(Some(result.backup_checkpoint_id));
+                                status.set_text(&format_restore_result_text(
+                                    &format!(
+                                        "Undo restore applied from backup checkpoint {}",
+                                        backup_checkpoint_id
+                                    ),
+                                    result.restored_count,
+                                    result.deleted_count,
+                                    result.recreated_count,
+                                    result.skipped_conflicts,
+                                    result.backup_checkpoint_id,
+                                    &outcome.chat_restore_status,
+                                ));
 
-                    match crate::restore::apply_restore_to_checkpoint_by_remote_id(
-                        &db,
-                        &codex_thread_id,
-                        backup_checkpoint_id,
-                        &[],
-                        &undo_forced_paths,
-                    ) {
-                        Ok(Some(result)) => {
-                            last_backup_checkpoint_id.replace(Some(result.backup_checkpoint_id));
-                            status.set_text(&format_restore_result_text(
-                                &format!(
-                                    "Undo restore applied from backup checkpoint {}",
-                                    backup_checkpoint_id
-                                ),
-                                result.restored_count,
-                                result.deleted_count,
-                                result.recreated_count,
-                                result.skipped_conflicts,
-                                result.backup_checkpoint_id,
-                                &chat_restore_status,
-                            ));
-
-                            if let Some(reload) = reload_checkpoint_choices.borrow().as_ref() {
-                                reload(*selected_checkpoint_id.borrow());
-                            } else if let Some(current_id) = *selected_checkpoint_id.borrow() {
-                                let preview =
-                                    crate::restore::preview_restore_to_checkpoint_by_remote_id(
-                                        &db,
-                                        &codex_thread_id,
-                                        current_id,
-                                    );
-                                refresh_preview_list(
-                                    preview,
-                                    &listbox,
-                                    &summary,
-                                    &forced_paths,
-                                    &selected_paths,
-                                    &workspace_path,
-                                );
-                            } else {
-                                let idx = checkpoint_dropdown.selected() as usize;
-                                if let Some(id) =
-                                    crate::restore::list_checkpoints_for_remote_thread(
-                                        &db,
-                                        &codex_thread_id,
-                                    )
-                                    .get(idx)
-                                    .map(|cp| cp.id)
-                                {
+                                if let Some(reload) = reload_checkpoint_choices.borrow().as_ref() {
+                                    reload(*selected_checkpoint_id.borrow());
+                                } else if let Some(current_id) = *selected_checkpoint_id.borrow() {
                                     let preview =
                                         crate::restore::preview_restore_to_checkpoint_by_remote_id(
                                             &db,
                                             &codex_thread_id,
-                                            id,
+                                            current_id,
                                         );
                                     refresh_preview_list(
                                         preview,
@@ -1849,16 +2055,49 @@ pub fn open_restore_preview_dialog(
                                         &selected_paths,
                                         &workspace_path,
                                     );
+                                } else {
+                                    let idx = checkpoint_dropdown.selected() as usize;
+                                    if let Some(id) =
+                                        crate::restore::list_checkpoints_for_remote_thread(
+                                            &db,
+                                            &codex_thread_id,
+                                        )
+                                        .get(idx)
+                                        .map(|cp| cp.id)
+                                    {
+                                        let preview =
+                                            crate::restore::preview_restore_to_checkpoint_by_remote_id(
+                                                &db,
+                                                &codex_thread_id,
+                                                id,
+                                            );
+                                        refresh_preview_list(
+                                            preview,
+                                            &listbox,
+                                            &summary,
+                                            &forced_paths,
+                                            &selected_paths,
+                                            &workspace_path,
+                                        );
+                                    }
                                 }
+                                gtk::glib::ControlFlow::Break
+                            }
+                            Ok(Ok(None)) => {
+                                status.set_text("Undo restore unavailable.");
+                                gtk::glib::ControlFlow::Break
+                            }
+                            Ok(Err(err)) => {
+                                status.set_text(&format!("Undo restore failed: {err}"));
+                                gtk::glib::ControlFlow::Break
+                            }
+                            Err(mpsc::TryRecvError::Empty) => gtk::glib::ControlFlow::Continue,
+                            Err(mpsc::TryRecvError::Disconnected) => {
+                                status.set_text("Undo restore request stopped unexpectedly.");
+                                gtk::glib::ControlFlow::Break
                             }
                         }
-                        Ok(None) => {
-                            status.set_text("Undo restore unavailable.");
-                        }
-                        Err(err) => {
-                            status.set_text(&format!("Undo restore failed: {err}"));
-                        }
-                    }
+                    });
                 })
             };
 

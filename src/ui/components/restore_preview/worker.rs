@@ -1,3 +1,35 @@
+use crate::backend::RuntimeClient;
+use crate::data::AppDb;
+use serde_json::Value;
+use std::collections::HashSet;
+use std::sync::Arc;
+
+#[derive(Clone)]
+pub(super) struct ThreadSyncOutcome {
+    pub(super) thread: Value,
+    pub(super) request_runtime_history_reload: bool,
+}
+
+#[derive(Clone)]
+pub(super) struct ApplyRestoreWorkerOutcome {
+    pub(super) result: crate::restore::RestoreApplyResult,
+    pub(super) rollback_status: String,
+    pub(super) thread_sync: Option<ThreadSyncOutcome>,
+}
+
+#[derive(Clone)]
+pub(super) struct ChatRestoreWorkerOutcome {
+    pub(super) status_text: String,
+    pub(super) thread_sync: Option<ThreadSyncOutcome>,
+}
+
+#[derive(Clone)]
+pub(super) struct UndoRestoreWorkerOutcome {
+    pub(super) result: crate::restore::RestoreApplyResult,
+    pub(super) chat_restore_status: String,
+    pub(super) thread_sync: Option<ThreadSyncOutcome>,
+}
+
 fn read_thread_for_rollback(
     client: &Arc<RuntimeClient>,
     thread_id: &str,
@@ -40,7 +72,7 @@ fn build_trimmed_thread_view(
         .iter()
         .enumerate()
         .map(|(idx, turn)| {
-            let ts = parse_turn_timestamp_opt(turn).unwrap_or(idx as i64);
+            let ts = super::parse_turn_timestamp_opt(turn).unwrap_or(idx as i64);
             (idx, ts)
         })
         .collect();
@@ -76,48 +108,23 @@ fn build_trimmed_thread_view(
     Ok((trimmed, rollback_count, target_index, chrono_target_pos))
 }
 
-fn apply_synced_thread_view(
-    db: &AppDb,
-    parent_window: Option<&gtk::Window>,
-    thread_id: &str,
-    thread: &Value,
-) -> Result<(), String> {
-    if let Some(parent_window) = parent_window {
-        if super::chat::refresh_visible_history_for_thread(db, parent_window, thread_id, thread) {
-            return Ok(());
-        }
-        return Err("failed to refresh visible chat UI.".to_string());
-    }
-
-    if super::chat::sync_local_history_for_thread(db, thread_id, thread) {
-        return Ok(());
-    }
-
-    Err("failed to persist local chat history.".to_string())
-}
-
-fn rollback_thread_to_target(
-    db: &AppDb,
+fn rollback_thread_to_target_worker(
     client: &Arc<RuntimeClient>,
-    active_thread_id: Option<Rc<RefCell<Option<String>>>>,
     workspace_path: Option<&str>,
     thread_id: &str,
     target_turn_id: &str,
-    parent_window: Option<&gtk::Window>,
-) -> Result<String, String> {
+) -> Result<(String, Option<ThreadSyncOutcome>), String> {
     if !client.capabilities().supports_rollback {
-        return Ok(" • Chat trim skipped (runtime does not support rollback)".to_string());
-    }
-
-    if let Some(active) = active_thread_id.as_ref() {
-        if active.borrow().as_deref() != Some(thread_id) {
-            active.replace(Some(thread_id.to_string()));
-        }
+        return Ok((
+            " • Chat trim skipped (runtime does not support rollback)".to_string(),
+            None,
+        ));
     }
 
     if client.backend_kind().eq_ignore_ascii_case("opencode") {
         if let Some(workspace_path) = workspace_path {
-            if let Err(err) = client.thread_resume(thread_id, Some(workspace_path), Some("gpt-5.3-codex"))
+            if let Err(err) =
+                client.thread_resume(thread_id, Some(workspace_path), Some("gpt-5.3-codex"))
             {
                 eprintln!(
                     "[restore] warning: thread/resume before rollback failed thread_id={}: {}",
@@ -149,9 +156,13 @@ fn rollback_thread_to_target(
     );
 
     if rollback_count == 0 {
-        apply_synced_thread_view(db, parent_window, thread_id, &trimmed_thread)
-            .map_err(|err| format!("chat trim failed: {err}"))?;
-        return Ok(" • Chat already at restored point".to_string());
+        return Ok((
+            " • Chat already at restored point".to_string(),
+            Some(ThreadSyncOutcome {
+                thread: trimmed_thread,
+                request_runtime_history_reload: false,
+            }),
+        ));
     }
 
     let rollback_result = match client.thread_rollback(thread_id, rollback_count) {
@@ -180,7 +191,8 @@ fn rollback_thread_to_target(
     }
 
     if let Some(workspace_path) = workspace_path {
-        if let Err(err) = client.thread_resume(thread_id, Some(workspace_path), Some("gpt-5.3-codex"))
+        if let Err(err) =
+            client.thread_resume(thread_id, Some(workspace_path), Some("gpt-5.3-codex"))
         {
             eprintln!(
                 "[restore] warning: thread/resume after rollback failed thread_id={}: {}",
@@ -207,26 +219,21 @@ fn rollback_thread_to_target(
         thread_id, rollback_count, remaining_turns, is_opencode
     );
 
-    apply_synced_thread_view(db, parent_window, thread_id, &sync_thread)
-        .map_err(|err| format!("chat trim failed: {err}"))?;
-
-    if !is_opencode {
-        super::chat::request_runtime_history_reload(thread_id);
-    }
-
-    Ok(format!(" • Chat trimmed: {} turn(s)", rollback_count))
+    Ok((
+        format!(" • Chat trimmed: {} turn(s)", rollback_count),
+        Some(ThreadSyncOutcome {
+            thread: sync_thread,
+            request_runtime_history_reload: !is_opencode,
+        }),
+    ))
 }
 
-pub(crate) fn apply_opencode_restore_with_chat_sync(
-    db: &AppDb,
+pub(super) fn apply_opencode_restore_worker(
     codex: Option<Arc<RuntimeClient>>,
-    active_thread_id: Option<Rc<RefCell<Option<String>>>>,
     workspace_path: Option<&str>,
     codex_thread_id: &str,
     target_turn_id: Option<&str>,
-    parent_window: Option<&gtk::Window>,
-    prefill_prompt: Option<&str>,
-) -> Result<String, String> {
+) -> Result<ChatRestoreWorkerOutcome, String> {
     let Some(target_turn_id) = target_turn_id else {
         return Err("OpenCode restore requires a checkpoint turn target.".to_string());
     };
@@ -237,32 +244,19 @@ pub(crate) fn apply_opencode_restore_with_chat_sync(
         return Err("OpenCode restore is only available for OpenCode threads.".to_string());
     }
 
-    let rollback_status = rollback_thread_to_target(
-        db,
-        client,
-        active_thread_id,
-        workspace_path,
-        codex_thread_id,
-        target_turn_id,
-        parent_window,
-    )?;
-
-    if let (Some(parent_window), Some(prompt)) = (parent_window, prefill_prompt) {
-        if !prompt.trim().is_empty() {
-            set_composer_input_text(parent_window, prompt);
-        }
-    }
-
-    Ok(rollback_status)
+    let (status_text, thread_sync) =
+        rollback_thread_to_target_worker(client, workspace_path, codex_thread_id, target_turn_id)?;
+    Ok(ChatRestoreWorkerOutcome {
+        status_text,
+        thread_sync,
+    })
 }
 
-pub(crate) fn undo_opencode_restore_with_chat_sync(
-    db: &AppDb,
+pub(super) fn undo_opencode_restore_worker(
     codex: Option<Arc<RuntimeClient>>,
     workspace_path: Option<&str>,
     codex_thread_id: &str,
-    parent_window: Option<&gtk::Window>,
-) -> Result<String, String> {
+) -> Result<ChatRestoreWorkerOutcome, String> {
     let Some(client) = codex.as_ref() else {
         return Err("OpenCode restore undo requires a running runtime client.".to_string());
     };
@@ -271,7 +265,8 @@ pub(crate) fn undo_opencode_restore_with_chat_sync(
     }
 
     if let Some(workspace_path) = workspace_path {
-        if let Err(err) = client.thread_resume(codex_thread_id, Some(workspace_path), Some("gpt-5.3-codex"))
+        if let Err(err) =
+            client.thread_resume(codex_thread_id, Some(workspace_path), Some("gpt-5.3-codex"))
         {
             eprintln!(
                 "[restore] warning: thread/resume before OpenCode undo failed thread_id={}: {}",
@@ -285,7 +280,8 @@ pub(crate) fn undo_opencode_restore_with_chat_sync(
         .map_err(|err| format!("OpenCode undo failed: {err}"))?;
 
     if let Some(workspace_path) = workspace_path {
-        if let Err(err) = client.thread_resume(codex_thread_id, Some(workspace_path), Some("gpt-5.3-codex"))
+        if let Err(err) =
+            client.thread_resume(codex_thread_id, Some(workspace_path), Some("gpt-5.3-codex"))
         {
             eprintln!(
                 "[restore] warning: thread/resume after OpenCode undo failed thread_id={}: {}",
@@ -294,27 +290,27 @@ pub(crate) fn undo_opencode_restore_with_chat_sync(
         }
     }
 
-    apply_synced_thread_view(db, parent_window, codex_thread_id, &thread)
-        .map_err(|err| format!("OpenCode undo completed, but {err}"))?;
-
-    super::chat::request_runtime_history_reload(codex_thread_id);
-    Ok(" • OpenCode restore undone".to_string())
+    Ok(ChatRestoreWorkerOutcome {
+        status_text: " • OpenCode restore undone".to_string(),
+        thread_sync: Some(ThreadSyncOutcome {
+            thread,
+            request_runtime_history_reload: true,
+        }),
+    })
 }
 
-pub(crate) fn apply_restore_with_chat_sync(
+pub(super) fn apply_restore_worker(
     db: &AppDb,
     codex: Option<Arc<RuntimeClient>>,
-    active_thread_id: Option<Rc<RefCell<Option<String>>>>,
     workspace_path: Option<&str>,
     codex_thread_id: &str,
     checkpoint_id: i64,
     target_turn_id: Option<&str>,
     selected_paths: &[String],
     forced_paths: &[String],
-    parent_window: Option<&gtk::Window>,
-    prefill_prompt: Option<&str>,
-) -> Result<(crate::restore::RestoreApplyResult, String), String> {
+) -> Result<ApplyRestoreWorkerOutcome, String> {
     let mut rollback_status = " • Chat trim skipped (no remote turn context)".to_string();
+    let mut thread_sync = None;
 
     let opencode_pretrim = codex
         .as_ref()
@@ -331,16 +327,11 @@ pub(crate) fn apply_restore_with_chat_sync(
                 "Restore applied, but chat trim failed: runtime client unavailable.".to_string(),
             );
         };
-        rollback_status = rollback_thread_to_target(
-            db,
-            client,
-            active_thread_id.clone(),
-            workspace_path,
-            codex_thread_id,
-            target_turn_id,
-            parent_window,
-        )
-        .map_err(|err| format!("Restore apply aborted because {err}"))?;
+        let (next_status, next_thread_sync) =
+            rollback_thread_to_target_worker(client, workspace_path, codex_thread_id, target_turn_id)
+                .map_err(|err| format!("Restore apply aborted because {err}"))?;
+        rollback_status = next_status;
+        thread_sync = next_thread_sync;
     }
 
     let apply = crate::restore::apply_restore_to_checkpoint_by_remote_id(
@@ -363,26 +354,61 @@ pub(crate) fn apply_restore_with_chat_sync(
                 );
             };
 
-            rollback_thread_to_target(
-                db,
-                client,
-                active_thread_id,
-                workspace_path,
-                codex_thread_id,
-                target_turn_id,
-                parent_window,
-            )
-            .map_err(|err| format!("Restore applied, but {err}"))?
+            let (next_status, next_thread_sync) =
+                rollback_thread_to_target_worker(client, workspace_path, codex_thread_id, target_turn_id)
+                    .map_err(|err| format!("Restore applied, but {err}"))?;
+            thread_sync = next_thread_sync;
+            next_status
         } else {
             " • Chat trim skipped (no remote turn context)".to_string()
         };
     }
 
-    if let (Some(parent_window), Some(prompt)) = (parent_window, prefill_prompt) {
-        if !prompt.trim().is_empty() {
-            set_composer_input_text(parent_window, prompt);
+    Ok(ApplyRestoreWorkerOutcome {
+        result,
+        rollback_status,
+        thread_sync,
+    })
+}
+
+pub(super) fn undo_restore_worker(
+    db: &AppDb,
+    codex: Option<Arc<RuntimeClient>>,
+    workspace_path: Option<&str>,
+    codex_thread_id: &str,
+    backup_checkpoint_id: i64,
+    undo_forced_paths: &[String],
+) -> Result<Option<UndoRestoreWorkerOutcome>, String> {
+    let mut chat_restore_status = String::new();
+    let mut thread_sync = None;
+    if codex.as_ref().is_some_and(|client| {
+        client.backend_kind().eq_ignore_ascii_case("opencode")
+    }) {
+        match undo_opencode_restore_worker(codex.clone(), workspace_path, codex_thread_id) {
+            Ok(outcome) => {
+                chat_restore_status = outcome.status_text;
+                thread_sync = outcome.thread_sync;
+            }
+            Err(err) => {
+                eprintln!(
+                    "[restore] warning: opencode chat undo failed thread_id={}: {}",
+                    codex_thread_id, err
+                );
+                chat_restore_status = format!(" • Chat restore skipped ({err})");
+            }
         }
     }
 
-    Ok((result, rollback_status))
+    let result = crate::restore::apply_restore_to_checkpoint_by_remote_id(
+        db,
+        codex_thread_id,
+        backup_checkpoint_id,
+        &[],
+        undo_forced_paths,
+    )?;
+    Ok(result.map(|result| UndoRestoreWorkerOutcome {
+        result,
+        chat_restore_status,
+        thread_sync,
+    }))
 }

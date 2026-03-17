@@ -37,9 +37,74 @@ struct SharedRuntimeState {
     requested_history_reloads: HashSet<String>,
 }
 
+#[derive(Default)]
+struct ProfileLoginProbeState {
+    cached_login_by_profile: HashMap<i64, (bool, i64)>,
+    inflight_profiles: HashSet<i64>,
+}
+
 fn shared_runtime_state() -> &'static Mutex<SharedRuntimeState> {
     static SHARED_RUNTIME_STATE: OnceLock<Mutex<SharedRuntimeState>> = OnceLock::new();
     SHARED_RUNTIME_STATE.get_or_init(|| Mutex::new(SharedRuntimeState::default()))
+}
+
+fn profile_login_probe_state() -> &'static Mutex<ProfileLoginProbeState> {
+    static PROFILE_LOGIN_PROBE_STATE: OnceLock<Mutex<ProfileLoginProbeState>> = OnceLock::new();
+    PROFILE_LOGIN_PROBE_STATE.get_or_init(|| Mutex::new(ProfileLoginProbeState::default()))
+}
+
+fn cached_profile_login_state(profile_id: i64) -> Option<(bool, bool)> {
+    let now = gtk::glib::monotonic_time();
+    profile_login_probe_state()
+        .lock()
+        .ok()
+        .and_then(|state| state.cached_login_by_profile.get(&profile_id).copied())
+        .map(|(is_logged_in, checked_at)| {
+            let is_fresh = now.saturating_sub(checked_at) <= 5_000_000;
+            (is_logged_in, is_fresh)
+        })
+}
+
+fn cache_profile_login_state(profile_id: i64, is_logged_in: bool) {
+    if let Ok(mut state) = profile_login_probe_state().lock() {
+        state.cached_login_by_profile.insert(
+            profile_id,
+            (is_logged_in, gtk::glib::monotonic_time()),
+        );
+    }
+}
+
+fn refresh_profile_login_state_async(profile_id: i64, client: Arc<RuntimeClient>) {
+    let should_start = profile_login_probe_state()
+        .lock()
+        .ok()
+        .map(|mut state| state.inflight_profiles.insert(profile_id))
+        .unwrap_or(false);
+    if !should_start {
+        return;
+    }
+    thread::spawn(move || {
+        let is_logged_in = client
+            .account_read(false)
+            .ok()
+            .flatten()
+            .map(|account| {
+                account
+                    .email
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|value| !value.is_empty())
+                    || !account.account_type.trim().is_empty()
+            })
+            .unwrap_or(false);
+        if let Ok(mut state) = profile_login_probe_state().lock() {
+            state.cached_login_by_profile.insert(
+                profile_id,
+                (is_logged_in, gtk::glib::monotonic_time()),
+            );
+            state.inflight_profiles.remove(&profile_id);
+        }
+    });
 }
 
 pub(super) fn mark_history_load_started(_thread_id: &str, _trigger: &str) {}
@@ -244,25 +309,23 @@ fn is_profile_logged_in(
             .map(str::trim)
             .is_some_and(|value| !value.is_empty());
     if has_cached_auth {
+        cache_profile_login_state(profile_id, true);
         return true;
     }
 
     let Some(client) = manager.running_client_for_profile(profile_id) else {
-        return false;
+        return cached_profile_login_state(profile_id)
+            .map(|(is_logged_in, _)| is_logged_in)
+            .unwrap_or(false);
     };
-    client
-        .account_read(false)
-        .ok()
-        .flatten()
-        .map(|account| {
-            account
-                .email
-                .as_deref()
-                .map(str::trim)
-                .is_some_and(|value| !value.is_empty())
-                || !account.account_type.trim().is_empty()
-        })
-        .unwrap_or(false)
+    let cached_state = cached_profile_login_state(profile_id);
+    if let Some((is_logged_in, true)) = cached_state {
+        return is_logged_in;
+    }
+    refresh_profile_login_state_async(profile_id, client);
+    cached_state
+        .map(|(is_logged_in, _)| is_logged_in)
+        .unwrap_or(true)
 }
 
 pub(super) fn maybe_replace_profile_auth_error_message(

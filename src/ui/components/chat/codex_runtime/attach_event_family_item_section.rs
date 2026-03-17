@@ -27,12 +27,15 @@
 
                     let Some(turn_id) = turn_id else {
                         if let Some(client) = event_client.as_ref() {
-                            let _ = client.respond_to_server_request(
-                                request_id,
-                                build_tool_call_failure_payload(
-                                    "Tool call is missing turn context",
-                                ),
-                            );
+                            let client = client.clone();
+                            thread::spawn(move || {
+                                let _ = client.respond_to_server_request(
+                                    request_id,
+                                    build_tool_call_failure_payload(
+                                        "Tool call is missing turn context",
+                                    ),
+                                );
+                            });
                         }
                         continue;
                     };

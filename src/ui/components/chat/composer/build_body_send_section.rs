@@ -437,55 +437,6 @@
                         let queued_effort_for_turn = payload.effort.clone();
                         let queued_sandbox_policy_for_turn = payload.sandbox_policy.clone();
                         let queued_collaboration_mode_for_turn = payload.collaboration_mode.clone();
-                        let client = if client.backend_kind().eq_ignore_ascii_case("opencode") {
-                            let maybe_provider_id = queued_model_id_for_turn
-                                .split_once(':')
-                                .map(|(provider_id, _)| provider_id.to_string());
-                            if let Some(provider_id) = maybe_provider_id.as_deref() {
-                                match client.account_provider_list() {
-                                    Ok(providers) => {
-                                        let stale_provider = providers.iter().find(|provider| {
-                                            provider.provider_id == provider_id
-                                                && provider.has_saved_auth
-                                                && !provider.connected
-                                        });
-                                        if let Some(provider) = stale_provider {
-                                            if let Some(profile_id) = client.profile_id() {
-                                                eprintln!(
-                                                    "[opencode-send] restarting runtime for profile {} before queued turn because provider {} has saved auth but is not connected",
-                                                    profile_id, provider.provider_id
-                                                );
-                                                match manager_for_steer.restart_profile(profile_id) {
-                                                    Ok(restarted) => restarted,
-                                                    Err(err) => {
-                                                        eprintln!(
-                                                            "[opencode-send] failed to restart runtime for stale provider {}: {}",
-                                                            provider.provider_id, err
-                                                        );
-                                                        client
-                                                    }
-                                                }
-                                            } else {
-                                                client
-                                            }
-                                        } else {
-                                            client
-                                        }
-                                    }
-                                    Err(err) => {
-                                        eprintln!(
-                                            "[opencode-send] failed to inspect provider connectivity before queued turn: {}",
-                                            err
-                                        );
-                                        client
-                                    }
-                                }
-                            } else {
-                                client
-                            }
-                        } else {
-                            client
-                        };
                         let pending_row_marker_for_turn = if current_turn_id.is_none() {
                             let pending_row_marker = next_pending_user_row_marker();
                             let user_content =
@@ -512,96 +463,221 @@
                         thread::spawn(move || {
                             let _ = crate::data::background_repo::BackgroundRepo::ensure_remote_thread_baseline_checkpoint(&baseline_thread_id);
                         });
-                        thread::spawn(move || {
-                            if let Some(turn_id) = steer_turn_id.clone() {
-                                match client.turn_steer(
-                                    &thread_id,
-                                    &turn_id,
-                                    &queued_text_for_thread,
-                                    &queued_images_for_thread,
-                                    &queued_mentions_for_thread,
-                                ) {
-                                    Ok(_) => {
-                                        let _ = steer_note_tx_for_thread
-                                            .send(queued_summary_for_thread.clone());
-                                        return;
+                        let dispatch_queued_turn_with_client: Rc<dyn Fn(Arc<RuntimeClient>)> = {
+                            let thread_id = thread_id.clone();
+                            let steer_turn_id = steer_turn_id.clone();
+                            let current_turn_id = current_turn_id.clone();
+                            let queued_text_for_thread = queued_text_for_thread.clone();
+                            let queued_summary_for_thread = queued_summary_for_thread.clone();
+                            let queued_mentions_for_thread = queued_mentions_for_thread.clone();
+                            let queued_images_for_thread = queued_images_for_thread.clone();
+                            let queued_model_id_for_turn = queued_model_id_for_turn.clone();
+                            let queued_effort_for_turn = queued_effort_for_turn.clone();
+                            let queued_sandbox_policy_for_turn =
+                                queued_sandbox_policy_for_turn.clone();
+                            let queued_collaboration_mode_for_turn =
+                                queued_collaboration_mode_for_turn.clone();
+                            let pending_row_marker_for_turn = pending_row_marker_for_turn.clone();
+                            let send_error_tx_for_thread = send_error_tx_for_thread.clone();
+                            let steer_note_tx_for_thread = steer_note_tx_for_thread.clone();
+                            let turn_started_ui_tx_for_thread = turn_started_ui_tx_for_thread.clone();
+                            Rc::new(move |client: Arc<RuntimeClient>| {
+                                let thread_id = thread_id.clone();
+                                let steer_turn_id = steer_turn_id.clone();
+                                let current_turn_id = current_turn_id.clone();
+                                let queued_text_for_thread = queued_text_for_thread.clone();
+                                let queued_summary_for_thread = queued_summary_for_thread.clone();
+                                let queued_mentions_for_thread =
+                                    queued_mentions_for_thread.clone();
+                                let queued_images_for_thread = queued_images_for_thread.clone();
+                                let queued_model_id_for_turn = queued_model_id_for_turn.clone();
+                                let queued_effort_for_turn = queued_effort_for_turn.clone();
+                                let queued_sandbox_policy_for_turn =
+                                    queued_sandbox_policy_for_turn.clone();
+                                let queued_collaboration_mode_for_turn =
+                                    queued_collaboration_mode_for_turn.clone();
+                                let pending_row_marker_for_turn =
+                                    pending_row_marker_for_turn.clone();
+                                let send_error_tx_for_thread = send_error_tx_for_thread.clone();
+                                let steer_note_tx_for_thread = steer_note_tx_for_thread.clone();
+                                let turn_started_ui_tx_for_thread =
+                                    turn_started_ui_tx_for_thread.clone();
+                                std::thread::spawn(move || {
+                                    if let Some(turn_id) = steer_turn_id.clone() {
+                                        match client.turn_steer(
+                                            &thread_id,
+                                            &turn_id,
+                                            &queued_text_for_thread,
+                                            &queued_images_for_thread,
+                                            &queued_mentions_for_thread,
+                                        ) {
+                                            Ok(_) => {
+                                                let _ = steer_note_tx_for_thread
+                                                    .send(queued_summary_for_thread.clone());
+                                                return;
+                                            }
+                                            Err(err) => {
+                                                eprintln!(
+                                                    "turn/steer failed, falling back to send: {err}"
+                                                );
+                                            }
+                                        }
                                     }
-                                    Err(err) => {
-                                        eprintln!("turn/steer failed, falling back to send: {err}");
-                                    }
-                                }
-                            }
 
-                            if let Some(turn_id) = current_turn_id.clone() {
-                                let _ = client.turn_interrupt(&thread_id, &turn_id);
-                                thread::sleep(Duration::from_millis(200));
-                            }
+                                    if let Some(turn_id) = current_turn_id.clone() {
+                                        let _ = client.turn_interrupt(&thread_id, &turn_id);
+                                        thread::sleep(Duration::from_millis(200));
+                                    }
 
-                            let workspace_path_for_turn =
-                                crate::data::background_repo::BackgroundRepo::workspace_path_for_remote_thread(&thread_id);
-                            if let Some(workspace_path) = workspace_path_for_turn.as_deref() {
-                                match client.thread_resume(
-                                    &thread_id,
-                                    Some(workspace_path),
-                                    Some(&queued_model_id_for_turn),
-                                ) {
-                                    Ok(resolved_thread_id) => {
-                                        if resolved_thread_id != thread_id {
-                                            let _ = send_error_tx_for_thread.send(format!(
-                                                "Failed to send queued prompt: thread resume mismatch (expected {thread_id}, got {resolved_thread_id})"
-                                            ));
-                                            return;
+                                    let workspace_path_for_turn =
+                                        crate::data::background_repo::BackgroundRepo::workspace_path_for_remote_thread(&thread_id);
+                                    if let Some(workspace_path) = workspace_path_for_turn.as_deref()
+                                    {
+                                        match client.thread_resume(
+                                            &thread_id,
+                                            Some(workspace_path),
+                                            Some(&queued_model_id_for_turn),
+                                        ) {
+                                            Ok(resolved_thread_id) => {
+                                                if resolved_thread_id != thread_id {
+                                                    let _ = send_error_tx_for_thread.send(format!(
+                                                        "Failed to send queued prompt: thread resume mismatch (expected {thread_id}, got {resolved_thread_id})"
+                                                    ));
+                                                    return;
+                                                }
+                                            }
+                                            Err(err) => {
+                                                if !is_expected_pre_materialization_error(&err) {
+                                                    let _ = send_error_tx_for_thread.send(format!(
+                                                        "Failed to send queued prompt: could not resume thread in workspace ({err})"
+                                                    ));
+                                                    return;
+                                                }
+                                            }
                                         }
                                     }
-                                    Err(err) => {
-                                        if !is_expected_pre_materialization_error(&err) {
-                                            let _ = send_error_tx_for_thread.send(format!(
-                                                "Failed to send queued prompt: could not resume thread in workspace ({err})"
-                                            ));
-                                            return;
-                                        }
-                                    }
-                                }
-                            }
 
-                            for attempt in 0..8 {
-                                match client.turn_start(
-                                    &thread_id,
-                                    &queued_text_for_thread,
-                                    &queued_images_for_thread,
-                                    &queued_mentions_for_thread,
-                                    Some(&queued_model_id_for_turn),
-                                    Some(&queued_effort_for_turn),
-                                    queued_sandbox_policy_for_turn.clone(),
-                                    None,
-                                    queued_collaboration_mode_for_turn.clone(),
-                                    workspace_path_for_turn.as_deref(),
-                                ) {
-                                    Ok(turn_id) => {
-                                        if let Some(pending_marker) =
-                                            pending_row_marker_for_turn.clone()
-                                        {
-                                            let _ = turn_started_ui_tx_for_thread
-                                                .send((pending_marker, turn_id));
+                                    for attempt in 0..8 {
+                                        match client.turn_start(
+                                            &thread_id,
+                                            &queued_text_for_thread,
+                                            &queued_images_for_thread,
+                                            &queued_mentions_for_thread,
+                                            Some(&queued_model_id_for_turn),
+                                            Some(&queued_effort_for_turn),
+                                            queued_sandbox_policy_for_turn.clone(),
+                                            None,
+                                            queued_collaboration_mode_for_turn.clone(),
+                                            workspace_path_for_turn.as_deref(),
+                                        ) {
+                                            Ok(turn_id) => {
+                                                if let Some(pending_marker) =
+                                                    pending_row_marker_for_turn.clone()
+                                                {
+                                                    let _ = turn_started_ui_tx_for_thread
+                                                        .send((pending_marker, turn_id));
+                                                }
+                                                return;
+                                            }
+                                            Err(err) => {
+                                                let retryable = err.contains("active turn")
+                                                    || err.contains("in progress")
+                                                    || err.contains("already active")
+                                                    || err.contains("thread is active");
+                                                if retryable && attempt < 7 {
+                                                    thread::sleep(Duration::from_millis(200));
+                                                    continue;
+                                                }
+                                                let _ = send_error_tx_for_thread.send(format!(
+                                                    "Failed to send queued prompt: {err}"
+                                                ));
+                                                return;
+                                            }
                                         }
-                                        return;
                                     }
-                                    Err(err) => {
-                                        let retryable = err.contains("active turn")
-                                            || err.contains("in progress")
-                                            || err.contains("already active")
-                                            || err.contains("thread is active");
-                                        if retryable && attempt < 7 {
-                                            thread::sleep(Duration::from_millis(200));
-                                            continue;
+                                });
+                            })
+                        };
+                        if client.backend_kind().eq_ignore_ascii_case("opencode") {
+                            let maybe_provider_id = queued_model_id_for_turn
+                                .split_once(':')
+                                .map(|(provider_id, _)| provider_id.to_string());
+                            let profile_id = client.profile_id();
+                            if let Some(provider_id) = maybe_provider_id {
+                                let (tx, rx) = mpsc::channel::<Result<bool, String>>();
+                                let client_for_probe = client.clone();
+                                std::thread::spawn(move || {
+                                    let result = client_for_probe.account_provider_list().map(
+                                        |providers| {
+                                            providers.iter().any(|provider| {
+                                                provider.provider_id == provider_id
+                                                    && provider.has_saved_auth
+                                                    && !provider.connected
+                                            })
+                                        },
+                                    );
+                                    let _ = tx.send(result);
+                                });
+                                let manager_for_steer = manager_for_steer.clone();
+                                let client = client.clone();
+                                let messages_box_for_probe =
+                                    messages_box_for_steer.clone().upcast::<gtk::Widget>();
+                                gtk::glib::timeout_add_local(Duration::from_millis(40), move || {
+                                    if messages_box_for_probe.root().is_none() {
+                                        return gtk::glib::ControlFlow::Break;
+                                    }
+                                    match rx.try_recv() {
+                                        Ok(Ok(true)) => {
+                                            let ready_client = if let Some(profile_id) = profile_id
+                                            {
+                                                eprintln!(
+                                                    "[opencode-send] restarting runtime for profile {} before queued turn because selected provider has saved auth but is not connected",
+                                                    profile_id
+                                                );
+                                                match manager_for_steer.restart_profile(profile_id)
+                                                {
+                                                    Ok(restarted) => restarted,
+                                                    Err(err) => {
+                                                        eprintln!(
+                                                            "[opencode-send] failed to restart runtime after async queued provider probe: {}",
+                                                            err
+                                                        );
+                                                        client.clone()
+                                                    }
+                                                }
+                                            } else {
+                                                client.clone()
+                                            };
+                                            dispatch_queued_turn_with_client(ready_client);
+                                            gtk::glib::ControlFlow::Break
                                         }
-                                        let _ = send_error_tx_for_thread
-                                            .send(format!("Failed to send queued prompt: {err}"));
-                                        return;
+                                        Ok(Ok(false)) => {
+                                            dispatch_queued_turn_with_client(client.clone());
+                                            gtk::glib::ControlFlow::Break
+                                        }
+                                        Ok(Err(err)) => {
+                                            eprintln!(
+                                                "[opencode-send] failed to inspect provider connectivity before queued turn: {}",
+                                                err
+                                            );
+                                            dispatch_queued_turn_with_client(client.clone());
+                                            gtk::glib::ControlFlow::Break
+                                        }
+                                        Err(mpsc::TryRecvError::Empty) => {
+                                            gtk::glib::ControlFlow::Continue
+                                        }
+                                        Err(mpsc::TryRecvError::Disconnected) => {
+                                            dispatch_queued_turn_with_client(client.clone());
+                                            gtk::glib::ControlFlow::Break
+                                        }
                                     }
-                                }
+                                });
+                            } else {
+                                dispatch_queued_turn_with_client(client.clone());
                             }
-                        });
+                        } else {
+                            dispatch_queued_turn_with_client(client.clone());
+                        }
                     });
 
                     buf.set_text("");
@@ -719,55 +795,6 @@
 
             let collaboration_mode = selected_mode_id.borrow().clone();
             let model_id = selected_model_id.borrow().clone();
-            let client = if client.backend_kind().eq_ignore_ascii_case("opencode") {
-                let maybe_provider_id = model_id
-                    .split_once(':')
-                    .map(|(provider_id, _)| provider_id.to_string());
-                if let Some(provider_id) = maybe_provider_id.as_deref() {
-                    match client.account_provider_list() {
-                        Ok(providers) => {
-                            let stale_provider = providers.iter().find(|provider| {
-                                provider.provider_id == provider_id
-                                    && provider.has_saved_auth
-                                    && !provider.connected
-                            });
-                            if let Some(provider) = stale_provider {
-                                if let Some(profile_id) = client.profile_id() {
-                                    eprintln!(
-                                        "[opencode-send] restarting runtime for profile {} before turn because provider {} has saved auth but is not connected",
-                                        profile_id, provider.provider_id
-                                    );
-                                    match manager.restart_profile(profile_id) {
-                                        Ok(restarted) => restarted,
-                                        Err(err) => {
-                                            eprintln!(
-                                                "[opencode-send] failed to restart runtime for stale provider {}: {}",
-                                                provider.provider_id, err
-                                            );
-                                            client
-                                        }
-                                    }
-                                } else {
-                                    client
-                                }
-                            } else {
-                                client
-                            }
-                        }
-                        Err(err) => {
-                            eprintln!(
-                                "[opencode-send] failed to inspect provider connectivity before turn: {}",
-                                err
-                            );
-                            client
-                        }
-                    }
-                } else {
-                    client
-                }
-            } else {
-                client
-            };
             let effort = if client.backend_kind().eq_ignore_ascii_case("opencode") {
                 selected_variant.borrow().clone()
             } else {
@@ -788,55 +815,151 @@
             let image_paths_for_turn: Vec<String> =
                 attached_images.iter().map(|image| image.path.clone()).collect();
             let baseline_thread_id = thread_id.clone();
+            let start_turn_with_client: Rc<dyn Fn(Arc<RuntimeClient>)> = {
+                let thread_id = thread_id.clone();
+                let text = text.clone();
+                let image_paths_for_turn = image_paths_for_turn.clone();
+                let mentions_for_turn = mentions_for_turn.clone();
+                let model_id = model_id.clone();
+                let effort = effort.clone();
+                let send_error_tx_for_thread = send_error_tx_for_thread.clone();
+                let turn_started_ui_tx = turn_started_ui_tx.clone();
+                Rc::new(move |client: Arc<RuntimeClient>| {
+                    let thread_id = thread_id.clone();
+                    let text = text.clone();
+                    let image_paths_for_turn = image_paths_for_turn.clone();
+                    let mentions_for_turn = mentions_for_turn.clone();
+                    let model_id = model_id.clone();
+                    let effort = effort.clone();
+                    let sandbox_policy = sandbox_policy.clone();
+                    let collaboration_mode_for_turn = collaboration_mode_for_turn.clone();
+                    let pending_row_marker = pending_row_marker.clone();
+                    let send_error_tx_for_thread = send_error_tx_for_thread.clone();
+                    let turn_started_ui_tx = turn_started_ui_tx.clone();
+                    std::thread::spawn(move || {
+                        let workspace_path_for_turn =
+                            crate::data::background_repo::BackgroundRepo::workspace_path_for_remote_thread(&thread_id);
+                        if let Some(workspace_path) = workspace_path_for_turn.as_deref() {
+                            match client.thread_resume(&thread_id, Some(workspace_path), Some(&model_id)) {
+                                Ok(resolved_thread_id) => {
+                                    if resolved_thread_id != thread_id {
+                                        let _ = send_error_tx_for_thread.send(format!(
+                                            "Turn failed: thread resume mismatch (expected {thread_id}, got {resolved_thread_id})"
+                                        ));
+                                        return;
+                                    }
+                                }
+                                Err(err) => {
+                                    if !is_expected_pre_materialization_error(&err) {
+                                        let _ = send_error_tx_for_thread.send(format!(
+                                            "Turn failed: could not resume thread in workspace ({err})"
+                                        ));
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+
+                        match client.turn_start(
+                            &thread_id,
+                            &text,
+                            &image_paths_for_turn,
+                            &mentions_for_turn,
+                            Some(&model_id),
+                            Some(&effort),
+                            sandbox_policy,
+                            None,
+                            collaboration_mode_for_turn,
+                            workspace_path_for_turn.as_deref(),
+                        ) {
+                            Ok(turn_id) => {
+                                let _ = turn_started_ui_tx.send((pending_row_marker, turn_id));
+                            }
+                            Err(err) => {
+                                let _ = send_error_tx_for_thread.send(format!("Turn failed: {err}"));
+                                eprintln!("failed to start turn: {err}");
+                            }
+                        }
+                    });
+                })
+            };
 
             thread::spawn(move || {
                 let _ = crate::data::background_repo::BackgroundRepo::ensure_remote_thread_baseline_checkpoint(&baseline_thread_id);
             });
-            thread::spawn(move || {
-                let workspace_path_for_turn =
-                    crate::data::background_repo::BackgroundRepo::workspace_path_for_remote_thread(&thread_id);
-                if let Some(workspace_path) = workspace_path_for_turn.as_deref() {
-                    match client.thread_resume(&thread_id, Some(workspace_path), Some(&model_id)) {
-                        Ok(resolved_thread_id) => {
-                            if resolved_thread_id != thread_id {
-                                let _ = send_error_tx_for_thread.send(format!(
-                                    "Turn failed: thread resume mismatch (expected {thread_id}, got {resolved_thread_id})"
-                                ));
-                                return;
+            if client.backend_kind().eq_ignore_ascii_case("opencode") {
+                let maybe_provider_id = model_id
+                    .split_once(':')
+                    .map(|(provider_id, _)| provider_id.to_string());
+                let profile_id = client.profile_id();
+                if let Some(provider_id) = maybe_provider_id {
+                    let (tx, rx) = mpsc::channel::<Result<bool, String>>();
+                    let client_for_probe = client.clone();
+                    std::thread::spawn(move || {
+                        let result = client_for_probe.account_provider_list().map(|providers| {
+                            providers.iter().any(|provider| {
+                                provider.provider_id == provider_id
+                                    && provider.has_saved_auth
+                                    && !provider.connected
+                            })
+                        });
+                        let _ = tx.send(result);
+                    });
+                    let manager = manager.clone();
+                    let client = client.clone();
+                    let send_button = send_button.clone().upcast::<gtk::Widget>();
+                    gtk::glib::timeout_add_local(Duration::from_millis(40), move || {
+                        if send_button.root().is_none() {
+                            return gtk::glib::ControlFlow::Break;
+                        }
+                        match rx.try_recv() {
+                            Ok(Ok(true)) => {
+                                let ready_client = if let Some(profile_id) = profile_id {
+                                    eprintln!(
+                                        "[opencode-send] restarting runtime for profile {} before turn because selected provider has saved auth but is not connected",
+                                        profile_id
+                                    );
+                                    match manager.restart_profile(profile_id) {
+                                        Ok(restarted) => restarted,
+                                        Err(err) => {
+                                            eprintln!(
+                                                "[opencode-send] failed to restart runtime after async provider probe: {}",
+                                                err
+                                            );
+                                            client.clone()
+                                        }
+                                    }
+                                } else {
+                                    client.clone()
+                                };
+                                start_turn_with_client(ready_client);
+                                gtk::glib::ControlFlow::Break
+                            }
+                            Ok(Ok(false)) => {
+                                start_turn_with_client(client.clone());
+                                gtk::glib::ControlFlow::Break
+                            }
+                            Ok(Err(err)) => {
+                                eprintln!(
+                                    "[opencode-send] failed to inspect provider connectivity before turn: {}",
+                                    err
+                                );
+                                start_turn_with_client(client.clone());
+                                gtk::glib::ControlFlow::Break
+                            }
+                            Err(mpsc::TryRecvError::Empty) => gtk::glib::ControlFlow::Continue,
+                            Err(mpsc::TryRecvError::Disconnected) => {
+                                start_turn_with_client(client.clone());
+                                gtk::glib::ControlFlow::Break
                             }
                         }
-                        Err(err) => {
-                            if !is_expected_pre_materialization_error(&err) {
-                                let _ = send_error_tx_for_thread.send(format!(
-                                    "Turn failed: could not resume thread in workspace ({err})"
-                                ));
-                                return;
-                            }
-                        }
-                    }
+                    });
+                } else {
+                    start_turn_with_client(client.clone());
                 }
-
-                match client.turn_start(
-                    &thread_id,
-                    &text,
-                    &image_paths_for_turn,
-                    &mentions_for_turn,
-                    Some(&model_id),
-                    Some(&effort),
-                    sandbox_policy,
-                    None,
-                    collaboration_mode_for_turn,
-                    workspace_path_for_turn.as_deref(),
-                ) {
-                    Ok(turn_id) => {
-                        let _ = turn_started_ui_tx.send((pending_row_marker, turn_id));
-                    }
-                    Err(err) => {
-                        let _ = send_error_tx_for_thread.send(format!("Turn failed: {err}"));
-                        eprintln!("failed to start turn: {err}");
-                    }
-                }
-            });
+            } else {
+                start_turn_with_client(client.clone());
+            }
 
             buf.set_text("");
             selected_mentions.borrow_mut().clear();
