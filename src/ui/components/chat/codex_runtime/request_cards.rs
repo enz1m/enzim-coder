@@ -584,7 +584,7 @@ fn create_tool_call_request_card(
 }
 
 fn persist_pending_request_entry(
-    db: &AppDb,
+    _db: &AppDb,
     cached_pending_requests_for_thread: &Rc<RefCell<Vec<Value>>>,
     thread_id: &str,
     request_id: i64,
@@ -600,18 +600,18 @@ fn persist_pending_request_entry(
     });
     let mut cached = cached_pending_requests_for_thread.borrow_mut();
     super::history::upsert_cached_pending_request(&mut cached, entry);
-    super::history::save_cached_pending_requests(db, thread_id, &cached);
+    super::history::save_cached_pending_requests_async(thread_id, &cached);
 }
 
 fn remove_persisted_pending_request(
-    db: &AppDb,
+    _db: &AppDb,
     cached_pending_requests_for_thread: &Rc<RefCell<Vec<Value>>>,
     thread_id: &str,
     request_id: i64,
 ) {
     let mut cached = cached_pending_requests_for_thread.borrow_mut();
     if super::history::remove_cached_pending_request(&mut cached, request_id) {
-        super::history::save_cached_pending_requests(db, thread_id, &cached);
+        super::history::save_cached_pending_requests_async(thread_id, &cached);
     }
 }
 

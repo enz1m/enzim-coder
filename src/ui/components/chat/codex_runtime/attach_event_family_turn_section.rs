@@ -210,8 +210,8 @@
                                         &mut cached,
                                         entry,
                                     );
-                                    super::history::save_cached_turn_errors(
-                                        &db, thread_id, &cached,
+                                    super::history::save_cached_turn_errors_async(
+                                        thread_id, &cached,
                                     );
                                 }
                                 }
@@ -317,8 +317,8 @@
                                     &mut cached,
                                     &turn_id,
                                 ) {
-                                    super::history::save_cached_pending_requests(
-                                        &db, thread_id, &cached,
+                                    super::history::save_cached_pending_requests_async(
+                                        thread_id, &cached,
                                     );
                                 }
                             }

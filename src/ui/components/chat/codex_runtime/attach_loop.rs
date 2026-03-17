@@ -147,7 +147,7 @@ fn attach_inner(
                             &cached_pending_requests_for_thread,
                         );
                     } else {
-                        super::history::save_cached_pending_requests(&db, &thread_id, &entries);
+                        super::history::save_cached_pending_requests_async(&thread_id, &entries);
                     }
                 }
                 Err(err) => {

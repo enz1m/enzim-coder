@@ -9,7 +9,8 @@ use serde_json::Value;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock, mpsc};
+use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn user_row_marker(turn_id: &str) -> String {
@@ -732,7 +733,7 @@ fn append_command_from_value(body_box: &gtk::Box, value: &Value) {
     {
         command_ui.set_command_output(output);
     }
-    command_ui.revealer.set_reveal_child(false);
+    command_ui.set_output_revealed(false);
     super::message_render::append_action_widget(body_box, "commandExecution", &widget);
 }
 
@@ -1717,6 +1718,41 @@ fn turn_error_cache_key(thread_id: &str) -> String {
     format!("thread_turn_errors:{thread_id}")
 }
 
+struct CachedStatePersistTask {
+    setting_key: String,
+    entries: Vec<Value>,
+}
+
+fn cached_state_persist_tx() -> &'static mpsc::Sender<CachedStatePersistTask> {
+    static TX: OnceLock<mpsc::Sender<CachedStatePersistTask>> = OnceLock::new();
+    TX.get_or_init(|| {
+        let (tx, rx) = mpsc::channel::<CachedStatePersistTask>();
+        thread::spawn(move || {
+            let db = AppDb::open_default();
+            while let Ok(task) = rx.recv() {
+                let mut pending = HashMap::new();
+                pending.insert(task.setting_key, task.entries);
+                while let Ok(task) = rx.try_recv() {
+                    pending.insert(task.setting_key, task.entries);
+                }
+                for (setting_key, entries) in pending {
+                    if let Ok(raw) = serde_json::to_string(&entries) {
+                        let _ = db.set_setting(&setting_key, &raw);
+                    }
+                }
+            }
+        });
+        tx
+    })
+}
+
+fn enqueue_cached_entries_persist(setting_key: String, entries: &[Value]) {
+    let _ = cached_state_persist_tx().send(CachedStatePersistTask {
+        setting_key,
+        entries: entries.to_vec(),
+    });
+}
+
 pub(super) fn load_cached_commands(db: &AppDb, thread_id: &str) -> Vec<Value> {
     match db.get_setting(&command_cache_key(thread_id)) {
         Ok(Some(raw)) => serde_json::from_str::<Vec<Value>>(&raw).unwrap_or_default(),
@@ -1762,16 +1798,28 @@ pub(super) fn save_cached_commands(db: &AppDb, thread_id: &str, commands: &[Valu
     }
 }
 
+pub(super) fn save_cached_commands_async(thread_id: &str, commands: &[Value]) {
+    enqueue_cached_entries_persist(command_cache_key(thread_id), commands);
+}
+
 pub(super) fn save_cached_file_changes(db: &AppDb, thread_id: &str, file_changes: &[Value]) {
     if let Ok(raw) = serde_json::to_string(file_changes) {
         let _ = db.set_setting(&file_change_cache_key(thread_id), &raw);
     }
 }
 
+pub(super) fn save_cached_file_changes_async(thread_id: &str, file_changes: &[Value]) {
+    enqueue_cached_entries_persist(file_change_cache_key(thread_id), file_changes);
+}
+
 pub(super) fn save_cached_tool_items(db: &AppDb, thread_id: &str, tool_items: &[Value]) {
     if let Ok(raw) = serde_json::to_string(tool_items) {
         let _ = db.set_setting(&tool_item_cache_key(thread_id), &raw);
     }
+}
+
+pub(super) fn save_cached_tool_items_async(thread_id: &str, tool_items: &[Value]) {
+    enqueue_cached_entries_persist(tool_item_cache_key(thread_id), tool_items);
 }
 
 pub(super) fn save_cached_pending_requests(
@@ -1784,10 +1832,18 @@ pub(super) fn save_cached_pending_requests(
     }
 }
 
+pub(super) fn save_cached_pending_requests_async(thread_id: &str, pending_requests: &[Value]) {
+    enqueue_cached_entries_persist(pending_request_cache_key(thread_id), pending_requests);
+}
+
 pub(super) fn save_cached_turn_errors(db: &AppDb, thread_id: &str, turn_errors: &[Value]) {
     if let Ok(raw) = serde_json::to_string(turn_errors) {
         let _ = db.set_setting(&turn_error_cache_key(thread_id), &raw);
     }
+}
+
+pub(super) fn save_cached_turn_errors_async(thread_id: &str, turn_errors: &[Value]) {
+    enqueue_cached_entries_persist(turn_error_cache_key(thread_id), turn_errors);
 }
 
 pub(super) fn upsert_cached_command(commands: &mut Vec<Value>, entry: Value) {

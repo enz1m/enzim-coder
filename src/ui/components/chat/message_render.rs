@@ -1,6 +1,7 @@
 use crate::codex_profiles::CodexProfileManager;
 use crate::data::AppDb;
 use crate::ui::components::thread_list;
+use crate::ui::widget_tree;
 use gtk::prelude::*;
 use serde_json::Value;
 use std::cell::RefCell;
@@ -13,20 +14,32 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::ui::components::file_preview;
 
+#[derive(Clone)]
+struct CommandDetailsUi {
+    details_revealer: gtk::Revealer,
+    command_detail_label: gtk::Label,
+    output_revealer: gtk::Revealer,
+    output_label: Rc<RefCell<Option<gtk::Label>>>,
+    output_toggle: gtk::Box,
+    output_toggle_label: gtk::Label,
+    output_toggle_enabled: Rc<RefCell<bool>>,
+    output_chevron: gtk::Image,
+}
+
 pub(super) struct CommandUi {
+    pub(super) wrapper: gtk::Box,
     pub(super) header_label: gtk::Label,
-    pub(super) command_detail_label: gtk::Label,
     pub(super) status_label: gtk::Label,
     pub(super) headline_text: Rc<RefCell<String>>,
+    pub(super) full_command_text: Rc<RefCell<String>>,
     pub(super) is_running: Rc<RefCell<bool>>,
     pub(super) running_wave_source: Rc<RefCell<Option<gtk::glib::SourceId>>>,
     pub(super) running_wave_phase: Rc<RefCell<f64>>,
-    pub(super) revealer: gtk::Revealer,
-    pub(super) output_label: gtk::Label,
+    pub(super) running_wave_frames: Rc<RefCell<Vec<String>>>,
+    details_ui: Rc<RefCell<Option<CommandDetailsUi>>>,
     pub(super) output_text: Rc<RefCell<String>>,
-    pub(super) output_toggle: gtk::Box,
-    pub(super) output_toggle_label: gtk::Label,
     pub(super) output_toggle_enabled: Rc<RefCell<bool>>,
+    pub(super) output_flush_source: Rc<RefCell<Option<gtk::glib::SourceId>>>,
 }
 
 pub(super) struct ToolCallUi {
@@ -36,6 +49,7 @@ pub(super) struct ToolCallUi {
     pub(super) output_label: gtk::Label,
     pub(super) details_revealer: gtk::Revealer,
     pub(super) output_text: Rc<RefCell<String>>,
+    pub(super) output_flush_source: Rc<RefCell<Option<gtk::glib::SourceId>>>,
 }
 
 pub(super) struct GenericItemUi {
@@ -51,9 +65,20 @@ pub(super) struct GenericItemUi {
     pub(super) is_running: Rc<RefCell<bool>>,
     pub(super) running_wave_source: Rc<RefCell<Option<gtk::glib::SourceId>>>,
     pub(super) running_wave_phase: Rc<RefCell<f64>>,
+    pub(super) running_wave_frames: Rc<RefCell<Vec<String>>>,
     pub(super) wave_enabled: bool,
     pub(super) details_supported: bool,
     pub(super) output_text: Rc<RefCell<String>>,
+    pub(super) details_flush_source: Rc<RefCell<Option<gtk::glib::SourceId>>>,
+}
+
+pub(super) struct StreamingMarkdownUi {
+    root: gtk::Box,
+    finalized_labels: Rc<RefCell<Vec<gtk::Label>>>,
+    finalized_blocks: Rc<RefCell<Vec<String>>>,
+    tail_label: gtk::Label,
+    complete_label: gtk::Label,
+    is_complete: Rc<RefCell<bool>>,
 }
 
 const COMMAND_PREVIEW_CHARS: usize = 120;
@@ -64,6 +89,10 @@ const COMMAND_OUTPUT_MIN_HEIGHT: i32 = 180;
 const COMMAND_OUTPUT_MAX_HEIGHT: i32 = 360;
 const STREAM_REVEAL_IDLE_MS: u64 = 120;
 const STREAM_REVEAL_POLL_MS: u64 = 35;
+const STREAM_OUTPUT_FLUSH_MS: u64 = 40;
+const ACTION_APPEND_POLL_MS: u64 = 16;
+const WAVE_TICK_MS: u64 = 33;
+const WAVE_FRAME_COUNT: usize = 12;
 const AUTO_SCROLL_FOLLOW_POLL_MS: u64 = 16;
 const AUTO_SCROLL_FOLLOW_SETTLE_MS: i64 = 900;
 const COMPLETION_TIMESTAMP_FADE_MS: u64 = 180;
@@ -84,11 +113,25 @@ struct RevealQueueState {
     pump_source: Option<gtk::glib::SourceId>,
 }
 
+struct PendingActionAppend {
+    body_box: gtk::Box,
+    list: gtk::Box,
+    summary_label: gtk::Label,
+    revealer: gtk::Revealer,
+}
+
+#[derive(Default)]
+struct ActionAppendQueueState {
+    queue: VecDeque<PendingActionAppend>,
+    pump_source: Option<gtk::glib::SourceId>,
+}
+
 #[derive(Default)]
 struct ActionSummaryWaveState {
     is_running: bool,
     running_wave_source: Option<gtk::glib::SourceId>,
     running_wave_phase: f64,
+    running_wave_frames: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -100,6 +143,7 @@ struct ActionSectionUi {
 thread_local! {
     static CHAT_CONTEXT_REGISTRY: RefCell<HashMap<usize, ChatContextEntry>> = RefCell::new(HashMap::new());
     static STREAM_REVEAL_QUEUE: RefCell<RevealQueueState> = RefCell::new(RevealQueueState::default());
+    static ACTION_APPEND_QUEUE: RefCell<ActionAppendQueueState> = RefCell::new(ActionAppendQueueState::default());
     static ACTION_SUMMARY_WAVE_REGISTRY: RefCell<HashMap<usize, ActionSummaryWaveState>> = RefCell::new(HashMap::new());
     static BOTTOM_SCROLL_FOLLOW_REGISTRY: RefCell<HashMap<usize, Rc<RefCell<i64>>>> = RefCell::new(HashMap::new());
     static AUTO_SCROLL_PAUSE_REGISTRY: RefCell<HashMap<usize, bool>> = RefCell::new(HashMap::new());
@@ -153,6 +197,51 @@ fn process_stream_reveal_queue() -> gtk::glib::ControlFlow {
         }
         gtk::glib::ControlFlow::Continue
     })
+}
+
+fn process_action_append_queue() -> gtk::glib::ControlFlow {
+    ACTION_APPEND_QUEUE.with(|state_cell| {
+        let mut state = state_cell.borrow_mut();
+        while let Some(entry) = state.queue.pop_front() {
+            let body_box = entry.body_box;
+            let list = entry.list;
+            let summary_label = entry.summary_label;
+            let revealer = entry.revealer;
+
+            list.append(&revealer);
+            update_action_section_summary(&summary_label, &list);
+            set_active_action_section_wave(&body_box, true);
+            enqueue_stream_revealer(&revealer);
+
+            if state.queue.is_empty() {
+                state.pump_source.take();
+                return gtk::glib::ControlFlow::Break;
+            }
+            return gtk::glib::ControlFlow::Continue;
+        }
+
+        state.pump_source.take();
+        gtk::glib::ControlFlow::Break
+    })
+}
+
+fn enqueue_action_append(body_box: &gtk::Box, action_ui: &ActionSectionUi, revealer: &gtk::Revealer) {
+    ACTION_APPEND_QUEUE.with(|state_cell| {
+        let mut state = state_cell.borrow_mut();
+        state.queue.push_back(PendingActionAppend {
+            body_box: body_box.clone(),
+            list: action_ui.list.clone(),
+            summary_label: action_ui.summary_label.clone(),
+            revealer: revealer.clone(),
+        });
+        if state.pump_source.is_none() {
+            let source = gtk::glib::timeout_add_local(
+                Duration::from_millis(ACTION_APPEND_POLL_MS),
+                process_action_append_queue,
+            );
+            state.pump_source.replace(source);
+        }
+    });
 }
 
 fn messages_scroll_registry_key(messages_scroll: &gtk::ScrolledWindow) -> usize {
@@ -452,6 +541,45 @@ fn wave_markup_for_text(text: &str, phase: f64) -> String {
     markup
 }
 
+fn build_wave_markup_frames(text: &str) -> Vec<String> {
+    if text.is_empty() {
+        return Vec::new();
+    }
+    let cycle = text.chars().count() as f64 + 6.0;
+    (0..WAVE_FRAME_COUNT)
+        .map(|idx| {
+            let phase = cycle * idx as f64 / WAVE_FRAME_COUNT as f64;
+            wave_markup_for_text(text, phase)
+        })
+        .collect()
+}
+
+fn current_wave_frame_index() -> usize {
+    let tick_micros = (WAVE_TICK_MS as i64) * 1_000;
+    if tick_micros <= 0 {
+        return 0;
+    }
+    ((gtk::glib::monotonic_time() / tick_micros).rem_euclid(WAVE_FRAME_COUNT as i64)) as usize
+}
+
+fn apply_cached_wave_markup(
+    label: &gtk::Label,
+    frames: &[String],
+    fallback_text: &str,
+    running_wave_phase: &Rc<RefCell<f64>>,
+) {
+    if let Some(markup) = frames.get(current_wave_frame_index()) {
+        label.set_use_markup(true);
+        label.set_markup(markup);
+        return;
+    }
+
+    let phase = gtk::glib::monotonic_time() as f64 / 90_000.0;
+    running_wave_phase.replace(phase);
+    label.set_use_markup(true);
+    label.set_markup(&wave_markup_for_text(fallback_text, phase));
+}
+
 pub(super) fn set_plain_label_text(label: &gtk::Label, text: &str) {
     let display = if label.has_css_class("chat-command-output")
         && !label.has_css_class("chat-thinking-output")
@@ -464,6 +592,263 @@ pub(super) fn set_plain_label_text(label: &gtk::Label, text: &str) {
     label.set_attributes(None);
     label.set_use_markup(true);
     label.set_markup(escaped.as_str());
+}
+
+fn refresh_command_output_widgets(
+    revealer: &gtk::Revealer,
+    output_label: &Rc<RefCell<Option<gtk::Label>>>,
+    output_text: &Rc<RefCell<String>>,
+    output_toggle: &gtk::Box,
+    output_toggle_label: &gtk::Label,
+    output_toggle_enabled: &Rc<RefCell<bool>>,
+) {
+    let output = output_text.borrow();
+    if revealer.reveals_child() {
+        if let Some(output_label) = output_label.borrow().as_ref() {
+            set_plain_label_text(output_label, output.as_str());
+        }
+    } else if let Some(output_label) = output_label.borrow().as_ref() {
+        set_plain_label_text(output_label, "");
+    }
+    if output.trim().is_empty() {
+        if output_toggle_label.text().as_str() != "No output" {
+            set_plain_label_text(output_toggle_label, "No output");
+        }
+        *output_toggle_enabled.borrow_mut() = false;
+        if !output_toggle.has_css_class("disabled") {
+            output_toggle.add_css_class("disabled");
+        }
+    } else {
+        if output_toggle_label.text().as_str() != "Show output" {
+            set_plain_label_text(output_toggle_label, "Show output");
+        }
+        *output_toggle_enabled.borrow_mut() = true;
+        if output_toggle.has_css_class("disabled") {
+            output_toggle.remove_css_class("disabled");
+        }
+    }
+}
+
+fn build_command_output_label(output_revealer: &gtk::Revealer) -> gtk::Label {
+    let output_label = gtk::Label::new(None);
+    set_chat_label_selectable(&output_label);
+    output_label.set_xalign(0.0);
+    output_label.set_wrap(false);
+    output_label.add_css_class("chat-command-output");
+
+    let output_scroll = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Automatic)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .min_content_height(COMMAND_OUTPUT_MIN_HEIGHT)
+        .max_content_height(COMMAND_OUTPUT_MAX_HEIGHT)
+        .child(&output_label)
+        .build();
+    output_scroll.add_css_class("chat-command-output-scroll");
+    output_scroll.set_has_frame(false);
+
+    let scroll_ctrl = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
+    scroll_ctrl.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let adj = output_scroll.vadjustment();
+    scroll_ctrl.connect_scroll(move |_, _, dy| {
+        let step = adj.step_increment().max(20.0);
+        let new_val = adj.value() + dy * step;
+        let max = (adj.upper() - adj.page_size()).max(adj.lower());
+        adj.set_value(new_val.clamp(adj.lower(), max));
+        gtk::glib::Propagation::Stop
+    });
+    output_scroll.add_controller(scroll_ctrl);
+    output_revealer.set_child(Some(&output_scroll));
+    output_label
+}
+
+fn set_command_output_revealed_state(
+    details: &CommandDetailsUi,
+    revealed: bool,
+    output_text: &Rc<RefCell<String>>,
+) {
+    if revealed {
+        let output_label = if let Some(existing) = details.output_label.borrow().as_ref() {
+            existing.clone()
+        } else {
+            let built = build_command_output_label(&details.output_revealer);
+            details.output_label.replace(Some(built.clone()));
+            built
+        };
+        let output = output_text.borrow();
+        set_plain_label_text(&output_label, output.as_str());
+        details.output_revealer.set_reveal_child(true);
+        details.output_chevron.set_icon_name(Some("pan-down-symbolic"));
+        set_plain_label_text(&details.output_toggle_label, "Hide output");
+        return;
+    }
+
+    if let Some(output_label) = details.output_label.borrow().as_ref() {
+        set_plain_label_text(output_label, "");
+    }
+    details.output_revealer.set_reveal_child(false);
+    details.output_chevron.set_icon_name(Some("pan-end-symbolic"));
+    set_plain_label_text(
+        &details.output_toggle_label,
+        if *details.output_toggle_enabled.borrow() {
+            "Show output"
+        } else {
+            "No output"
+        },
+    );
+}
+
+fn build_command_details_ui(
+    wrapper: &gtk::Box,
+    full_command_text: &Rc<RefCell<String>>,
+    output_text: &Rc<RefCell<String>>,
+    output_toggle_enabled: &Rc<RefCell<bool>>,
+) -> CommandDetailsUi {
+    let details_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    details_box.add_css_class("chat-activity-details");
+
+    let command_detail_label = gtk::Label::new(None);
+    set_chat_label_selectable(&command_detail_label);
+    command_detail_label.set_xalign(0.0);
+    command_detail_label.set_wrap(true);
+    command_detail_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    command_detail_label.add_css_class("chat-command-detail");
+    set_plain_label_text(&command_detail_label, &full_command_text.borrow());
+    details_box.append(&command_detail_label);
+
+    let output_toggle = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    output_toggle.add_css_class("chat-command-output-toggle");
+    output_toggle.set_halign(gtk::Align::End);
+    output_toggle.set_can_target(true);
+    if !*output_toggle_enabled.borrow() {
+        output_toggle.add_css_class("disabled");
+    }
+
+    let output_toggle_row = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+    let output_chevron = gtk::Image::from_icon_name("pan-end-symbolic");
+    output_chevron.add_css_class("chat-command-chevron");
+    output_chevron.set_pixel_size(10);
+    output_toggle_row.append(&output_chevron);
+    let output_toggle_label = gtk::Label::new(Some(if *output_toggle_enabled.borrow() {
+        "Show output"
+    } else {
+        "No output"
+    }));
+    output_toggle_label.add_css_class("chat-command-output-toggle-label");
+    output_toggle_row.append(&output_toggle_label);
+    output_toggle.append(&output_toggle_row);
+
+    let output_label: Rc<RefCell<Option<gtk::Label>>> = Rc::new(RefCell::new(None));
+    let output_revealer = gtk::Revealer::new();
+    output_revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
+    output_revealer.set_reveal_child(false);
+
+    details_box.append(&output_toggle);
+    details_box.append(&output_revealer);
+
+    let details_revealer = gtk::Revealer::new();
+    details_revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
+    details_revealer.set_transition_duration(190);
+    details_revealer.set_reveal_child(false);
+    details_revealer.set_child(Some(&details_box));
+    wrapper.append(&details_revealer);
+
+    let details = CommandDetailsUi {
+        details_revealer,
+        command_detail_label,
+        output_revealer,
+        output_label,
+        output_toggle,
+        output_toggle_label,
+        output_toggle_enabled: output_toggle_enabled.clone(),
+        output_chevron,
+    };
+
+    {
+        let details_for_click = details.clone();
+        let output_text = output_text.clone();
+        let click = gtk::GestureClick::new();
+        click.connect_released(move |_, _, _, _| {
+            if !*details_for_click.output_toggle_enabled.borrow() {
+                return;
+            }
+            let next = !details_for_click.output_revealer.reveals_child();
+            set_command_output_revealed_state(&details_for_click, next, &output_text);
+        });
+        details.output_toggle.add_controller(click);
+    }
+
+    details
+}
+
+fn refresh_tool_call_output_widgets(
+    details_revealer: &gtk::Revealer,
+    output_label: &gtk::Label,
+    output_text: &Rc<RefCell<String>>,
+) {
+    if details_revealer.reveals_child() {
+        let output = output_text.borrow();
+        set_plain_label_text(output_label, output.as_str());
+        output_label.set_visible(!output.trim().is_empty());
+    } else {
+        set_plain_label_text(output_label, "");
+        output_label.set_visible(false);
+    }
+}
+
+fn refresh_generic_item_details_widgets(
+    summary_label: &gtk::Label,
+    output_label: &gtk::Label,
+    output_scroll: &gtk::ScrolledWindow,
+    details_revealer: &gtk::Revealer,
+    details_enabled: &Rc<RefCell<bool>>,
+    details_supported: bool,
+    output_text: &Rc<RefCell<String>>,
+) {
+    if !details_supported {
+        summary_label.set_visible(false);
+        output_label.set_visible(false);
+        output_scroll.set_visible(false);
+        output_text.replace(String::new());
+        details_enabled.replace(false);
+        details_revealer.set_reveal_child(false);
+        return;
+    }
+
+    let summary = summary_label.text();
+    let show_summary = !summary.trim().is_empty();
+    let output = output_text.borrow();
+    let show_output = !output.trim().is_empty();
+
+    let is_thinking_output = output_label.has_css_class("chat-thinking-output");
+    if is_thinking_output {
+        set_plain_label_text(output_label, output.as_str());
+        output_label.set_visible(show_output);
+        output_scroll.set_visible(show_output);
+        drop(output);
+        sync_thinking_output_scroll_layout(output_label, output_scroll, output_text.borrow().trim());
+    } else if details_revealer.reveals_child() {
+        set_plain_label_text(output_label, output.as_str());
+        output_label.set_visible(show_output);
+        output_scroll.set_visible(show_output);
+    } else {
+        set_plain_label_text(output_label, "");
+        output_label.set_visible(false);
+        output_scroll.set_visible(false);
+    }
+
+    summary_label.set_visible(show_summary);
+    let enabled = show_summary || show_output;
+    details_enabled.replace(enabled);
+    if !enabled {
+        details_revealer.set_reveal_child(false);
+    } else if is_thinking_output {
+        schedule_thinking_output_scroll_layout_sync(
+            output_label.clone(),
+            output_scroll.clone(),
+            output_text.clone(),
+            0,
+        );
+    }
 }
 
 pub(super) fn bind_chat_context(
@@ -490,23 +875,47 @@ pub(super) fn set_messages_box_thread_context(messages_box: &gtk::Box, thread_id
 }
 
 impl CommandUi {
+    fn ensure_details_ui(&self) -> CommandDetailsUi {
+        if let Some(existing) = self.details_ui.borrow().as_ref() {
+            return existing.clone();
+        }
+        let details = build_command_details_ui(
+            &self.wrapper,
+            &self.full_command_text,
+            &self.output_text,
+            &self.output_toggle_enabled,
+        );
+        self.details_ui.replace(Some(details.clone()));
+        details
+    }
+
     pub(super) fn set_command_headline(&self, text: &str) {
         let normalized = normalize_single_line(text);
         let (display, _) = truncate_to_chars(&normalized, COMMAND_PREVIEW_CHARS);
         self.headline_text.replace(display.clone());
+        self.full_command_text.replace(text.to_string());
         if *self.is_running.borrow() {
-            let phase = *self.running_wave_phase.borrow();
-            self.header_label.set_use_markup(true);
-            self.header_label
-                .set_markup(&wave_markup_for_text(&display, phase));
+            let frames = build_wave_markup_frames(&display);
+            self.running_wave_frames.replace(frames);
+            let frames = self.running_wave_frames.borrow();
+            apply_cached_wave_markup(
+                &self.header_label,
+                &frames,
+                &display,
+                &self.running_wave_phase,
+            );
         } else {
             set_plain_label_text(&self.header_label, &display);
         }
-        set_plain_label_text(&self.command_detail_label, text);
+        if let Some(details) = self.details_ui.borrow().as_ref() {
+            set_plain_label_text(&details.command_detail_label, text);
+        }
     }
 
     pub(super) fn set_command_status_label(&self, status_text: &str) {
-        self.status_label.set_text(status_text);
+        if self.status_label.text().as_str() != status_text {
+            self.status_label.set_text(status_text);
+        }
         self.set_running(status_text.to_ascii_lowercase().starts_with("running"));
     }
 
@@ -519,70 +928,147 @@ impl CommandUi {
             source_id.remove();
         }
         if running {
+            let text = self.headline_text.borrow().clone();
+            self.running_wave_frames.replace(build_wave_markup_frames(&text));
             let header_label = self.header_label.clone();
             let headline_text = self.headline_text.clone();
             let wave_phase = self.running_wave_phase.clone();
-            let source = gtk::glib::timeout_add_local(Duration::from_millis(33), move || {
-                let next_phase = gtk::glib::monotonic_time() as f64 / 90_000.0;
-                wave_phase.replace(next_phase);
-                let text = headline_text.borrow().clone();
-                header_label.set_use_markup(true);
-                header_label.set_markup(&wave_markup_for_text(&text, next_phase));
-                gtk::glib::ControlFlow::Continue
-            });
+            let running_wave_frames = self.running_wave_frames.clone();
+            let source =
+                gtk::glib::timeout_add_local(Duration::from_millis(WAVE_TICK_MS), move || {
+                    let text = headline_text.borrow().clone();
+                    let frames = running_wave_frames.borrow();
+                    apply_cached_wave_markup(&header_label, &frames, &text, &wave_phase);
+                    gtk::glib::ControlFlow::Continue
+                });
             self.running_wave_source.replace(Some(source));
-            let text = self.headline_text.borrow().clone();
-            let phase = gtk::glib::monotonic_time() as f64 / 90_000.0;
-            self.running_wave_phase.replace(phase);
-            self.header_label.set_use_markup(true);
-            self.header_label
-                .set_markup(&wave_markup_for_text(&text, phase));
+            let frames = self.running_wave_frames.borrow();
+            apply_cached_wave_markup(&self.header_label, &frames, &text, &self.running_wave_phase);
         } else {
             self.running_wave_phase.replace(0.0);
+            self.running_wave_frames.borrow_mut().clear();
             let text = self.headline_text.borrow().clone();
             set_plain_label_text(&self.header_label, &text);
         }
     }
 
     pub(super) fn set_command_output(&mut self, output: &str) {
+        if let Some(source_id) = self.output_flush_source.borrow_mut().take() {
+            source_id.remove();
+        }
         self.output_text.replace(output.to_string());
-        if self.revealer.reveals_child() {
-            set_plain_label_text(&self.output_label, output);
-        } else {
-            set_plain_label_text(&self.output_label, "");
+        let has_output = !output.trim().is_empty();
+        let previous_has_output = *self.output_toggle_enabled.borrow();
+        self.output_toggle_enabled.replace(has_output);
+        let Some(details) = self.details_ui.borrow().as_ref().cloned() else {
+            return;
+        };
+        if !details.output_revealer.reveals_child() && previous_has_output == has_output {
+            return;
         }
-        if output.trim().is_empty() {
-            set_plain_label_text(&self.output_toggle_label, "No output");
-            *self.output_toggle_enabled.borrow_mut() = false;
-            self.output_toggle.add_css_class("disabled");
+        refresh_command_output_widgets(
+            &details.output_revealer,
+            &details.output_label,
+            &self.output_text,
+            &details.output_toggle,
+            &details.output_toggle_label,
+            &details.output_toggle_enabled,
+        );
+    }
+
+    pub(super) fn set_output_revealed(&self, revealed: bool) {
+        let Some(details) = self.details_ui.borrow().as_ref().cloned() else {
+            if revealed {
+                let details = self.ensure_details_ui();
+                set_command_output_revealed_state(&details, true, &self.output_text);
+            }
+            return;
+        };
+        if revealed {
+            set_command_output_revealed_state(&details, true, &self.output_text);
         } else {
-            set_plain_label_text(&self.output_toggle_label, "Show output");
-            *self.output_toggle_enabled.borrow_mut() = true;
-            self.output_toggle.remove_css_class("disabled");
+            set_command_output_revealed_state(&details, false, &self.output_text);
         }
+    }
+
+    pub(super) fn append_output_delta(&self, delta: &str) {
+        let became_non_empty = {
+            let mut output = self.output_text.borrow_mut();
+            let was_empty = output.trim().is_empty();
+            output.push_str(delta);
+            was_empty && !output.trim().is_empty()
+        };
+        if became_non_empty {
+            self.output_toggle_enabled.replace(true);
+        }
+        let Some(details) = self.details_ui.borrow().as_ref().cloned() else {
+            return;
+        };
+        if !details.output_revealer.reveals_child() && !became_non_empty {
+            return;
+        }
+        if self.output_flush_source.borrow().is_some() {
+            return;
+        }
+
+        let output_revealer = details.output_revealer.clone();
+        let output_label = details.output_label.clone();
+        let output_text = self.output_text.clone();
+        let output_toggle = details.output_toggle.clone();
+        let output_toggle_label = details.output_toggle_label.clone();
+        let output_toggle_enabled = details.output_toggle_enabled.clone();
+        let output_flush_source = self.output_flush_source.clone();
+        let source = gtk::glib::timeout_add_local(
+            Duration::from_millis(STREAM_OUTPUT_FLUSH_MS),
+            move || {
+                output_flush_source.borrow_mut().take();
+                refresh_command_output_widgets(
+                    &output_revealer,
+                    &output_label,
+                    &output_text,
+                    &output_toggle,
+                    &output_toggle_label,
+                    &output_toggle_enabled,
+                );
+                gtk::glib::ControlFlow::Break
+            },
+        );
+        self.output_flush_source.replace(Some(source));
     }
 }
 
 impl ToolCallUi {
     pub(super) fn set_output(&self, output: &str) {
+        if let Some(source_id) = self.output_flush_source.borrow_mut().take() {
+            source_id.remove();
+        }
         self.output_text.replace(output.to_string());
-        self.apply_deferred_output();
+        refresh_tool_call_output_widgets(
+            &self.details_revealer,
+            &self.output_label,
+            &self.output_text,
+        );
     }
 
     pub(super) fn append_output_delta(&self, delta: &str) {
         self.output_text.borrow_mut().push_str(delta);
-        self.apply_deferred_output();
-    }
-
-    fn apply_deferred_output(&self) {
-        if self.details_revealer.reveals_child() {
-            let output = self.output_text.borrow();
-            set_plain_label_text(&self.output_label, output.as_str());
-            self.output_label.set_visible(!output.trim().is_empty());
-        } else {
-            set_plain_label_text(&self.output_label, "");
-            self.output_label.set_visible(false);
+        if self.output_flush_source.borrow().is_some() {
+            return;
         }
+
+        let details_revealer = self.details_revealer.clone();
+        let output_label = self.output_label.clone();
+        let output_text = self.output_text.clone();
+        let output_flush_source = self.output_flush_source.clone();
+        let source = gtk::glib::timeout_add_local(
+            Duration::from_millis(STREAM_OUTPUT_FLUSH_MS),
+            move || {
+                output_flush_source.borrow_mut().take();
+                refresh_tool_call_output_widgets(&details_revealer, &output_label, &output_text);
+                gtk::glib::ControlFlow::Break
+            },
+        );
+        self.output_flush_source.replace(Some(source));
     }
 }
 
@@ -610,10 +1096,15 @@ impl GenericItemUi {
         let (display, _) = truncate_to_chars(&normalized, COMMAND_PREVIEW_CHARS);
         self.headline_text.replace(display.clone());
         if self.wave_enabled && *self.is_running.borrow() {
-            let phase = *self.running_wave_phase.borrow();
-            self.title_label.set_use_markup(true);
-            self.title_label
-                .set_markup(&wave_markup_for_text(&display, phase));
+            let frames = build_wave_markup_frames(&display);
+            self.running_wave_frames.replace(frames);
+            let frames = self.running_wave_frames.borrow();
+            apply_cached_wave_markup(
+                &self.title_label,
+                &frames,
+                &display,
+                &self.running_wave_phase,
+            );
         } else {
             set_plain_label_text(&self.title_label, &display);
         }
@@ -631,26 +1122,25 @@ impl GenericItemUi {
             source_id.remove();
         }
         if running {
+            let text = self.headline_text.borrow().clone();
+            self.running_wave_frames.replace(build_wave_markup_frames(&text));
             let title_label = self.title_label.clone();
             let headline_text = self.headline_text.clone();
             let wave_phase = self.running_wave_phase.clone();
-            let source = gtk::glib::timeout_add_local(Duration::from_millis(33), move || {
-                let next_phase = gtk::glib::monotonic_time() as f64 / 90_000.0;
-                wave_phase.replace(next_phase);
-                let text = headline_text.borrow().clone();
-                title_label.set_use_markup(true);
-                title_label.set_markup(&wave_markup_for_text(&text, next_phase));
-                gtk::glib::ControlFlow::Continue
-            });
+            let running_wave_frames = self.running_wave_frames.clone();
+            let source =
+                gtk::glib::timeout_add_local(Duration::from_millis(WAVE_TICK_MS), move || {
+                    let text = headline_text.borrow().clone();
+                    let frames = running_wave_frames.borrow();
+                    apply_cached_wave_markup(&title_label, &frames, &text, &wave_phase);
+                    gtk::glib::ControlFlow::Continue
+                });
             self.running_wave_source.replace(Some(source));
-            let text = self.headline_text.borrow().clone();
-            let phase = gtk::glib::monotonic_time() as f64 / 90_000.0;
-            self.running_wave_phase.replace(phase);
-            self.title_label.set_use_markup(true);
-            self.title_label
-                .set_markup(&wave_markup_for_text(&text, phase));
+            let frames = self.running_wave_frames.borrow();
+            apply_cached_wave_markup(&self.title_label, &frames, &text, &self.running_wave_phase);
         } else {
             self.running_wave_phase.replace(0.0);
+            self.running_wave_frames.borrow_mut().clear();
             let text = self.headline_text.borrow().clone();
             set_plain_label_text(&self.title_label, &text);
         }
@@ -668,6 +1158,9 @@ impl GenericItemUi {
     }
 
     pub(super) fn set_details(&self, summary: &str, output: &str) {
+        if let Some(source_id) = self.details_flush_source.borrow_mut().take() {
+            source_id.remove();
+        }
         if !self.details_supported {
             self.summary_label.set_visible(false);
             self.output_label.set_visible(false);
@@ -679,35 +1172,48 @@ impl GenericItemUi {
         }
         set_plain_label_text(&self.summary_label, summary);
         self.output_text.replace(output.to_string());
-        let show_summary = !summary.trim().is_empty();
-        let show_output = !self.output_text.borrow().trim().is_empty();
-        if self.output_label.has_css_class("chat-thinking-output") {
-            let output = self.output_text.borrow();
-            set_plain_label_text(&self.output_label, output.as_str());
-            self.output_label.set_visible(show_output);
-            self.output_scroll.set_visible(show_output);
-            drop(output);
-            self.sync_output_scroll_layout();
-        } else if self.details_revealer.reveals_child() {
-            let output = self.output_text.borrow();
-            set_plain_label_text(&self.output_label, output.as_str());
-            self.output_label.set_visible(!output.trim().is_empty());
-            self.output_scroll.set_visible(!output.trim().is_empty());
-        } else {
-            set_plain_label_text(&self.output_label, "");
-            self.output_label.set_visible(false);
-            self.output_scroll.set_visible(false);
+        refresh_generic_item_details_widgets(
+            &self.summary_label,
+            &self.output_label,
+            &self.output_scroll,
+            &self.details_revealer,
+            &self.details_enabled,
+            self.details_supported,
+            &self.output_text,
+        );
+    }
+
+    pub(super) fn append_output_delta(&self, delta: &str) {
+        self.output_text.borrow_mut().push_str(delta);
+        if self.details_flush_source.borrow().is_some() {
+            return;
         }
-        self.summary_label.set_visible(show_summary);
-        let enabled = show_summary || show_output;
-        self.details_enabled.replace(enabled);
-        if !enabled {
-            self.details_revealer.set_reveal_child(false);
-        } else if self.output_label.has_css_class("chat-thinking-output")
-            || self.details_revealer.reveals_child()
-        {
-            self.schedule_output_scroll_layout_sync();
-        }
+
+        let summary_label = self.summary_label.clone();
+        let output_label = self.output_label.clone();
+        let output_scroll = self.output_scroll.clone();
+        let details_revealer = self.details_revealer.clone();
+        let details_enabled = self.details_enabled.clone();
+        let output_text = self.output_text.clone();
+        let details_flush_source = self.details_flush_source.clone();
+        let details_supported = self.details_supported;
+        let source = gtk::glib::timeout_add_local(
+            Duration::from_millis(STREAM_OUTPUT_FLUSH_MS),
+            move || {
+                details_flush_source.borrow_mut().take();
+                refresh_generic_item_details_widgets(
+                    &summary_label,
+                    &output_label,
+                    &output_scroll,
+                    &details_revealer,
+                    &details_enabled,
+                    details_supported,
+                    &output_text,
+                );
+                gtk::glib::ControlFlow::Break
+            },
+        );
+        self.details_flush_source.replace(Some(source));
     }
 
     pub(super) fn set_expanded(&self, expanded: bool) {
@@ -733,10 +1239,6 @@ impl GenericItemUi {
         if expanded {
             self.schedule_output_scroll_layout_sync();
         }
-    }
-
-    pub(super) fn output_text(&self) -> String {
-        self.output_text.borrow().clone()
     }
 }
 
@@ -819,6 +1321,27 @@ const FIRST_MESSAGE_TOP_MARGIN: i32 = 18;
 fn set_chat_label_selectable(label: &gtk::Label) {
     label.set_selectable(true);
     label.set_focusable(false);
+}
+
+fn new_text_segment_label() -> gtk::Label {
+    let label = gtk::Label::new(None);
+    label.set_use_markup(false);
+    label.set_xalign(0.0);
+    label.set_wrap(true);
+    label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    set_chat_label_selectable(&label);
+    label.connect_activate_link(|_, uri| {
+        if open_link_in_preview(uri) {
+            gtk::glib::Propagation::Stop
+        } else {
+            eprintln!(
+                "[chat-link] quick preview returned false, allowing default handler for uri={uri}"
+            );
+            gtk::glib::Propagation::Proceed
+        }
+    });
+    label.add_css_class("chat-turn-text-segment");
+    label
 }
 
 pub(super) fn apply_first_message_top_spacing(messages_box: &gtk::Box, row: &gtk::Box) {
@@ -1493,49 +2016,99 @@ mod link_tests {
 pub(super) fn create_text_segment(body_box: &gtk::Box) -> gtk::Label {
     set_active_action_section_wave(body_box, false);
     let text_section = ensure_text_section(body_box);
-    let label = gtk::Label::new(None);
-    label.set_use_markup(false);
-    label.set_xalign(0.0);
-    label.set_wrap(true);
-    label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
-    set_chat_label_selectable(&label);
-    label.connect_activate_link(|_, uri| {
-        if open_link_in_preview(uri) {
-            gtk::glib::Propagation::Stop
-        } else {
-            eprintln!(
-                "[chat-link] quick preview returned false, allowing default handler for uri={uri}"
-            );
-            gtk::glib::Propagation::Proceed
-        }
-    });
-    label.add_css_class("chat-turn-text-segment");
+    let label = new_text_segment_label();
     text_section.append(&label);
     label
 }
 
-pub(super) fn create_text_segment_revealed(body_box: &gtk::Box) -> gtk::Label {
+impl StreamingMarkdownUi {
+    fn reset_for_streaming(&self) {
+        if !*self.is_complete.borrow() {
+            return;
+        }
+        widget_tree::clear_box_children(&self.root);
+        self.root.append(&self.tail_label);
+        self.finalized_labels.borrow_mut().clear();
+        self.finalized_blocks.borrow_mut().clear();
+        self.tail_label.set_visible(false);
+        self.complete_label.set_visible(false);
+        self.is_complete.replace(false);
+    }
+
+    pub(super) fn render_streaming(&self, text: &str) {
+        self.reset_for_streaming();
+        let blocks = crate::ui::components::chat::markdown::split_streaming_blocks(text);
+        let mut labels = self.finalized_labels.borrow_mut();
+        let mut rendered_blocks = self.finalized_blocks.borrow_mut();
+
+        while labels.len() > blocks.finalized_blocks.len() {
+            if let Some(label) = labels.pop() {
+                self.root.remove(&label);
+            }
+            rendered_blocks.pop();
+        }
+
+        for (idx, block) in blocks.finalized_blocks.iter().enumerate() {
+            if idx < labels.len() {
+                if rendered_blocks.get(idx).map(String::as_str) != Some(block.as_str()) {
+                    crate::ui::components::chat::markdown::set_markdown(&labels[idx], block);
+                    rendered_blocks[idx] = block.clone();
+                }
+                continue;
+            }
+
+            let label = new_text_segment_label();
+            crate::ui::components::chat::markdown::set_markdown(&label, block);
+            let sibling = labels
+                .last()
+                .map(|existing| existing.upcast_ref::<gtk::Widget>());
+            self.root.insert_child_after(&label, sibling);
+            labels.push(label);
+            rendered_blocks.push(block.clone());
+        }
+
+        if blocks.tail_block.is_empty() {
+            crate::ui::components::chat::markdown::set_markdown(&self.tail_label, "");
+            self.tail_label.set_visible(false);
+        } else {
+            crate::ui::components::chat::markdown::set_markdown(&self.tail_label, &blocks.tail_block);
+            self.tail_label.set_visible(true);
+        }
+    }
+
+    pub(super) fn set_complete_markdown(&self, text: &str) {
+        widget_tree::clear_box_children(&self.root);
+        crate::ui::components::chat::markdown::set_markdown(&self.complete_label, text);
+        self.root.append(&self.complete_label);
+        self.complete_label.set_visible(true);
+        self.finalized_labels.borrow_mut().clear();
+        self.finalized_blocks.borrow_mut().clear();
+        self.tail_label.set_visible(false);
+        self.is_complete.replace(true);
+    }
+}
+
+pub(super) fn create_streaming_markdown_segment_revealed(body_box: &gtk::Box) -> StreamingMarkdownUi {
     set_active_action_section_wave(body_box, false);
     let text_section = ensure_text_section(body_box);
-    let label = gtk::Label::new(None);
-    label.set_use_markup(false);
-    label.set_xalign(0.0);
-    label.set_wrap(true);
-    label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
-    set_chat_label_selectable(&label);
-    label.connect_activate_link(|_, uri| {
-        if open_link_in_preview(uri) {
-            gtk::glib::Propagation::Stop
-        } else {
-            eprintln!(
-                "[chat-link] quick preview returned false, allowing default handler for uri={uri}"
-            );
-            gtk::glib::Propagation::Proceed
-        }
-    });
-    label.add_css_class("chat-turn-text-segment");
-    append_widget_with_reveal(&text_section, &label);
-    label
+    let root = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    let tail_label = new_text_segment_label();
+    tail_label.set_visible(false);
+    root.append(&tail_label);
+
+    let complete_label = new_text_segment_label();
+    complete_label.set_visible(false);
+
+    append_widget_with_reveal(&text_section, &root);
+
+    StreamingMarkdownUi {
+        root,
+        finalized_labels: Rc::new(RefCell::new(Vec::new())),
+        finalized_blocks: Rc::new(RefCell::new(Vec::new())),
+        tail_label,
+        complete_label,
+        is_complete: Rc::new(RefCell::new(false)),
+    }
 }
 
 pub(super) fn append_widget_with_reveal<T: IsA<gtk::Widget>>(parent: &gtk::Box, child: &T) {
@@ -1705,18 +2278,44 @@ fn ensure_action_summary_wave_state(summary_label: &gtk::Label) {
 fn set_action_summary_text(summary_label: &gtk::Label, text: &str) {
     ensure_action_summary_wave_state(summary_label);
     let key = action_summary_registry_key(summary_label);
-    let (is_running, phase) = ACTION_SUMMARY_WAVE_REGISTRY.with(|registry| {
-        let registry = registry.borrow();
-        registry
-            .get(&key)
-            .map(|state| (state.is_running, state.running_wave_phase))
-            .unwrap_or((false, 0.0))
+    let is_running = ACTION_SUMMARY_WAVE_REGISTRY.with(|registry| {
+        let mut registry = registry.borrow_mut();
+        let state = registry
+            .get_mut(&key)
+            .expect("action summary state should exist");
+        if state.is_running {
+            state.running_wave_frames = build_wave_markup_frames(text);
+        }
+        state.is_running
     });
     if is_running {
-        summary_label.set_use_markup(true);
-        summary_label.set_markup(&wave_markup_for_text(text, phase));
+        apply_action_summary_cached_wave_markup(summary_label);
     } else {
         set_plain_label_text(summary_label, text);
+    }
+}
+
+fn apply_action_summary_cached_wave_markup(summary_label: &gtk::Label) {
+    let key = action_summary_registry_key(summary_label);
+    let text = summary_label.text().to_string();
+    let markup = ACTION_SUMMARY_WAVE_REGISTRY.with(|registry| {
+        let mut registry = registry.borrow_mut();
+        let state = registry.get_mut(&key)?;
+        state
+            .running_wave_frames
+            .get(current_wave_frame_index())
+            .cloned()
+            .or_else(|| {
+                let phase = gtk::glib::monotonic_time() as f64 / 90_000.0;
+                state.running_wave_phase = phase;
+                Some(wave_markup_for_text(&text, phase))
+            })
+    });
+    if let Some(markup) = markup {
+        summary_label.set_use_markup(true);
+        summary_label.set_markup(&markup);
+    } else {
+        set_plain_label_text(summary_label, &text);
     }
 }
 
@@ -1746,16 +2345,14 @@ fn set_action_summary_running(summary_label: &gtk::Label, running: bool) {
         ACTION_SUMMARY_WAVE_REGISTRY.with(|registry| {
             if let Some(state) = registry.borrow_mut().get_mut(&key) {
                 state.running_wave_phase = phase;
+                state.running_wave_frames = build_wave_markup_frames(&summary_label.text());
             }
         });
-        let text = summary_label.text().to_string();
-        summary_label.set_use_markup(true);
-        summary_label.set_markup(&wave_markup_for_text(&text, phase));
+        apply_action_summary_cached_wave_markup(summary_label);
 
         let summary_label = summary_label.clone();
-        let source = gtk::glib::timeout_add_local(Duration::from_millis(33), move || {
+        let source = gtk::glib::timeout_add_local(Duration::from_millis(WAVE_TICK_MS), move || {
             let key = action_summary_registry_key(&summary_label);
-            let next_phase = gtk::glib::monotonic_time() as f64 / 90_000.0;
             let continue_running = ACTION_SUMMARY_WAVE_REGISTRY.with(|registry| {
                 let mut registry = registry.borrow_mut();
                 let Some(state) = registry.get_mut(&key) else {
@@ -1764,15 +2361,12 @@ fn set_action_summary_running(summary_label: &gtk::Label, running: bool) {
                 if !state.is_running {
                     return false;
                 }
-                state.running_wave_phase = next_phase;
                 true
             });
             if !continue_running {
                 return gtk::glib::ControlFlow::Break;
             }
-            let text = summary_label.text().to_string();
-            summary_label.set_use_markup(true);
-            summary_label.set_markup(&wave_markup_for_text(&text, next_phase));
+            apply_action_summary_cached_wave_markup(&summary_label);
             gtk::glib::ControlFlow::Continue
         });
 
@@ -1785,6 +2379,11 @@ fn set_action_summary_running(summary_label: &gtk::Label, running: bool) {
     }
 
     let text = summary_label.text().to_string();
+    ACTION_SUMMARY_WAVE_REGISTRY.with(|registry| {
+        if let Some(state) = registry.borrow_mut().get_mut(&key) {
+            state.running_wave_frames.clear();
+        }
+    });
     set_plain_label_text(summary_label, &text);
 }
 
@@ -1972,12 +2571,17 @@ fn append_action_widget_internal<T: IsA<gtk::Widget>>(
 
     let action_ui = ensure_action_section(body_box);
     if reveal {
-        append_widget_with_reveal(&action_ui.list, widget);
+        let revealer = gtk::Revealer::new();
+        revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
+        revealer.set_transition_duration(270);
+        revealer.set_reveal_child(false);
+        revealer.set_child(Some(widget));
+        enqueue_action_append(body_box, &action_ui, &revealer);
     } else {
         action_ui.list.append(widget);
+        update_action_section_summary(&action_ui.summary_label, &action_ui.list);
+        set_active_action_section_wave(body_box, false);
     }
-    update_action_section_summary(&action_ui.summary_label, &action_ui.list);
-    set_active_action_section_wave(body_box, reveal);
 }
 
 pub(super) fn append_action_widget_with_reveal<T: IsA<gtk::Widget>>(
@@ -2075,198 +2679,85 @@ pub(super) fn create_command_widget(command: &str) -> (gtk::Box, CommandUi) {
     status_label.set_xalign(1.0);
     status_label.set_valign(gtk::Align::Baseline);
     status_label.add_css_class("chat-card-status");
-
     wrapper.append(&section_header);
-
-    let details_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
-    details_box.add_css_class("chat-activity-details");
-
-    let command_detail_label = gtk::Label::new(None);
-    set_chat_label_selectable(&command_detail_label);
-    command_detail_label.set_xalign(0.0);
-    command_detail_label.set_wrap(true);
-    command_detail_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
-    command_detail_label.add_css_class("chat-command-detail");
-    details_box.append(&command_detail_label);
-
-    let output_toggle = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    output_toggle.add_css_class("chat-command-output-toggle");
-    output_toggle.set_halign(gtk::Align::End);
-    output_toggle.set_can_target(true);
-    output_toggle.add_css_class("disabled");
     let output_toggle_enabled = Rc::new(RefCell::new(false));
-
-    let output_toggle_row = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-    let output_chevron = gtk::Image::from_icon_name("pan-end-symbolic");
-    output_chevron.add_css_class("chat-command-chevron");
-    output_chevron.set_pixel_size(10);
-    output_toggle_row.append(&output_chevron);
-    let output_toggle_label = gtk::Label::new(Some("No output"));
-    output_toggle_label.add_css_class("chat-command-output-toggle-label");
-    output_toggle_row.append(&output_toggle_label);
-    output_toggle.append(&output_toggle_row);
     let output_text: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
-    let output_label = gtk::Label::new(None);
-    set_chat_label_selectable(&output_label);
-    output_label.set_xalign(0.0);
-    output_label.set_wrap(false);
-    output_label.add_css_class("chat-command-output");
-
-    let output_scroll = gtk::ScrolledWindow::builder()
-        .hscrollbar_policy(gtk::PolicyType::Automatic)
-        .vscrollbar_policy(gtk::PolicyType::Automatic)
-        .min_content_height(COMMAND_OUTPUT_MIN_HEIGHT)
-        .max_content_height(COMMAND_OUTPUT_MAX_HEIGHT)
-        .child(&output_label)
-        .build();
-    output_scroll.add_css_class("chat-command-output-scroll");
-    output_scroll.set_has_frame(false);
+    let full_command_text: Rc<RefCell<String>> = Rc::new(RefCell::new(command.to_string()));
+    let details_ui: Rc<RefCell<Option<CommandDetailsUi>>> = Rc::new(RefCell::new(None));
 
     {
-        let scroll_ctrl =
-            gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
-        scroll_ctrl.set_propagation_phase(gtk::PropagationPhase::Capture);
-        let adj = output_scroll.vadjustment();
-        scroll_ctrl.connect_scroll(move |_, _, dy| {
-            let step = adj.step_increment().max(20.0);
-            let new_val = adj.value() + dy * step;
-            let max = (adj.upper() - adj.page_size()).max(adj.lower());
-            adj.set_value(new_val.clamp(adj.lower(), max));
-            gtk::glib::Propagation::Stop
-        });
-        output_scroll.add_controller(scroll_ctrl);
-    }
-
-    let output_revealer = gtk::Revealer::new();
-    output_revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
-    output_revealer.set_reveal_child(false);
-    output_revealer.set_child(Some(&output_scroll));
-
-    details_box.append(&output_toggle);
-    details_box.append(&output_revealer);
-
-    let details_revealer = gtk::Revealer::new();
-    details_revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
-    details_revealer.set_transition_duration(190);
-    details_revealer.set_reveal_child(false);
-    details_revealer.set_child(Some(&details_box));
-    wrapper.append(&details_revealer);
-
-    {
-        let details_revealer_weak = details_revealer.downgrade();
-        let output_revealer_weak = output_revealer.downgrade();
-        let output_toggle_enabled = output_toggle_enabled.clone();
-        let output_toggle_label_weak = output_toggle_label.downgrade();
-        let output_chevron_weak = output_chevron.downgrade();
-        let output_label_weak = output_label.downgrade();
+        let wrapper = wrapper.clone();
+        let details_ui = details_ui.clone();
+        let full_command_text = full_command_text.clone();
         let output_text = output_text.clone();
+        let output_toggle_enabled = output_toggle_enabled.clone();
         let click = gtk::GestureClick::new();
         click.connect_released(move |_, _, _, _| {
-            let Some(details_revealer) = details_revealer_weak.upgrade() else {
-                return;
-            };
-            let Some(output_revealer) = output_revealer_weak.upgrade() else {
-                return;
-            };
-            let Some(output_toggle_label) = output_toggle_label_weak.upgrade() else {
-                return;
-            };
-            let Some(output_chevron) = output_chevron_weak.upgrade() else {
-                return;
-            };
-            let Some(output_label) = output_label_weak.upgrade() else {
-                return;
-            };
-            let next = !details_revealer.reveals_child();
-            if next && *output_toggle_enabled.borrow() {
-                let output = output_text.borrow();
-                set_plain_label_text(&output_label, output.as_str());
-                output_revealer.set_reveal_child(true);
-                output_chevron.set_icon_name(Some("pan-down-symbolic"));
-                set_plain_label_text(&output_toggle_label, "Hide output");
-            } else if !next {
-                output_revealer.set_reveal_child(false);
-                output_chevron.set_icon_name(Some("pan-end-symbolic"));
-                set_plain_label_text(&output_label, "");
+            let existing = details_ui.borrow().as_ref().cloned();
+            let next = existing
+                .as_ref()
+                .map(|details| !details.details_revealer.reveals_child())
+                .unwrap_or(true);
+            let details = existing.unwrap_or_else(|| {
+                let built = build_command_details_ui(
+                    &wrapper,
+                    &full_command_text,
+                    &output_text,
+                    &output_toggle_enabled,
+                );
+                details_ui.replace(Some(built.clone()));
+                built
+            });
+            if next {
+                if *output_toggle_enabled.borrow() {
+                    set_command_output_revealed_state(&details, true, &output_text);
+                } else {
+                    set_command_output_revealed_state(&details, false, &output_text);
+                }
+                details.details_revealer.set_reveal_child(true);
+            } else {
+                set_command_output_revealed_state(&details, false, &output_text);
+                details.details_revealer.set_reveal_child(false);
             }
-            details_revealer.set_reveal_child(next);
         });
         section_header.add_controller(click);
-    }
-
-    {
-        let revealer_weak = output_revealer.downgrade();
-        let output_chevron_weak = output_chevron.downgrade();
-        let output_toggle_label_weak = output_toggle_label.downgrade();
-        let output_toggle_enabled = output_toggle_enabled.clone();
-        let output_label_weak = output_label.downgrade();
-        let output_text = output_text.clone();
-        let click = gtk::GestureClick::new();
-        click.connect_released(move |_, _, _, _| {
-            let Some(revealer) = revealer_weak.upgrade() else {
-                return;
-            };
-            let Some(output_chevron) = output_chevron_weak.upgrade() else {
-                return;
-            };
-            let Some(output_toggle_label) = output_toggle_label_weak.upgrade() else {
-                return;
-            };
-            let Some(output_label) = output_label_weak.upgrade() else {
-                return;
-            };
-            if !*output_toggle_enabled.borrow() {
-                return;
-            }
-            let next = !revealer.reveals_child();
-            if next {
-                let output = output_text.borrow();
-                set_plain_label_text(&output_label, output.as_str());
-            } else {
-                set_plain_label_text(&output_label, "");
-            }
-            revealer.set_reveal_child(next);
-            output_chevron.set_icon_name(if next {
-                Some("pan-down-symbolic")
-            } else {
-                Some("pan-end-symbolic")
-            });
-            set_plain_label_text(
-                &output_toggle_label,
-                if next { "Hide output" } else { "Show output" },
-            );
-        });
-        output_toggle.add_controller(click);
     }
 
     let headline_text: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
     let is_running: Rc<RefCell<bool>> = Rc::new(RefCell::new(false));
     let running_wave_source: Rc<RefCell<Option<gtk::glib::SourceId>>> = Rc::new(RefCell::new(None));
     let running_wave_phase: Rc<RefCell<f64>> = Rc::new(RefCell::new(0.0));
+    let running_wave_frames: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
+    let output_flush_source: Rc<RefCell<Option<gtk::glib::SourceId>>> =
+        Rc::new(RefCell::new(None));
 
     {
         let running_wave_source = running_wave_source.clone();
+        let output_flush_source = output_flush_source.clone();
         wrapper.connect_destroy(move |_| {
             if let Some(source_id) = running_wave_source.borrow_mut().take() {
+                source_id.remove();
+            }
+            if let Some(source_id) = output_flush_source.borrow_mut().take() {
                 source_id.remove();
             }
         });
     }
 
     let command_ui = CommandUi {
+        wrapper: wrapper.clone(),
         header_label,
-        command_detail_label,
         status_label,
         headline_text,
+        full_command_text,
         is_running,
         running_wave_source,
         running_wave_phase,
-        revealer: output_revealer,
-        output_label,
+        running_wave_frames,
+        details_ui,
         output_text,
-        output_toggle,
-        output_toggle_label,
         output_toggle_enabled,
+        output_flush_source,
     };
     command_ui.set_command_headline(command);
     command_ui.set_running(true);
@@ -2342,6 +2833,17 @@ pub(super) fn create_tool_call_widget(tool_name: &str, arguments: &str) -> (gtk:
     output_label.set_visible(false);
     details.append(&output_label);
     let output_text: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
+    let output_flush_source: Rc<RefCell<Option<gtk::glib::SourceId>>> =
+        Rc::new(RefCell::new(None));
+
+    {
+        let output_flush_source = output_flush_source.clone();
+        wrapper.connect_destroy(move |_| {
+            if let Some(source_id) = output_flush_source.borrow_mut().take() {
+                source_id.remove();
+            }
+        });
+    }
 
     let details_revealer = gtk::Revealer::new();
     details_revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
@@ -2385,6 +2887,7 @@ pub(super) fn create_tool_call_widget(tool_name: &str, arguments: &str) -> (gtk:
             output_label,
             details_revealer,
             output_text,
+            output_flush_source,
         },
     )
 }
@@ -2552,11 +3055,18 @@ pub(super) fn create_generic_item_widget(
     let is_running: Rc<RefCell<bool>> = Rc::new(RefCell::new(false));
     let running_wave_source: Rc<RefCell<Option<gtk::glib::SourceId>>> = Rc::new(RefCell::new(None));
     let running_wave_phase: Rc<RefCell<f64>> = Rc::new(RefCell::new(0.0));
+    let running_wave_frames: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
+    let details_flush_source: Rc<RefCell<Option<gtk::glib::SourceId>>> =
+        Rc::new(RefCell::new(None));
 
     {
         let running_wave_source = running_wave_source.clone();
+        let details_flush_source = details_flush_source.clone();
         wrapper.connect_destroy(move |_| {
             if let Some(source_id) = running_wave_source.borrow_mut().take() {
+                source_id.remove();
+            }
+            if let Some(source_id) = details_flush_source.borrow_mut().take() {
                 source_id.remove();
             }
         });
@@ -2577,9 +3087,11 @@ pub(super) fn create_generic_item_widget(
         is_running,
         running_wave_source,
         running_wave_phase,
+        running_wave_frames,
         wave_enabled,
         details_supported,
         output_text,
+        details_flush_source,
     };
     generic_ui.set_title(title);
     generic_ui.set_details(summary, "");

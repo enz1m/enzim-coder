@@ -9,6 +9,19 @@ const CODE_BLOCK_BACKGROUND_ALPHA: &str = "60%";
 // Keep blank markdown lines selectable without collapsing them into a thin seam.
 const COMPACT_BLANK_LINE_MARKUP: &str = "\u{00A0}";
 
+pub(super) struct StreamingMarkdownBlocks {
+    pub(super) finalized_blocks: Vec<String>,
+    pub(super) tail_block: String,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StreamingBlockKind {
+    Paragraph,
+    List,
+    Heading,
+    CodeFence,
+}
+
 fn escape_markup(text: &str) -> String {
     gtk::glib::markup_escape_text(text).to_string()
 }
@@ -91,6 +104,90 @@ fn looks_like_list_block(text: &str) -> bool {
         .take(2)
         .count()
         >= 2
+}
+
+fn finish_streaming_block(current: &mut String, blocks: &mut Vec<String>) {
+    let block = current.trim_end_matches('\n').trim().to_string();
+    current.clear();
+    if !block.is_empty() {
+        blocks.push(block);
+    }
+}
+
+pub(super) fn split_streaming_blocks(text: &str) -> StreamingMarkdownBlocks {
+    let mut finalized_blocks = Vec::new();
+    let mut current = String::new();
+    let mut current_kind: Option<StreamingBlockKind> = None;
+    let mut in_code_fence = false;
+
+    for raw_line in text.lines() {
+        let line = raw_line.trim_end();
+        let stripped = line.trim_start();
+
+        if in_code_fence {
+            if !current.is_empty() {
+                current.push('\n');
+            }
+            current.push_str(line);
+            if stripped.starts_with("```") {
+                in_code_fence = false;
+                current_kind = None;
+                finish_streaming_block(&mut current, &mut finalized_blocks);
+            }
+            continue;
+        }
+
+        if stripped.starts_with("```") {
+            finish_streaming_block(&mut current, &mut finalized_blocks);
+            current.push_str(line);
+            current_kind = Some(StreamingBlockKind::CodeFence);
+            in_code_fence = true;
+            continue;
+        }
+
+        if stripped.is_empty() {
+            current_kind = None;
+            finish_streaming_block(&mut current, &mut finalized_blocks);
+            continue;
+        }
+
+        let next_kind = if stripped.starts_with('#') {
+            StreamingBlockKind::Heading
+        } else if is_list_line(stripped) {
+            StreamingBlockKind::List
+        } else {
+            StreamingBlockKind::Paragraph
+        };
+
+        let should_break = match current_kind {
+            None => false,
+            Some(StreamingBlockKind::Heading) => true,
+            Some(StreamingBlockKind::Paragraph) => next_kind != StreamingBlockKind::Paragraph,
+            Some(StreamingBlockKind::List) => next_kind != StreamingBlockKind::List,
+            Some(StreamingBlockKind::CodeFence) => false,
+        };
+        if should_break {
+            finish_streaming_block(&mut current, &mut finalized_blocks);
+        }
+
+        if !current.is_empty() {
+            current.push('\n');
+        }
+        current.push_str(line);
+
+        if next_kind == StreamingBlockKind::Heading {
+            current_kind = None;
+            finish_streaming_block(&mut current, &mut finalized_blocks);
+        } else {
+            current_kind = Some(next_kind);
+        }
+    }
+
+    let tail_block = current.trim_end_matches('\n').trim().to_string();
+    StreamingMarkdownBlocks {
+        finalized_blocks,
+        tail_block,
+    }
 }
 
 fn parse_link_line_col_suffix(href: &str) -> Option<(u32, Option<u32>)> {

@@ -204,10 +204,14 @@
                     match item_kind.as_str() {
                         "agentMessage" => {
                             turn_ui.agent_message_item_ids.insert(item_id.clone());
-                            if !turn_ui.text_widgets.contains_key(&item_id) {
-                                let label =
-                                    super::message_render::create_text_segment_revealed(&turn_ui.body_box);
-                                turn_ui.text_widgets.insert(item_id.clone(), label);
+                            if !turn_ui.streaming_text_widgets.contains_key(&item_id) {
+                                let streaming_ui =
+                                    super::message_render::create_streaming_markdown_segment_revealed(
+                                        &turn_ui.body_box,
+                                    );
+                                turn_ui
+                                    .streaming_text_widgets
+                                    .insert(item_id.clone(), streaming_ui);
                                 turn_ui.text_buffers.insert(item_id.clone(), String::new());
                                 turn_ui
                                     .text_pending_deltas
@@ -439,10 +443,14 @@
                     match item_kind.as_str() {
                         "agentMessage" => {
                             turn_ui.agent_message_item_ids.insert(item_id.clone());
-                            if !turn_ui.text_widgets.contains_key(&item_id) {
-                                let label =
-                                    super::message_render::create_text_segment_revealed(&turn_ui.body_box);
-                                turn_ui.text_widgets.insert(item_id.clone(), label);
+                            if !turn_ui.streaming_text_widgets.contains_key(&item_id) {
+                                let streaming_ui =
+                                    super::message_render::create_streaming_markdown_segment_revealed(
+                                        &turn_ui.body_box,
+                                    );
+                                turn_ui
+                                    .streaming_text_widgets
+                                    .insert(item_id.clone(), streaming_ui);
                                 turn_ui.text_buffers.insert(item_id.clone(), String::new());
                                 turn_ui
                                     .text_pending_deltas
@@ -488,8 +496,10 @@
                                 pending.drain(..flush_at);
                                 let buffer = turn_ui.text_buffers.entry(item_id.clone()).or_default();
                                 buffer.push_str(&flush_chunk);
-                                if let Some(label) = turn_ui.text_widgets.get(&item_id) {
-                                    super::markdown::set_markdown(label, buffer);
+                                if let Some(streaming_ui) =
+                                    turn_ui.streaming_text_widgets.get(&item_id)
+                                {
+                                    streaming_ui.render_streaming(buffer);
                                 }
                             }
                         }
@@ -512,9 +522,7 @@
                                         None,
                                     ),
                                 );
-                                command_ui.output_text.borrow_mut().push_str(&delta);
-                                let full_output = command_ui.output_text.borrow().clone();
-                                command_ui.set_command_output(&full_output);
+                                command_ui.append_output_delta(&delta);
                             }
                         }
                         "fileChange" => {}
@@ -551,11 +559,7 @@
                             }
                             if let Some(generic_ui) = turn_ui.generic_item_widgets.get_mut(&item_id)
                             {
-                                let current = generic_ui.output_text();
-                                let mut merged = current;
-                                merged.push_str(&delta);
-                                let summary = generic_ui.summary_label.text().to_string();
-                                generic_ui.set_details(&summary, &merged);
+                                generic_ui.append_output_delta(&delta);
                                 generic_ui.set_running(true);
                             }
                         }
@@ -567,7 +571,6 @@
                                 .map(|client| client.backend_kind() == "opencode")
                                 .unwrap_or(false)
                             {
-                                let reasoning_text = status_buffer.clone();
                                 if !turn_ui.generic_item_widgets.contains_key(&item_id) {
                                     let (widget, generic_ui) =
                                         super::message_render::create_reasoning_widget();
@@ -598,7 +601,7 @@
                                         "Thinking... {elapsed_label}"
                                     ));
                                     generic_ui.set_status("");
-                                    generic_ui.set_details("", &reasoning_text);
+                                    generic_ui.append_output_delta(&delta);
                                     generic_ui.set_running(true);
                                 }
                             }
@@ -711,13 +714,17 @@
                             } else {
                                 streamed_text
                             };
-                            if !turn_ui.text_widgets.contains_key(&item_id) {
-                                let label =
-                                    super::message_render::create_text_segment_revealed(&turn_ui.body_box);
-                                turn_ui.text_widgets.insert(item_id.clone(), label);
+                            if !turn_ui.streaming_text_widgets.contains_key(&item_id) {
+                                let streaming_ui =
+                                    super::message_render::create_streaming_markdown_segment_revealed(
+                                        &turn_ui.body_box,
+                                    );
+                                turn_ui
+                                    .streaming_text_widgets
+                                    .insert(item_id.clone(), streaming_ui);
                             }
-                            if let Some(label) = turn_ui.text_widgets.get(&item_id) {
-                                super::markdown::set_markdown(label, &final_text);
+                            if let Some(streaming_ui) = turn_ui.streaming_text_widgets.get(&item_id) {
+                                streaming_ui.set_complete_markdown(&final_text);
                             }
                             turn_ui
                                 .text_buffers
@@ -822,7 +829,7 @@
                                 } else if let Some(actions_md) = command_actions_md.as_deref() {
                                     command_ui.set_command_output(actions_md);
                                 }
-                                command_ui.revealer.set_reveal_child(false);
+                                command_ui.set_output_revealed(false);
                             }
 
                             if should_render_active {
@@ -875,7 +882,7 @@
                                 });
                                 let mut cached = cached_commands_for_thread.borrow_mut();
                                 super::history::upsert_cached_command(&mut cached, entry);
-                                super::history::save_cached_commands(&db, thread_id, &cached);
+                                super::history::save_cached_commands_async(thread_id, &cached);
                             }
                             }
                             if should_render_active && is_probably_file_write_command(command) {
@@ -936,9 +943,7 @@
                                 });
                                 let mut cached = cached_file_changes_for_thread.borrow_mut();
                                 super::history::upsert_cached_file_change(&mut cached, entry);
-                                super::history::save_cached_file_changes(
-                                    &db, thread_id, &cached,
-                                );
+                                super::history::save_cached_file_changes_async(thread_id, &cached);
                             }
                             }
                         }
@@ -997,9 +1002,7 @@
                                 });
                                 let mut cached = cached_tool_items_for_thread.borrow_mut();
                                 super::history::upsert_cached_tool_item(&mut cached, entry);
-                                super::history::save_cached_tool_items(
-                                    &db, thread_id, &cached,
-                                );
+                                super::history::save_cached_tool_items_async(thread_id, &cached);
                             }
                             }
                         }
@@ -1053,9 +1056,7 @@
                                 });
                                 let mut cached = cached_tool_items_for_thread.borrow_mut();
                                 super::history::upsert_cached_tool_item(&mut cached, entry);
-                                super::history::save_cached_tool_items(
-                                    &db, thread_id, &cached,
-                                );
+                                super::history::save_cached_tool_items_async(thread_id, &cached);
                             }
                             }
                         }

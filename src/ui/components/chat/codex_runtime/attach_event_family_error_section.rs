@@ -26,9 +26,7 @@
                                 });
                                 let mut cached = cached_turn_errors_for_thread.borrow_mut();
                                 super::history::upsert_cached_turn_error(&mut cached, entry);
-                                super::history::save_cached_turn_errors(
-                                    &db, thread_id, &cached,
-                                );
+                                super::history::save_cached_turn_errors_async(thread_id, &cached);
                             }
 
                             if let Some(turn_ui) = turn_uis.borrow_mut().get_mut(&turn_id) {

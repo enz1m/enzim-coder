@@ -1,5 +1,15 @@
 {
-        while let Ok((event_profile_id, event)) = event_rx.try_recv() {
+        const MAX_EVENTS_PER_TICK: usize = 64;
+        const EVENT_TICK_BUDGET_MICROS: i64 = 8_000;
+        let event_tick_started = gtk::glib::monotonic_time();
+        let mut processed_events = 0usize;
+        while processed_events < MAX_EVENTS_PER_TICK
+            && (gtk::glib::monotonic_time() - event_tick_started) < EVENT_TICK_BUDGET_MICROS
+        {
+            let Ok((event_profile_id, event)) = event_rx.try_recv() else {
+                break;
+            };
+            processed_events += 1;
             let event_client = manager.client_for_profile(event_profile_id);
             let active_thread_id = active_thread_id.borrow().clone();
             let event_turn_id = super::codex_events::extract_turn_id(&event.params);

@@ -503,7 +503,19 @@
                                 let turn_started_ui_tx_for_thread =
                                     turn_started_ui_tx_for_thread.clone();
                                 std::thread::spawn(move || {
-                                    if let Some(turn_id) = steer_turn_id.clone() {
+                                    let mut attempted_turn_ids: Vec<String> = Vec::new();
+                                    let mut steer_attempt = steer_turn_id
+                                        .clone()
+                                        .or_else(|| super::codex_runtime::active_turn_for_thread(&thread_id));
+                                    let mut steer_error: Option<String> = None;
+                                    loop {
+                                        let Some(turn_id) = steer_attempt.clone() else {
+                                            break;
+                                        };
+                                        if attempted_turn_ids.iter().any(|id| id == &turn_id) {
+                                            break;
+                                        }
+                                        attempted_turn_ids.push(turn_id.clone());
                                         match client.turn_steer(
                                             &thread_id,
                                             &turn_id,
@@ -517,14 +529,26 @@
                                                 return;
                                             }
                                             Err(err) => {
-                                                eprintln!(
-                                                    "turn/steer failed, falling back to send: {err}"
-                                                );
+                                                steer_error = Some(err);
+                                                steer_attempt =
+                                                    super::codex_runtime::active_turn_for_thread(
+                                                        &thread_id,
+                                                    );
                                             }
                                         }
                                     }
 
-                                    if let Some(turn_id) = current_turn_id.clone() {
+                                    if let Some(err) = steer_error.as_deref() {
+                                        eprintln!(
+                                            "turn/steer failed after retry, falling back to send: {err}"
+                                        );
+                                    }
+
+                                    let fallback_turn_id = super::codex_runtime::active_turn_for_thread(
+                                        &thread_id,
+                                    )
+                                    .or(current_turn_id.clone());
+                                    if let Some(turn_id) = fallback_turn_id {
                                         let _ = client.turn_interrupt(&thread_id, &turn_id);
                                         thread::sleep(Duration::from_millis(200));
                                     }

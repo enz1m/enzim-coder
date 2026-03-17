@@ -15,7 +15,7 @@ type PendingRequestSyncMessage = (String, Result<Vec<Value>, String>);
 
 #[allow(clippy::too_many_arguments)]
 fn replace_pending_requests_for_thread(
-    db: &Rc<AppDb>,
+    _db: &Rc<AppDb>,
     manager: &Rc<CodexProfileManager>,
     thread_id: &str,
     entries: Vec<Value>,
@@ -49,7 +49,7 @@ fn replace_pending_requests_for_thread(
     }
 
     cached_pending_requests_for_thread.replace(entries.clone());
-    super::history::save_cached_pending_requests(db, thread_id, &entries);
+    super::history::save_cached_pending_requests_async(thread_id, &entries);
 
     let Some(client) = manager.resolve_running_client_for_thread_id(thread_id) else {
         return;
