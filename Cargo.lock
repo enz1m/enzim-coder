@@ -126,10 +126,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "enzim_core"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "reqwest",
+ "serde_json",
+]
+
+[[package]]
 name = "enzimcoder"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "diffy",
+ "enzim_core",
+ "libc",
+ "reqwest",
+ "rusqlite",
+ "serde_json",
+ "serde_yaml",
+ "toml",
+]
+
+[[package]]
+name = "enzimcoder-gtk"
+version = "0.1.3"
+dependencies = [
+ "diffy",
+ "enzimcoder",
  "gtk4",
  "libadwaita",
  "libc",

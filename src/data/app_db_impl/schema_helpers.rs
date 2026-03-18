@@ -2,7 +2,7 @@ use super::*;
 use rusqlite::params;
 
 impl AppDb {
-    pub(crate) fn open_file_connection() -> rusqlite::Result<Connection> {
+    pub fn open_file_connection() -> rusqlite::Result<Connection> {
         let db_path = default_db_path();
         if let Some(parent) = db_path.parent() {
             let _ = fs::create_dir_all(parent);

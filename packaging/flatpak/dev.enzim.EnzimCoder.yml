@@ -24,7 +24,7 @@ modules:
   - name: enzimcoder
     buildsystem: simple
     build-commands:
-      - cargo build --release --locked
+      - cargo build --release --locked -p enzimcoder-gtk
       - install -Dm755 target/release/enzimcoder /app/bin/enzimcoder
       - install -Dm644 packaging/shared/dev.enzim.EnzimCoder.desktop /app/share/applications/dev.enzim.EnzimCoder.desktop
       - install -Dm644 packaging/shared/dev.enzim.EnzimCoder.metainfo.xml /app/share/metainfo/dev.enzim.EnzimCoder.metainfo.xml

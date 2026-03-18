@@ -1,7 +1,7 @@
 version: 1
 
 script:
-  - cargo build --release --locked --manifest-path Cargo.toml
+  - cargo build --release --locked -p enzimcoder-gtk --manifest-path Cargo.toml
   - rm -rf AppDir
   - mkdir -p AppDir/usr/bin
   - mkdir -p AppDir/usr/share/applications

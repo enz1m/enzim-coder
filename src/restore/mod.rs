@@ -1,5 +1,5 @@
 mod repository;
-mod types;
+pub use enzim_core::restore_types as types;
 
 use crate::data::AppDb;
 use serde_json::Value;

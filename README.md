@@ -120,21 +120,41 @@ System packages required:
 - `pkg-config`
 - C build toolchain
 
-Build and run:
+Check the workspace:
 
 ```bash
-cargo run --release
+cargo check --workspace
+```
+
+Run the GTK app:
+
+```bash
+cargo run -p enzimcoder-gtk --release
 ```
 
 For local testing with isolated app data:
 
 ```bash
-ENZIMCODER_PROFILE_HOME_DIR=/path/to/testdir cargo run --release
+ENZIMCODER_PROFILE_HOME_DIR=/path/to/testdir cargo run -p enzimcoder-gtk --release
+```
+
+Build the release binary used by packaging:
+
+```bash
+cargo build -p enzimcoder-gtk --release --locked
+```
+
+Build the AppImage:
+
+```bash
+scripts/build_appimage.sh
 ```
 
 ## 🗂️ Project Layout
 
-- `src/` application code
+- `apps/gtk/` GTK app crate
+- `crates/enzim_core/` shared core logic
+- `src/` shared app/service layer used by the platform apps
 - `packaging/` release packaging
 - `icons/` bundled icon subset used by the resource file
 
