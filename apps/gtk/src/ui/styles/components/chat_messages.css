@@ -147,6 +147,15 @@ button.chat-message-context-item:focus-visible image,
 .chat-user-message-content {
 }
 
+.chat-user-origin-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: alpha(@accent_color, 0.92);
+  margin: 0 2px 2px 0;
+}
+
 .chat-user-image-row {
   margin-top: 1px;
 }

@@ -132,6 +132,64 @@ impl AppDb {
 
             CREATE INDEX IF NOT EXISTS idx_remote_pending_prompts_thread
                 ON remote_pending_prompts(local_thread_id, consumed_at, created_at, id);
+
+            CREATE TABLE IF NOT EXISTS enzim_agent_config (
+                id INTEGER PRIMARY KEY CHECK(id = 1),
+                base_url TEXT NOT NULL DEFAULT '',
+                api_key TEXT,
+                model_id TEXT,
+                system_prompt_override TEXT,
+                cached_models_json TEXT,
+                cached_models_refreshed_at INTEGER,
+                updated_at INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS enzim_agent_loops (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                local_thread_id INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                prompt_text TEXT NOT NULL,
+                instructions_text TEXT NOT NULL,
+                backend_kind TEXT NOT NULL,
+                remote_thread_id_snapshot TEXT,
+                config_base_url_snapshot TEXT NOT NULL,
+                config_model_id_snapshot TEXT NOT NULL,
+                system_prompt_snapshot TEXT NOT NULL,
+                iteration_count INTEGER NOT NULL DEFAULT 0,
+                error_count INTEGER NOT NULL DEFAULT 0,
+                last_seen_external_turn_id TEXT,
+                final_summary_text TEXT,
+                last_error_text TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                finished_at INTEGER,
+                FOREIGN KEY(local_thread_id) REFERENCES threads(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_enzim_agent_loops_thread
+                ON enzim_agent_loops(local_thread_id, status, updated_at, id);
+
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_enzim_agent_loops_active_thread
+                ON enzim_agent_loops(local_thread_id)
+                WHERE status IN ('active', 'waiting_runtime', 'evaluating', 'waiting_user');
+
+            CREATE TABLE IF NOT EXISTS enzim_agent_loop_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                loop_id INTEGER NOT NULL,
+                sequence_no INTEGER NOT NULL,
+                event_kind TEXT NOT NULL,
+                author_kind TEXT NOT NULL,
+                external_turn_id TEXT,
+                full_text TEXT,
+                compact_text TEXT,
+                decision_json TEXT,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY(loop_id) REFERENCES enzim_agent_loops(id) ON DELETE CASCADE,
+                UNIQUE(loop_id, sequence_no)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_enzim_agent_loop_events_loop
+                ON enzim_agent_loop_events(loop_id, sequence_no, id);
             "#,
         )?;
         self.ensure_threads_codex_column()?;

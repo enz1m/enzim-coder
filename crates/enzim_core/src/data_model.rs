@@ -147,6 +147,21 @@ impl VoiceToTextConfig {
 }
 
 #[derive(Clone, Debug)]
+pub struct ThreadAutocloseConfig {
+    pub enabled: bool,
+    pub days: i64,
+}
+
+impl Default for ThreadAutocloseConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            days: 30,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 #[allow(dead_code)]
 pub struct RemoteTelegramAccountRecord {
     pub id: i64,

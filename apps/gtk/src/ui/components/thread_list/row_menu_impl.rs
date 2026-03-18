@@ -687,61 +687,16 @@ fn build_thread_context_menu(
         let manager = manager.clone();
         let active_thread_id = active_thread_id.clone();
         let thread_id = thread.id;
-        let thread_worktree_path = thread.worktree_path.clone();
-        let thread_has_worktree = thread.worktree_active;
-        let current_thread_id = current_thread_id.clone();
         close_button.connect_clicked(move |_| {
             let scroll_state = row.parent().and_then(|parent| {
                 let widget: gtk::Widget = parent.upcast();
                 crate::ui::widget_tree::capture_ancestor_vscroll(&widget)
             });
-            let remote_thread_id = current_thread_id.borrow().clone();
-            if let Some(thread_id) = remote_thread_id.as_deref() {
-                if let Some(client) = manager.resolve_client_for_thread_id(thread_id) {
-                    let _ = client.thread_archive(thread_id);
-                }
-            }
-            if let Some(path) = thread_worktree_path
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
+            if let Err(err) =
+                close_local_thread_everywhere(&db, &manager, &active_thread_id, thread_id)
             {
-                if let Err(err) = crate::services::app::worktree::stop_worktree_checkout(path) {
-                    eprintln!("failed to clean up worktree for closed thread: {err}");
-                }
-                let _ = db.set_thread_worktree_info(thread_id, None, None, false);
-            } else if thread_has_worktree {
-                let _ = db.set_thread_worktree_info(thread_id, None, None, false);
-            }
-            if let Err(err) = crate::services::app::restore::clear_thread_restore_data(db.as_ref(), thread_id) {
-                eprintln!("failed to clear restore history for closed thread: {err}");
-            }
-            if let Err(err) = db.close_thread(thread_id) {
                 eprintln!("failed to close thread: {err}");
-            } else if let Some(listbox) = row.parent().and_downcast::<gtk::ListBox>() {
-                if let Some(thread_id) = remote_thread_id.as_deref() {
-                    layout::remove_thread_from_multiview_layout(db.as_ref(), thread_id);
-                }
-                listbox.remove(&row);
-                let _ = with_thread_list_for_listbox(&listbox, |thread_list| {
-                    thread_list.refresh_profile_icon_visibility();
-                });
-                let selected_local_thread = db
-                    .get_setting("last_active_thread_id")
-                    .ok()
-                    .flatten()
-                    .and_then(|value| value.parse::<i64>().ok());
-                if selected_local_thread == Some(thread_id) {
-                    let _ = db.set_setting("last_active_thread_id", "");
-                    let _ = db.set_setting("pending_profile_thread_id", "");
-                    active_thread_id.replace(None);
-                }
-                let active_id = active_thread_id.borrow().clone();
-                if let Some(active_id) = active_id {
-                    if remote_thread_id.as_deref() == Some(active_id.as_str()) {
-                        active_thread_id.replace(None);
-                    }
-                }
+            } else {
                 if let Some((scroll, value)) = scroll_state {
                     crate::ui::widget_tree::restore_vscroll_position(&scroll, value);
                 }

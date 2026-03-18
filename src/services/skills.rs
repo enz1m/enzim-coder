@@ -2,8 +2,8 @@ use crate::data::{AppDb, CodexProfileRecord};
 use serde_json::Value;
 
 pub use crate::skill_mcp::{
-    McpCatalogEntry, PolicyKind, ProfileAssignments, SkillCatalogEntry, SkillMcpCatalog,
-    disabled_skill_markers,
+    disabled_skill_markers, McpCatalogEntry, PolicyKind, ProfileAssignments, SkillCatalogEntry,
+    SkillMcpCatalog,
 };
 
 pub fn supports_skill_assignment_for_backend(backend_kind: &str) -> bool {

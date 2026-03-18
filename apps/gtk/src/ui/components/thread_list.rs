@@ -62,6 +62,83 @@ fn with_thread_list_for_listbox<T>(
     })
 }
 
+fn remove_local_thread_from_registered_lists(local_thread_id: i64) {
+    let target_name = format!("thread-{local_thread_id}");
+    THREAD_LIST_REGISTRY.with(|registry| {
+        for thread_list in registry.borrow().values() {
+            if let Some(row) = find_row_by_widget_name(&thread_list.listbox, &target_name) {
+                thread_list.listbox.remove(&row);
+                thread_list.refresh_profile_icon_visibility();
+            }
+        }
+    });
+}
+
+pub(crate) fn close_local_thread_everywhere(
+    db: &Rc<AppDb>,
+    manager: &Rc<CodexProfileManager>,
+    active_thread_id: &Rc<RefCell<Option<String>>>,
+    local_thread_id: i64,
+) -> Result<(), String> {
+    let Some(thread) = db
+        .get_thread_record(local_thread_id)
+        .map_err(|err| err.to_string())?
+    else {
+        return Ok(());
+    };
+
+    let remote_thread_id = thread
+        .remote_thread_id()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string());
+
+    if let Some(thread_id) = remote_thread_id.as_deref() {
+        if let Some(client) = manager.resolve_client_for_thread_id(thread_id) {
+            let _ = client.thread_archive(thread_id);
+        }
+    }
+
+    if let Some(path) = thread
+        .worktree_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        crate::services::app::worktree::stop_worktree_checkout(path)?;
+        let _ = db.set_thread_worktree_info(local_thread_id, None, None, false);
+    } else if thread.worktree_active {
+        let _ = db.set_thread_worktree_info(local_thread_id, None, None, false);
+    }
+
+    crate::services::app::restore::clear_thread_restore_data(db.as_ref(), local_thread_id)?;
+    db.close_thread(local_thread_id)
+        .map_err(|err| err.to_string())?;
+
+    if let Some(thread_id) = remote_thread_id.as_deref() {
+        layout::remove_thread_from_multiview_layout(db.as_ref(), thread_id);
+    }
+    remove_local_thread_from_registered_lists(local_thread_id);
+
+    let selected_local_thread = db
+        .get_setting("last_active_thread_id")
+        .ok()
+        .flatten()
+        .and_then(|value| value.parse::<i64>().ok());
+    if selected_local_thread == Some(local_thread_id) {
+        let _ = db.set_setting("last_active_thread_id", "");
+        let _ = db.set_setting("pending_profile_thread_id", "");
+        active_thread_id.replace(None);
+    }
+    if let Some(active_id) = active_thread_id.borrow().clone() {
+        if remote_thread_id.as_deref() == Some(active_id.as_str()) {
+            active_thread_id.replace(None);
+        }
+    }
+
+    Ok(())
+}
+
 #[derive(Clone)]
 pub struct ThreadList {
     container: gtk::Box,

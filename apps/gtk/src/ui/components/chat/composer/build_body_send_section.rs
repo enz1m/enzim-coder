@@ -179,6 +179,73 @@
             }
 
             let active_thread = active_thread_id.borrow().clone();
+            if let Some(thread_id) = active_thread.as_deref() {
+                if crate::services::enzim_agent::has_pending_question(db.as_ref(), thread_id) {
+                    if has_images {
+                        super::message_render::append_message(
+                            &messages_box,
+                            Some(&messages_scroll),
+                            &conversation_stack,
+                            "Enzim Agent is waiting for a text answer. Remove image attachments and answer with text only.",
+                            false,
+                            std::time::SystemTime::now(),
+                        );
+                        return;
+                    }
+                    if text.trim().is_empty() {
+                        super::message_render::append_message(
+                            &messages_box,
+                            Some(&messages_scroll),
+                            &conversation_stack,
+                            "Enzim Agent is waiting for your answer. Type the answer in the composer or open the Enzim Agent button.",
+                            false,
+                            std::time::SystemTime::now(),
+                        );
+                        return;
+                    }
+                    let submit_loop_answer = submit_loop_answer.borrow().clone();
+                    let Some(submit_loop_answer) = submit_loop_answer else {
+                        super::message_render::append_message(
+                            &messages_box,
+                            Some(&messages_scroll),
+                            &conversation_stack,
+                            "Enzim Agent answer handler is not available.",
+                            false,
+                            std::time::SystemTime::now(),
+                        );
+                        return;
+                    };
+                    match submit_loop_answer(thread_id.to_string(), text.to_string(), "composer".to_string()) {
+                        Ok(()) => {
+                            buf.set_text("");
+                            selected_mentions.borrow_mut().clear();
+                            selected_images.borrow_mut().clear();
+                            refresh_image_preview_strip(
+                                &image_preview_scroll,
+                                &image_preview_strip,
+                                &selected_images,
+                                &send_button,
+                                &input_view,
+                                &thread_locked,
+                            );
+                            mention_popover.popdown();
+                            placeholder.set_visible(true);
+                            update_input_height(&input_scroll, &input_view, min_height, max_height);
+                        }
+                        Err(err) => {
+                            super::message_render::append_message(
+                                &messages_box,
+                                Some(&messages_scroll),
+                                &conversation_stack,
+                                &err,
+                                false,
+                                std::time::SystemTime::now(),
+                            );
+                        }
+                    }
+                    return;
+                }
+            }
             let turn_id = active_thread
                 .as_deref()
                 .and_then(super::codex_runtime::active_turn_for_thread);

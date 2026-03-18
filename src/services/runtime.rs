@@ -1,6 +1,4 @@
-pub use crate::backend::{
-    AccountProviderInfo, BackendCapabilities, OAuthFlowInfo, RuntimeClient,
-};
+pub use crate::backend::{AccountProviderInfo, BackendCapabilities, OAuthFlowInfo, RuntimeClient};
 pub use crate::codex_appserver::{
     AccountInfo, AppServerNotification, McpServerInfo, ModelInfo, SkillInfo,
 };

@@ -733,7 +733,6 @@ fn append_command_from_value(body_box: &gtk::Box, value: &Value) {
     {
         command_ui.set_command_output(output);
     }
-    command_ui.set_output_revealed(false);
     super::message_render::append_action_widget(body_box, "commandExecution", &widget);
 }
 
@@ -1349,13 +1348,22 @@ fn render_local_turn(
     let user_payload_from_items = parsed_items
         .as_ref()
         .and_then(|items| extract_user_message_payload_from_items(items));
+    let user_origin_badge = super::message_render::chat_handles_for_messages_box(messages_box)
+        .and_then(|(db, _)| {
+            db.enzim_agent_turn_origin(thread_id, &turn.external_turn_id)
+                .ok()
+                .flatten()
+        })
+        .filter(|origin| origin == "enzim_agent")
+        .map(|_| "Enzim Agent");
     if let Some(payload) = user_payload_from_items {
-        let user_content = super::message_render::append_user_message_with_images(
+        let user_content = super::message_render::append_user_message_with_images_badged(
             messages_box,
             None,
             conversation_stack,
             &payload.render_text(),
             &payload.local_image_paths,
+            user_origin_badge,
             to_system_time(turn.created_at),
         );
         let _ = super::message_render::set_message_row_marker(
@@ -1364,12 +1372,13 @@ fn render_local_turn(
         );
         has_any = true;
     } else if !turn.user_text.trim().is_empty() {
-        let user_bubble = super::message_render::append_message(
+        let user_bubble = super::message_render::append_user_message_with_images_badged(
             messages_box,
             None,
             conversation_stack,
             &turn.user_text,
-            true,
+            &[],
+            user_origin_badge,
             to_system_time(turn.created_at),
         );
         let _ = super::message_render::set_message_row_marker(

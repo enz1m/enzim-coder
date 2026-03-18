@@ -2,6 +2,18 @@ use super::*;
 use rusqlite::params;
 
 impl AppDb {
+    const SETTING_THREAD_AUTOCLOSE_ENABLED: &'static str = "thread_autoclose_enabled";
+    const SETTING_THREAD_AUTOCLOSE_DAYS: &'static str = "thread_autoclose_days";
+
+    pub fn open_detached() -> rusqlite::Result<Self> {
+        let conn = Self::open_file_connection()?;
+        let db = Self {
+            conn: RefCell::new(conn),
+        };
+        db.init_schema()?;
+        Ok(db)
+    }
+
     pub fn open_default() -> Rc<Self> {
         let conn = match Self::open_file_connection() {
             Ok(conn) => conn,
@@ -196,6 +208,64 @@ impl AppDb {
             params![now, thread_id],
         )?;
         Ok(())
+    }
+
+    pub fn thread_autoclose_config(&self) -> rusqlite::Result<ThreadAutocloseConfig> {
+        let enabled = self
+            .get_setting(Self::SETTING_THREAD_AUTOCLOSE_ENABLED)?
+            .as_deref()
+            .map(|value| matches!(value.trim(), "1" | "true" | "yes" | "on"))
+            .unwrap_or(false);
+        let days = self
+            .get_setting(Self::SETTING_THREAD_AUTOCLOSE_DAYS)?
+            .and_then(|value| value.trim().parse::<i64>().ok())
+            .map(|value| value.max(1))
+            .unwrap_or_else(|| ThreadAutocloseConfig::default().days);
+        Ok(ThreadAutocloseConfig { enabled, days })
+    }
+
+    pub fn upsert_thread_autoclose_config(
+        &self,
+        config: &ThreadAutocloseConfig,
+    ) -> rusqlite::Result<()> {
+        self.set_setting(
+            Self::SETTING_THREAD_AUTOCLOSE_ENABLED,
+            if config.enabled { "1" } else { "0" },
+        )?;
+        self.set_setting(
+            Self::SETTING_THREAD_AUTOCLOSE_DAYS,
+            &config.days.max(1).to_string(),
+        )
+    }
+
+    pub fn list_thread_ids_for_autoclose_before(
+        &self,
+        cutoff_timestamp: i64,
+    ) -> rusqlite::Result<Vec<i64>> {
+        let conn = self.conn.borrow();
+        let mut stmt = conn.prepare(
+            "SELECT t.id
+             FROM threads t
+             WHERE t.is_closed = 0
+               AND EXISTS (
+                   SELECT 1
+                   FROM chat_turns turns
+                   WHERE turns.local_thread_id = t.id
+               )
+               AND COALESCE(
+                   (
+                       SELECT MAX(
+                           COALESCE(turns.completed_at, turns.updated_at, turns.created_at)
+                       )
+                       FROM chat_turns turns
+                       WHERE turns.local_thread_id = t.id
+                   ),
+                   t.created_at
+               ) <= ?1
+             ORDER BY t.id ASC",
+        )?;
+        let rows = stmt.query_map(params![cutoff_timestamp], |row| row.get(0))?;
+        rows.collect()
     }
 
     pub fn delete_open_threads_without_turns(&self) -> rusqlite::Result<usize> {

@@ -829,7 +829,6 @@
                                 } else if let Some(actions_md) = command_actions_md.as_deref() {
                                     command_ui.set_command_output(actions_md);
                                 }
-                                command_ui.set_output_revealed(false);
                             }
 
                             if should_render_active {

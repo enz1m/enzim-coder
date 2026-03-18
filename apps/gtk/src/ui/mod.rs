@@ -207,6 +207,90 @@ fn start_remote_thread_activation_loop(
     });
 }
 
+fn start_thread_autoclose_loop(
+    db: Rc<AppDb>,
+    manager: Rc<CodexProfileManager>,
+    active_thread_id: Rc<RefCell<Option<String>>>,
+) {
+    let (tx, rx) = mpsc::channel::<Vec<i64>>();
+    let scan_in_flight = Rc::new(RefCell::new(false));
+
+    {
+        let db = db.clone();
+        let manager = manager.clone();
+        let active_thread_id = active_thread_id.clone();
+        let scan_in_flight = scan_in_flight.clone();
+        crate::ui::scheduler::every(Duration::from_millis(120), move || {
+            while let Ok(thread_ids) = rx.try_recv() {
+                scan_in_flight.replace(false);
+                for thread_id in thread_ids {
+                    let Some(thread) = db.get_thread_record(thread_id).ok().flatten() else {
+                        continue;
+                    };
+                    let is_selected_local_thread = db
+                        .get_setting("last_active_thread_id")
+                        .ok()
+                        .flatten()
+                        .and_then(|value| value.parse::<i64>().ok())
+                        == Some(thread_id);
+                    let is_pending_profile_thread = db
+                        .get_setting("pending_profile_thread_id")
+                        .ok()
+                        .flatten()
+                        .and_then(|value| value.parse::<i64>().ok())
+                        == Some(thread_id);
+                    let is_active_thread = active_thread_id
+                        .borrow()
+                        .as_deref()
+                        .zip(thread.remote_thread_id())
+                        .is_some_and(|(active_id, thread_remote_id)| active_id == thread_remote_id);
+                    if is_active_thread || is_selected_local_thread || is_pending_profile_thread {
+                        continue;
+                    }
+                    if let Err(err) = crate::ui::components::thread_list::close_local_thread_everywhere(
+                        &db,
+                        &manager,
+                        &active_thread_id,
+                        thread_id,
+                    ) {
+                        eprintln!("failed to auto-close thread {thread_id}: {err}");
+                    }
+                }
+            }
+            gtk::glib::ControlFlow::Continue
+        });
+    }
+
+    {
+        let scan_in_flight = scan_in_flight.clone();
+        crate::ui::scheduler::every(Duration::from_secs(900), move || {
+            if *scan_in_flight.borrow() {
+                return gtk::glib::ControlFlow::Continue;
+            }
+            scan_in_flight.replace(true);
+            let tx = tx.clone();
+            thread::spawn(move || {
+                let db = AppDb::open_default();
+                let config = db.thread_autoclose_config().unwrap_or_default();
+                if !config.enabled || config.days < 1 {
+                    let _ = tx.send(Vec::new());
+                    return;
+                }
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64;
+                let cutoff = now.saturating_sub(config.days.saturating_mul(24 * 60 * 60));
+                let thread_ids = db
+                    .list_thread_ids_for_autoclose_before(cutoff)
+                    .unwrap_or_default();
+                let _ = tx.send(thread_ids);
+            });
+            gtk::glib::ControlFlow::Continue
+        });
+    }
+}
+
 fn schedule_startup_memory_trim(window: &adw::ApplicationWindow) {
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
     {
@@ -365,6 +449,7 @@ pub fn build_ui(app: &adw::Application) {
         active_thread_id.clone(),
         active_workspace_path.clone(),
     );
+    start_thread_autoclose_loop(db.clone(), profile_manager.clone(), active_thread_id.clone());
 
     let main_container = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     main_container.add_css_class("main-container");

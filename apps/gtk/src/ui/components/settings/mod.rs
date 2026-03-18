@@ -1,4 +1,6 @@
 pub(crate) mod codex;
+pub(crate) mod enzim_agent;
+pub(crate) mod general;
 pub(crate) mod opencode;
 mod shared;
 

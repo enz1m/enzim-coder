@@ -20,10 +20,6 @@ struct CommandDetailsUi {
     command_detail_label: gtk::Label,
     output_revealer: gtk::Revealer,
     output_label: Rc<RefCell<Option<gtk::Label>>>,
-    output_toggle: gtk::Box,
-    output_toggle_label: gtk::Label,
-    output_toggle_enabled: Rc<RefCell<bool>>,
-    output_chevron: gtk::Image,
 }
 
 #[derive(Clone)]
@@ -42,7 +38,6 @@ struct GenericDetailsUi {
 }
 
 pub(super) struct CommandUi {
-    pub(super) wrapper: gtk::Box,
     pub(super) header_label: gtk::Label,
     pub(super) status_label: gtk::Label,
     pub(super) headline_text: Rc<RefCell<String>>,
@@ -53,7 +48,6 @@ pub(super) struct CommandUi {
     pub(super) running_wave_frames: Rc<RefCell<Vec<String>>>,
     details_ui: Rc<RefCell<Option<CommandDetailsUi>>>,
     pub(super) output_text: Rc<RefCell<String>>,
-    pub(super) output_toggle_enabled: Rc<RefCell<bool>>,
     pub(super) output_flush_source: Rc<RefCell<Option<gtk::glib::SourceId>>>,
 }
 
@@ -611,34 +605,16 @@ fn refresh_command_output_widgets(
     revealer: &gtk::Revealer,
     output_label: &Rc<RefCell<Option<gtk::Label>>>,
     output_text: &Rc<RefCell<String>>,
-    output_toggle: &gtk::Box,
-    output_toggle_label: &gtk::Label,
-    output_toggle_enabled: &Rc<RefCell<bool>>,
 ) {
     let output = output_text.borrow();
-    if revealer.reveals_child() {
+    if !output.trim().is_empty() {
         if let Some(output_label) = output_label.borrow().as_ref() {
             set_plain_label_text(output_label, output.as_str());
         }
+        revealer.set_reveal_child(true);
     } else if let Some(output_label) = output_label.borrow().as_ref() {
         set_plain_label_text(output_label, "");
-    }
-    if output.trim().is_empty() {
-        if output_toggle_label.text().as_str() != "No output" {
-            set_plain_label_text(output_toggle_label, "No output");
-        }
-        *output_toggle_enabled.borrow_mut() = false;
-        if !output_toggle.has_css_class("disabled") {
-            output_toggle.add_css_class("disabled");
-        }
-    } else {
-        if output_toggle_label.text().as_str() != "Show output" {
-            set_plain_label_text(output_toggle_label, "Show output");
-        }
-        *output_toggle_enabled.borrow_mut() = true;
-        if output_toggle.has_css_class("disabled") {
-            output_toggle.remove_css_class("disabled");
-        }
+        revealer.set_reveal_child(false);
     }
 }
 
@@ -689,9 +665,9 @@ fn set_command_output_revealed_state(
         };
         let output = output_text.borrow();
         set_plain_label_text(&output_label, output.as_str());
-        details.output_revealer.set_reveal_child(true);
-        details.output_chevron.set_icon_name(Some("pan-down-symbolic"));
-        set_plain_label_text(&details.output_toggle_label, "Hide output");
+        details
+            .output_revealer
+            .set_reveal_child(!output.trim().is_empty());
         return;
     }
 
@@ -699,22 +675,11 @@ fn set_command_output_revealed_state(
         set_plain_label_text(output_label, "");
     }
     details.output_revealer.set_reveal_child(false);
-    details.output_chevron.set_icon_name(Some("pan-end-symbolic"));
-    set_plain_label_text(
-        &details.output_toggle_label,
-        if *details.output_toggle_enabled.borrow() {
-            "Show output"
-        } else {
-            "No output"
-        },
-    );
 }
 
 fn build_command_details_ui(
     wrapper: &gtk::Box,
     full_command_text: &Rc<RefCell<String>>,
-    output_text: &Rc<RefCell<String>>,
-    output_toggle_enabled: &Rc<RefCell<bool>>,
 ) -> CommandDetailsUi {
     let details_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
     details_box.add_css_class("chat-activity-details");
@@ -728,34 +693,11 @@ fn build_command_details_ui(
     set_plain_label_text(&command_detail_label, &full_command_text.borrow());
     details_box.append(&command_detail_label);
 
-    let output_toggle = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    output_toggle.add_css_class("chat-command-output-toggle");
-    output_toggle.set_halign(gtk::Align::End);
-    output_toggle.set_can_target(true);
-    if !*output_toggle_enabled.borrow() {
-        output_toggle.add_css_class("disabled");
-    }
-
-    let output_toggle_row = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-    let output_chevron = gtk::Image::from_icon_name("pan-end-symbolic");
-    output_chevron.add_css_class("chat-command-chevron");
-    output_chevron.set_pixel_size(10);
-    output_toggle_row.append(&output_chevron);
-    let output_toggle_label = gtk::Label::new(Some(if *output_toggle_enabled.borrow() {
-        "Show output"
-    } else {
-        "No output"
-    }));
-    output_toggle_label.add_css_class("chat-command-output-toggle-label");
-    output_toggle_row.append(&output_toggle_label);
-    output_toggle.append(&output_toggle_row);
-
     let output_label: Rc<RefCell<Option<gtk::Label>>> = Rc::new(RefCell::new(None));
     let output_revealer = gtk::Revealer::new();
     output_revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
     output_revealer.set_reveal_child(false);
 
-    details_box.append(&output_toggle);
     details_box.append(&output_revealer);
 
     let details_revealer = gtk::Revealer::new();
@@ -770,25 +712,7 @@ fn build_command_details_ui(
         command_detail_label,
         output_revealer,
         output_label,
-        output_toggle,
-        output_toggle_label,
-        output_toggle_enabled: output_toggle_enabled.clone(),
-        output_chevron,
     };
-
-    {
-        let details_for_click = details.clone();
-        let output_text = output_text.clone();
-        let click = gtk::GestureClick::new();
-        click.connect_released(move |_, _, _, _| {
-            if !*details_for_click.output_toggle_enabled.borrow() {
-                return;
-            }
-            let next = !details_for_click.output_revealer.reveals_child();
-            set_command_output_revealed_state(&details_for_click, next, &output_text);
-        });
-        details.output_toggle.add_controller(click);
-    }
 
     details
 }
@@ -1014,20 +938,6 @@ pub(super) fn set_messages_box_thread_context(messages_box: &gtk::Box, thread_id
 }
 
 impl CommandUi {
-    fn ensure_details_ui(&self) -> CommandDetailsUi {
-        if let Some(existing) = self.details_ui.borrow().as_ref() {
-            return existing.clone();
-        }
-        let details = build_command_details_ui(
-            &self.wrapper,
-            &self.full_command_text,
-            &self.output_text,
-            &self.output_toggle_enabled,
-        );
-        self.details_ui.replace(Some(details.clone()));
-        details
-    }
-
     pub(super) fn set_command_headline(&self, text: &str) {
         let normalized = normalize_single_line(text);
         let (display, _) = truncate_to_chars(&normalized, COMMAND_PREVIEW_CHARS);
@@ -1096,38 +1006,17 @@ impl CommandUi {
             source_id.remove();
         }
         self.output_text.replace(output.to_string());
-        let has_output = !output.trim().is_empty();
-        let previous_has_output = *self.output_toggle_enabled.borrow();
-        self.output_toggle_enabled.replace(has_output);
         let Some(details) = self.details_ui.borrow().as_ref().cloned() else {
             return;
         };
-        if !details.output_revealer.reveals_child() && previous_has_output == has_output {
+        if !details.details_revealer.reveals_child() {
             return;
         }
         refresh_command_output_widgets(
             &details.output_revealer,
             &details.output_label,
             &self.output_text,
-            &details.output_toggle,
-            &details.output_toggle_label,
-            &details.output_toggle_enabled,
         );
-    }
-
-    pub(super) fn set_output_revealed(&self, revealed: bool) {
-        let Some(details) = self.details_ui.borrow().as_ref().cloned() else {
-            if revealed {
-                let details = self.ensure_details_ui();
-                set_command_output_revealed_state(&details, true, &self.output_text);
-            }
-            return;
-        };
-        if revealed {
-            set_command_output_revealed_state(&details, true, &self.output_text);
-        } else {
-            set_command_output_revealed_state(&details, false, &self.output_text);
-        }
     }
 
     pub(super) fn append_output_delta(&self, delta: &str) {
@@ -1137,37 +1026,32 @@ impl CommandUi {
             output.push_str(delta);
             was_empty && !output.trim().is_empty()
         };
-        if became_non_empty {
-            self.output_toggle_enabled.replace(true);
-        }
         let Some(details) = self.details_ui.borrow().as_ref().cloned() else {
             return;
         };
-        if !details.output_revealer.reveals_child() && !became_non_empty {
+        if !details.details_revealer.reveals_child() && !became_non_empty {
             return;
         }
         if self.output_flush_source.borrow().is_some() {
             return;
         }
 
+        let details_revealer = details.details_revealer.clone();
         let output_revealer = details.output_revealer.clone();
         let output_label = details.output_label.clone();
         let output_text = self.output_text.clone();
-        let output_toggle = details.output_toggle.clone();
-        let output_toggle_label = details.output_toggle_label.clone();
-        let output_toggle_enabled = details.output_toggle_enabled.clone();
         let output_flush_source = self.output_flush_source.clone();
         let source = gtk::glib::timeout_add_local(
             Duration::from_millis(STREAM_OUTPUT_FLUSH_MS),
             move || {
                 output_flush_source.borrow_mut().take();
+                if !details_revealer.reveals_child() {
+                    return gtk::glib::ControlFlow::Break;
+                }
                 refresh_command_output_widgets(
                     &output_revealer,
                     &output_label,
                     &output_text,
-                    &output_toggle,
-                    &output_toggle_label,
-                    &output_toggle_enabled,
                 );
                 gtk::glib::ControlFlow::Break
             },
@@ -1623,16 +1507,24 @@ pub(super) fn append_message(
     bubble
 }
 
-pub(super) fn append_user_message_with_images(
+pub(super) fn append_user_message_with_images_badged(
     messages_box: &gtk::Box,
     messages_scroll: Option<&gtk::ScrolledWindow>,
     conversation_stack: &gtk::Stack,
     text: &str,
     image_paths: &[String],
+    badge: Option<&str>,
     timestamp: SystemTime,
 ) -> gtk::Box {
     let content = gtk::Box::new(gtk::Orientation::Vertical, 6);
     content.add_css_class("chat-user-message-content");
+
+    if let Some(badge) = badge.map(str::trim).filter(|value| !value.is_empty()) {
+        let badge_label = gtk::Label::new(Some(badge));
+        badge_label.set_xalign(1.0);
+        badge_label.add_css_class("chat-user-origin-badge");
+        content.append(&badge_label);
+    }
 
     if !text.trim().is_empty() {
         let bubble = gtk::Label::new(Some(text));
@@ -1702,6 +1594,25 @@ pub(super) fn append_user_message_with_images(
     );
 
     content
+}
+
+pub(super) fn append_user_message_with_images(
+    messages_box: &gtk::Box,
+    messages_scroll: Option<&gtk::ScrolledWindow>,
+    conversation_stack: &gtk::Stack,
+    text: &str,
+    image_paths: &[String],
+    timestamp: SystemTime,
+) -> gtk::Box {
+    append_user_message_with_images_badged(
+        messages_box,
+        messages_scroll,
+        conversation_stack,
+        text,
+        image_paths,
+        None,
+        timestamp,
+    )
 }
 
 fn append_message_content_widget<T: IsA<gtk::Widget> + Clone>(
@@ -2914,7 +2825,6 @@ pub(super) fn create_command_widget(command: &str) -> (gtk::Box, CommandUi) {
     status_label.set_valign(gtk::Align::Baseline);
     status_label.add_css_class("chat-card-status");
     wrapper.append(&section_header);
-    let output_toggle_enabled = Rc::new(RefCell::new(false));
     let output_text: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
     let full_command_text: Rc<RefCell<String>> = Rc::new(RefCell::new(command.to_string()));
     let details_ui: Rc<RefCell<Option<CommandDetailsUi>>> = Rc::new(RefCell::new(None));
@@ -2924,7 +2834,6 @@ pub(super) fn create_command_widget(command: &str) -> (gtk::Box, CommandUi) {
         let details_ui = details_ui.clone();
         let full_command_text = full_command_text.clone();
         let output_text = output_text.clone();
-        let output_toggle_enabled = output_toggle_enabled.clone();
         let click = gtk::GestureClick::new();
         click.connect_released(move |_, _, _, _| {
             let existing = details_ui.borrow().as_ref().cloned();
@@ -2933,26 +2842,12 @@ pub(super) fn create_command_widget(command: &str) -> (gtk::Box, CommandUi) {
                 .map(|details| !details.details_revealer.reveals_child())
                 .unwrap_or(true);
             let details = existing.unwrap_or_else(|| {
-                let built = build_command_details_ui(
-                    &wrapper,
-                    &full_command_text,
-                    &output_text,
-                    &output_toggle_enabled,
-                );
+                let built = build_command_details_ui(&wrapper, &full_command_text);
                 details_ui.replace(Some(built.clone()));
                 built
             });
-            if next {
-                if *output_toggle_enabled.borrow() {
-                    set_command_output_revealed_state(&details, true, &output_text);
-                } else {
-                    set_command_output_revealed_state(&details, false, &output_text);
-                }
-                details.details_revealer.set_reveal_child(true);
-            } else {
-                set_command_output_revealed_state(&details, false, &output_text);
-                details.details_revealer.set_reveal_child(false);
-            }
+            set_command_output_revealed_state(&details, next, &output_text);
+            details.details_revealer.set_reveal_child(next);
         });
         section_header.add_controller(click);
     }
@@ -2979,7 +2874,6 @@ pub(super) fn create_command_widget(command: &str) -> (gtk::Box, CommandUi) {
     }
 
     let command_ui = CommandUi {
-        wrapper: wrapper.clone(),
         header_label,
         status_label,
         headline_text,
@@ -2990,7 +2884,6 @@ pub(super) fn create_command_widget(command: &str) -> (gtk::Box, CommandUi) {
         running_wave_frames,
         details_ui,
         output_text,
-        output_toggle_enabled,
         output_flush_source,
     };
     command_ui.set_command_headline(command);

@@ -371,6 +371,7 @@ fn build_inner(
         button.composer-selector-button,
         button#composer-selector-button,
         button.composer-input-mic,
+        button.composer-enzim-agent-button,
         button.composer-worktree-button {
           background-color: transparent;
           background-image: none;
@@ -381,6 +382,7 @@ fn build_inner(
         button.composer-selector-button:hover,
         button#composer-selector-button:hover,
         button.composer-input-mic:hover,
+        button.composer-enzim-agent-button:hover,
         button.composer-worktree-button:hover {
           background-color: transparent;
         }
@@ -390,6 +392,7 @@ fn build_inner(
         button#composer-selector-button:active,
         button#composer-selector-button:checked,
         button.composer-input-mic:active,
+        button.composer-enzim-agent-button:active,
         button.composer-worktree-button:active {
           background-color: transparent;
         }
@@ -561,7 +564,9 @@ fn build_inner(
 
     let add_picker_header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     add_picker_header.add_css_class("composer-attach-picker-header");
-    let add_picker_back = gtk::Button::builder().icon_name("pan-start-symbolic").build();
+    let add_picker_back = gtk::Button::builder()
+        .icon_name("pan-start-symbolic")
+        .build();
     add_picker_back.set_has_frame(false);
     add_picker_back.add_css_class("app-flat-button");
     add_picker_back.add_css_class("composer-icon-button");
@@ -618,7 +623,8 @@ fn build_inner(
     let add_picker_current: Rc<RefCell<Option<PathBuf>>> = Rc::new(RefCell::new(None));
     let add_picker_query: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
     let add_picker_cached_dir: Rc<RefCell<Option<PathBuf>>> = Rc::new(RefCell::new(None));
-    let add_picker_cached_entries: Rc<RefCell<Vec<BrowserEntry>>> = Rc::new(RefCell::new(Vec::new()));
+    let add_picker_cached_entries: Rc<RefCell<Vec<BrowserEntry>>> =
+        Rc::new(RefCell::new(Vec::new()));
 
     let model_setting_changed: Rc<dyn Fn(String)> = {
         let db = db.clone();
@@ -640,14 +646,15 @@ fn build_inner(
             }
         })
     };
-    let (mode_selector, selected_mode_id, set_mode_id) = super::runtime_controls::build_mode_selector(
-        active_thread_id
-            .borrow()
-            .as_deref()
-            .and_then(|thread_id| thread_setting_value(&db, thread_id, "collaboration_mode"))
-            .or_else(|| default_composer_setting_value(&db, "collaboration_mode")),
-        Some(mode_setting_changed),
-    );
+    let (mode_selector, selected_mode_id, set_mode_id) =
+        super::runtime_controls::build_mode_selector(
+            active_thread_id
+                .borrow()
+                .as_deref()
+                .and_then(|thread_id| thread_setting_value(&db, thread_id, "collaboration_mode"))
+                .or_else(|| default_composer_setting_value(&db, "collaboration_mode")),
+            Some(mode_setting_changed),
+        );
     controls.append(&mode_selector);
 
     let mode_model_separator = create_compact_separator();
@@ -721,8 +728,7 @@ fn build_inner(
     effort_selector.set_visible(false);
     controls.append(&effort_selector);
     let effort_selector_signature: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
-    let effort_selector_setter: Rc<RefCell<Option<Rc<dyn Fn(&str)>>>> =
-        Rc::new(RefCell::new(None));
+    let effort_selector_setter: Rc<RefCell<Option<Rc<dyn Fn(&str)>>>> = Rc::new(RefCell::new(None));
     let set_effort: Rc<dyn Fn(&str)> = {
         let selected_effort = selected_effort.clone();
         let effort_selector_setter = effort_selector_setter.clone();
@@ -895,16 +901,15 @@ fn build_inner(
                     );
                     let saved_command_mode =
                         thread_setting_value(&db, &thread_id, "opencode_command_mode")
-                            .or_else(|| default_composer_setting_value(&db, "opencode_command_mode"))
+                            .or_else(|| {
+                                default_composer_setting_value(&db, "opencode_command_mode")
+                            })
                             .unwrap_or_else(|| "allowAll".to_string());
                     set_opencode_command_mode(&saved_command_mode);
                     if let Some(client) = resolve_client_for_thread(&thread_id) {
                         let thread_id = thread_id.clone();
                         std::thread::spawn(move || {
-                            let _ = client.thread_set_command_mode(
-                                &thread_id,
-                                &saved_command_mode,
-                            );
+                            let _ = client.thread_set_command_mode(&thread_id, &saved_command_mode);
                         });
                     }
                 } else {
@@ -975,6 +980,174 @@ fn build_inner(
     spacer.set_hexpand(true);
     controls.append(&spacer);
 
+    let enzim_agent_button = gtk::Button::builder().icon_name("brain-symbolic").build();
+    enzim_agent_button.set_has_frame(false);
+    enzim_agent_button.add_css_class("app-flat-button");
+    enzim_agent_button.add_css_class("composer-icon-button");
+    enzim_agent_button.add_css_class("composer-enzim-agent-button");
+    enzim_agent_button.set_tooltip_text(Some("Enzim Agent"));
+    controls.append(&enzim_agent_button);
+
+    let enzim_agent_popover = gtk::Popover::new();
+    enzim_agent_popover.set_has_arrow(true);
+    enzim_agent_popover.set_autohide(true);
+    enzim_agent_popover.set_position(gtk::PositionType::Top);
+    enzim_agent_popover.set_parent(&enzim_agent_button);
+    enzim_agent_popover.add_css_class("composer-enzim-agent-popover");
+
+    let enzim_agent_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    enzim_agent_box.add_css_class("composer-enzim-agent-box");
+    enzim_agent_box.set_margin_start(10);
+    enzim_agent_box.set_margin_end(10);
+    enzim_agent_box.set_margin_top(10);
+    enzim_agent_box.set_margin_bottom(10);
+    enzim_agent_box.set_size_request(340, -1);
+
+    let enzim_agent_title = gtk::Label::new(Some("Enzim Agent"));
+    enzim_agent_title.set_xalign(0.0);
+    enzim_agent_title.add_css_class("composer-enzim-agent-title");
+    enzim_agent_box.append(&enzim_agent_title);
+
+    let enzim_agent_loop_prompt_title = gtk::Label::new(Some("Prompt"));
+    enzim_agent_loop_prompt_title.set_xalign(0.0);
+    enzim_agent_loop_prompt_title.add_css_class("composer-enzim-agent-question-title");
+    enzim_agent_box.append(&enzim_agent_loop_prompt_title);
+
+    let enzim_agent_prompt_scroll = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .min_content_height(90)
+        .max_content_height(140)
+        .build();
+    enzim_agent_prompt_scroll.set_has_frame(false);
+    enzim_agent_prompt_scroll.add_css_class("composer-enzim-agent-answer-scroll");
+    let enzim_agent_prompt_view = gtk::TextView::new();
+    enzim_agent_prompt_view.set_wrap_mode(gtk::WrapMode::WordChar);
+    enzim_agent_prompt_view.set_top_margin(8);
+    enzim_agent_prompt_view.set_bottom_margin(8);
+    enzim_agent_prompt_view.set_left_margin(10);
+    enzim_agent_prompt_view.set_right_margin(10);
+    enzim_agent_prompt_view.add_css_class("composer-enzim-agent-answer-view");
+    enzim_agent_prompt_scroll.set_child(Some(&enzim_agent_prompt_view));
+    enzim_agent_box.append(&enzim_agent_prompt_scroll);
+
+    let enzim_agent_loop_instructions_title = gtk::Label::new(Some("Looping instructions"));
+    enzim_agent_loop_instructions_title.set_xalign(0.0);
+    enzim_agent_loop_instructions_title.add_css_class("composer-enzim-agent-question-title");
+    enzim_agent_box.append(&enzim_agent_loop_instructions_title);
+
+    let enzim_agent_instructions_scroll = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .min_content_height(90)
+        .max_content_height(140)
+        .build();
+    enzim_agent_instructions_scroll.set_has_frame(false);
+    enzim_agent_instructions_scroll.add_css_class("composer-enzim-agent-answer-scroll");
+    let enzim_agent_instructions_view = gtk::TextView::new();
+    enzim_agent_instructions_view.set_wrap_mode(gtk::WrapMode::WordChar);
+    enzim_agent_instructions_view.set_top_margin(8);
+    enzim_agent_instructions_view.set_bottom_margin(8);
+    enzim_agent_instructions_view.set_left_margin(10);
+    enzim_agent_instructions_view.set_right_margin(10);
+    enzim_agent_instructions_view.add_css_class("composer-enzim-agent-answer-view");
+    enzim_agent_instructions_scroll.set_child(Some(&enzim_agent_instructions_view));
+    enzim_agent_box.append(&enzim_agent_instructions_scroll);
+
+    let enzim_agent_loop_status = gtk::Label::new(Some("No active loop on this thread."));
+    enzim_agent_loop_status.set_xalign(0.0);
+    enzim_agent_loop_status.set_wrap(true);
+    enzim_agent_loop_status.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    enzim_agent_loop_status.add_css_class("composer-enzim-agent-subtitle");
+    enzim_agent_box.append(&enzim_agent_loop_status);
+
+    let enzim_agent_summary_label = gtk::Label::new(None);
+    enzim_agent_summary_label.set_xalign(0.0);
+    enzim_agent_summary_label.set_wrap(true);
+    enzim_agent_summary_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    enzim_agent_summary_label.add_css_class("composer-enzim-agent-question");
+    enzim_agent_summary_label.set_visible(false);
+    enzim_agent_box.append(&enzim_agent_summary_label);
+
+    let enzim_agent_idle_label =
+        gtk::Label::new(Some("No Enzim Agent question is waiting on this thread."));
+    enzim_agent_idle_label.set_xalign(0.0);
+    enzim_agent_idle_label.set_wrap(true);
+    enzim_agent_idle_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    enzim_agent_idle_label.add_css_class("composer-enzim-agent-subtitle");
+    enzim_agent_box.append(&enzim_agent_idle_label);
+
+    let enzim_agent_question_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    enzim_agent_question_box.set_visible(false);
+
+    let enzim_agent_question_title = gtk::Label::new(Some("Question waiting for your answer"));
+    enzim_agent_question_title.set_xalign(0.0);
+    enzim_agent_question_title.add_css_class("composer-enzim-agent-question-title");
+    enzim_agent_question_box.append(&enzim_agent_question_title);
+
+    let enzim_agent_question_label = gtk::Label::new(None);
+    enzim_agent_question_label.set_xalign(0.0);
+    enzim_agent_question_label.set_wrap(true);
+    enzim_agent_question_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    enzim_agent_question_label.add_css_class("composer-enzim-agent-question");
+    enzim_agent_question_box.append(&enzim_agent_question_label);
+
+    let enzim_agent_question_hint = gtk::Label::new(Some(
+        "Answer here, or type a normal message in the composer. Your answer will be saved to the loop history and Enzim Agent will continue the loop.",
+    ));
+    enzim_agent_question_hint.set_xalign(0.0);
+    enzim_agent_question_hint.set_wrap(true);
+    enzim_agent_question_hint.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    enzim_agent_question_hint.add_css_class("composer-enzim-agent-subtitle");
+    enzim_agent_question_box.append(&enzim_agent_question_hint);
+
+    let enzim_agent_answer_scroll = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .min_content_height(90)
+        .max_content_height(140)
+        .build();
+    enzim_agent_answer_scroll.set_has_frame(false);
+    enzim_agent_answer_scroll.add_css_class("composer-enzim-agent-answer-scroll");
+    let enzim_agent_answer_view = gtk::TextView::new();
+    enzim_agent_answer_view.set_wrap_mode(gtk::WrapMode::WordChar);
+    enzim_agent_answer_view.set_top_margin(8);
+    enzim_agent_answer_view.set_bottom_margin(8);
+    enzim_agent_answer_view.set_left_margin(10);
+    enzim_agent_answer_view.set_right_margin(10);
+    enzim_agent_answer_view.add_css_class("composer-enzim-agent-answer-view");
+    enzim_agent_answer_scroll.set_child(Some(&enzim_agent_answer_view));
+    enzim_agent_question_box.append(&enzim_agent_answer_scroll);
+
+    let enzim_agent_status = gtk::Label::new(None);
+    enzim_agent_status.set_xalign(0.0);
+    enzim_agent_status.set_wrap(true);
+    enzim_agent_status.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    enzim_agent_status.add_css_class("composer-enzim-agent-status");
+    enzim_agent_question_box.append(&enzim_agent_status);
+
+    let enzim_agent_settings = gtk::Button::with_label("Settings");
+    let enzim_agent_start = gtk::Button::with_label("Start Loop");
+    enzim_agent_start.add_css_class("suggested-action");
+    let enzim_agent_stop = gtk::Button::with_label("Stop Loop");
+    let enzim_agent_cancel = gtk::Button::with_label("Close");
+    enzim_agent_cancel.add_css_class("composer-enzim-agent-close");
+    let enzim_agent_answer_submit = gtk::Button::with_label("Send Answer");
+    enzim_agent_answer_submit.add_css_class("suggested-action");
+    enzim_agent_answer_submit.add_css_class("composer-enzim-agent-submit");
+    enzim_agent_question_box.append(&enzim_agent_answer_submit);
+
+    let enzim_agent_actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    enzim_agent_actions.set_halign(gtk::Align::End);
+    enzim_agent_actions.append(&enzim_agent_settings);
+    enzim_agent_actions.append(&enzim_agent_start);
+    enzim_agent_actions.append(&enzim_agent_stop);
+    enzim_agent_actions.append(&enzim_agent_cancel);
+
+    enzim_agent_box.append(&enzim_agent_question_box);
+    enzim_agent_box.append(&enzim_agent_actions);
+    enzim_agent_popover.set_child(Some(&enzim_agent_box));
+
     let worktree_button = gtk::Button::builder().icon_name("git-symbolic").build();
     worktree_button.set_has_frame(false);
     worktree_button.add_css_class("app-flat-button");
@@ -986,6 +1159,13 @@ fn build_inner(
     let send = create_send_button();
     controls.append(&send);
     let thread_locked = Rc::new(RefCell::new(false));
+    let submit_loop_answer: Rc<
+        RefCell<
+            Option<Rc<dyn Fn(String, String, String) -> Result<(), String>>>,
+        >,
+    > = Rc::new(RefCell::new(None));
+
+    include!("build_body_enzim_agent_section.rs");
 
     {
         let db = db.clone();
@@ -1034,8 +1214,7 @@ fn build_inner(
                 })
                 .unwrap_or_else(|| "codex".to_string());
             let is_opencode = backend_kind.eq_ignore_ascii_case("opencode");
-            let model_cache_version =
-                super::runtime_controls::model_options_cache_version();
+            let model_cache_version = super::runtime_controls::model_options_cache_version();
             let active_client = active_thread_id
                 .borrow()
                 .as_deref()
@@ -1057,8 +1236,9 @@ fn build_inner(
                         .map(|profile_id| format!("profile:{profile_id}:v:{model_cache_version}"))
                 });
             if cached_model_options_key.borrow().as_ref() != model_options_key.as_ref() {
-                cached_model_options
-                    .replace(super::runtime_controls::model_options(active_client.as_ref()));
+                cached_model_options.replace(super::runtime_controls::model_options(
+                    active_client.as_ref(),
+                ));
                 cached_model_options_key.replace(model_options_key);
             }
             let model_signature = {

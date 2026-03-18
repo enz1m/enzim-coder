@@ -1,4 +1,5 @@
 mod chat;
+pub mod enzim_agent;
 mod git;
 mod profiles;
 mod remote;

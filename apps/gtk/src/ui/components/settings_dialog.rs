@@ -12,8 +12,10 @@ use crate::ui::widget_tree;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingsPage {
+    General,
     Codex,
     OpenCode,
+    EnzimAgent,
     VoiceInput,
     SkillsMcp,
     Remote,
@@ -23,8 +25,10 @@ pub enum SettingsPage {
 impl SettingsPage {
     fn title(self) -> &'static str {
         match self {
+            SettingsPage::General => "General",
             SettingsPage::Codex => "Codex",
             SettingsPage::OpenCode => "OpenCode",
+            SettingsPage::EnzimAgent => "Enzim Agent",
             SettingsPage::VoiceInput => "Voice Input",
             SettingsPage::SkillsMcp => "Skills & MCP",
             SettingsPage::Remote => "Remote",
@@ -34,8 +38,10 @@ impl SettingsPage {
 
     fn stack_name(self) -> &'static str {
         match self {
+            SettingsPage::General => "general",
             SettingsPage::Codex => "codex",
             SettingsPage::OpenCode => "opencode",
+            SettingsPage::EnzimAgent => "enzim-agent",
             SettingsPage::VoiceInput => "voice-input",
             SettingsPage::SkillsMcp => "skills-mcp",
             SettingsPage::Remote => "remote",
@@ -45,19 +51,23 @@ impl SettingsPage {
 
     fn list_index(self) -> i32 {
         match self {
-            SettingsPage::Codex => 0,
-            SettingsPage::OpenCode => 1,
-            SettingsPage::VoiceInput => 2,
-            SettingsPage::SkillsMcp => 3,
-            SettingsPage::Remote => 4,
-            SettingsPage::About => 5,
+            SettingsPage::General => 0,
+            SettingsPage::Codex => 1,
+            SettingsPage::OpenCode => 2,
+            SettingsPage::EnzimAgent => 3,
+            SettingsPage::VoiceInput => 4,
+            SettingsPage::SkillsMcp => 5,
+            SettingsPage::Remote => 6,
+            SettingsPage::About => 7,
         }
     }
 
     fn icon_name(self) -> &'static str {
         match self {
+            SettingsPage::General => "preferences-system-symbolic",
             SettingsPage::Codex => "provider-codex",
             SettingsPage::OpenCode => "provider-opencode",
+            SettingsPage::EnzimAgent => "brain-symbolic",
             SettingsPage::VoiceInput => "mic-symbolic",
             SettingsPage::SkillsMcp => "3d-box-symbolic",
             SettingsPage::Remote => "waves-and-screen-symbolic",
@@ -271,8 +281,10 @@ pub fn show(
     nav_list.add_css_class("navigation-sidebar");
     nav_list.add_css_class("settings-nav-list");
     nav_list.set_margin_top(12);
+    nav_list.append(&nav_row("preferences-system-symbolic", "General"));
     nav_list.append(&nav_row("provider-codex", "Codex"));
     nav_list.append(&nav_row("provider-opencode", "OpenCode"));
+    nav_list.append(&nav_row("brain-symbolic", "Enzim Agent"));
     nav_list.append(&nav_row("mic-symbolic", "Voice input"));
     nav_list.append(&nav_row("3d-box-symbolic", "Skills & MCP"));
     nav_list.append(&nav_row("waves-and-screen-symbolic", "Remote"));
@@ -317,10 +329,12 @@ pub fn show(
     stack.set_transition_type(gtk::StackTransitionType::Crossfade);
     stack.set_transition_duration(140);
 
+    let general_page = settings::general::build_settings_page(&dialog, db.clone());
     let (codex_page, profiles_create_action) =
         settings::codex::build_settings_page(&dialog, db.clone(), manager.clone());
     let (opencode_page, _opencode_create_action) =
         settings::opencode::build_settings_page(&dialog, db.clone(), manager.clone());
+    let enzim_agent_page = settings::enzim_agent::build_settings_page(&dialog, db.clone());
     let voice_page = chat::composer::voice::build_settings_page(&dialog, db.clone(), None, false);
     let skills_mcp_page = skills_mcp_settings::build_settings_page(&dialog, db.clone(), manager);
     let remote_page = remote_settings::build_settings_page(&dialog, db.clone());
@@ -336,8 +350,10 @@ pub fn show(
     skills_mcp_scroll.set_hexpand(true);
     skills_mcp_scroll.set_vexpand(true);
     skills_mcp_scroll.set_child(Some(&skills_mcp_page));
+    stack.add_named(&general_page, Some(SettingsPage::General.stack_name()));
     stack.add_named(&codex_page, Some(SettingsPage::Codex.stack_name()));
     stack.add_named(&opencode_page, Some(SettingsPage::OpenCode.stack_name()));
+    stack.add_named(&enzim_agent_page, Some(SettingsPage::EnzimAgent.stack_name()));
     stack.add_named(&voice_page, Some(SettingsPage::VoiceInput.stack_name()));
     stack.add_named(
         &skills_mcp_scroll,
@@ -359,36 +375,48 @@ pub fn show(
             };
             match row.index() {
                 0 => {
+                    stack.set_visible_child_name(SettingsPage::General.stack_name());
+                    page_icon.set_icon_name(Some(SettingsPage::General.icon_name()));
+                    page_title.set_text(SettingsPage::General.title());
+                    profiles_create_button.set_visible(false);
+                }
+                1 => {
                     stack.set_visible_child_name(SettingsPage::Codex.stack_name());
                     page_icon.set_icon_name(Some(SettingsPage::Codex.icon_name()));
                     page_title.set_text(SettingsPage::Codex.title());
                     profiles_create_button.set_visible(true);
                 }
-                1 => {
+                2 => {
                     stack.set_visible_child_name(SettingsPage::OpenCode.stack_name());
                     page_icon.set_icon_name(Some(SettingsPage::OpenCode.icon_name()));
                     page_title.set_text(SettingsPage::OpenCode.title());
                     profiles_create_button.set_visible(false);
                 }
-                2 => {
+                3 => {
+                    stack.set_visible_child_name(SettingsPage::EnzimAgent.stack_name());
+                    page_icon.set_icon_name(Some(SettingsPage::EnzimAgent.icon_name()));
+                    page_title.set_text(SettingsPage::EnzimAgent.title());
+                    profiles_create_button.set_visible(false);
+                }
+                4 => {
                     stack.set_visible_child_name(SettingsPage::VoiceInput.stack_name());
                     page_icon.set_icon_name(Some(SettingsPage::VoiceInput.icon_name()));
                     page_title.set_text(SettingsPage::VoiceInput.title());
                     profiles_create_button.set_visible(false);
                 }
-                3 => {
+                5 => {
                     stack.set_visible_child_name(SettingsPage::SkillsMcp.stack_name());
                     page_icon.set_icon_name(Some(SettingsPage::SkillsMcp.icon_name()));
                     page_title.set_text(SettingsPage::SkillsMcp.title());
                     profiles_create_button.set_visible(false);
                 }
-                4 => {
+                6 => {
                     stack.set_visible_child_name(SettingsPage::Remote.stack_name());
                     page_icon.set_icon_name(Some(SettingsPage::Remote.icon_name()));
                     page_title.set_text(SettingsPage::Remote.title());
                     profiles_create_button.set_visible(false);
                 }
-                5 => {
+                7 => {
                     stack.set_visible_child_name(SettingsPage::About.stack_name());
                     page_icon.set_icon_name(Some(SettingsPage::About.icon_name()));
                     page_title.set_text(SettingsPage::About.title());

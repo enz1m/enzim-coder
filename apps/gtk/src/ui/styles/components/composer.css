@@ -170,6 +170,65 @@ popover.composer-worktree-popover > contents {
   box-shadow: 0 8px 20px alpha(black, 0.24);
 }
 
+popover.composer-enzim-agent-popover > contents {
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid alpha(@window_fg_color, 0.14);
+  background: alpha(@window_bg_color, 0.98);
+  background-color: alpha(@window_bg_color, 0.98);
+  background-image: none;
+  box-shadow: 0 8px 20px alpha(black, 0.24);
+}
+
+.composer-enzim-agent-box {
+  min-width: 340px;
+}
+
+.composer-enzim-agent-title,
+.composer-enzim-agent-question-title {
+  font-size: 0.86rem;
+  font-weight: 640;
+  color: alpha(@window_fg_color, 0.96);
+}
+
+.composer-enzim-agent-subtitle,
+.composer-enzim-agent-status {
+  font-size: 0.78rem;
+  color: alpha(@window_fg_color, 0.72);
+}
+
+.composer-enzim-agent-question {
+  font-size: 0.8rem;
+  color: alpha(@window_fg_color, 0.9);
+  background: alpha(@window_fg_color, 0.05);
+  border: 1px solid alpha(@window_fg_color, 0.1);
+  border-radius: 8px;
+  padding: 7px 8px;
+}
+
+.composer-enzim-agent-answer-scroll {
+  border-radius: 8px;
+  background: alpha(@window_fg_color, 0.05);
+  border: 1px solid alpha(@window_fg_color, 0.12);
+}
+
+textview.composer-enzim-agent-answer-view,
+textview.composer-enzim-agent-answer-view text {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+}
+
+.composer-enzim-agent-status {
+  min-height: 16px;
+}
+
+.composer-enzim-agent-close,
+.composer-enzim-agent-submit {
+  min-height: 28px;
+  padding: 0 12px;
+}
+
 .composer-worktree-popover-box {
   min-width: 300px;
 }
@@ -431,6 +490,8 @@ popover#compact-selector-popover.background > arrow {
 
 popover.composer-worktree-popover > arrow,
 popover.composer-worktree-popover.background > arrow,
+popover.composer-enzim-agent-popover > arrow,
+popover.composer-enzim-agent-popover.background > arrow,
 popover.composer-attach-popover > arrow,
 popover.composer-attach-popover.background > arrow,
 popover.composer-attach-picker-popover > arrow,
@@ -643,6 +704,7 @@ button.chat-queued-cancel {
 }
 
 button.composer-input-mic,
+button.composer-enzim-agent-button,
 button.composer-worktree-button {
   color: alpha(@window_fg_color, 0.82);
   background: transparent;
@@ -652,11 +714,13 @@ button.composer-worktree-button {
 }
 
 button.composer-input-mic image,
+button.composer-enzim-agent-button image,
 button.composer-worktree-button image {
   color: alpha(@window_fg_color, 0.82);
 }
 
 button.composer-input-mic:hover,
+button.composer-enzim-agent-button:hover,
 button.composer-worktree-button:hover {
   color: alpha(@window_fg_color, 0.96);
   background: alpha(@window_fg_color, 0.1);
@@ -664,14 +728,40 @@ button.composer-worktree-button:hover {
 }
 
 button.composer-input-mic:hover image,
+button.composer-enzim-agent-button:hover image,
 button.composer-worktree-button:hover image {
   color: alpha(@window_fg_color, 0.96);
 }
 
 button.composer-input-mic:active,
+button.composer-enzim-agent-button:active,
 button.composer-worktree-button:active {
   background: alpha(@window_fg_color, 0.14);
   opacity: 1.0;
+}
+
+button.composer-enzim-agent-button.composer-enzim-agent-button-active {
+  color: #d6822f;
+  background: alpha(#d6822f, 0.12);
+  opacity: 0.96;
+}
+
+button.composer-enzim-agent-button.composer-enzim-agent-button-active image {
+  color: #d6822f;
+}
+
+button.composer-enzim-agent-button.composer-enzim-agent-button-active:hover {
+  color: #e99a48;
+  background: alpha(#d6822f, 0.2);
+  opacity: 1.0;
+}
+
+button.composer-enzim-agent-button.composer-enzim-agent-button-active:hover image {
+  color: #e99a48;
+}
+
+button.composer-enzim-agent-button.composer-enzim-agent-button-waiting {
+  box-shadow: 0 0 0 1px alpha(#d6822f, 0.22);
 }
 
 button.composer-worktree-button.composer-worktree-button-merge-active {
