@@ -9,6 +9,7 @@ let (enzim_agent_dispatch_tx, enzim_agent_dispatch_rx) =
     mpsc::channel::<(String, Option<i64>, Option<i64>, Option<String>, Option<String>)>();
 let enzim_agent_in_flight_loops: Rc<RefCell<std::collections::HashSet<i64>>> =
     Rc::new(RefCell::new(std::collections::HashSet::new()));
+let enzim_agent_last_thread_id: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
 
 let format_loop_status: Rc<
     dyn Fn(Option<&crate::services::app::chat::EnzimAgentLoopRecord>) -> String,
@@ -45,6 +46,124 @@ let format_loop_status: Rc<
             details.join(" ")
         }
     });
+
+let save_enzim_drafts_for_thread: Rc<dyn Fn(&str)> = {
+    let db = db.clone();
+    let enzim_agent_prompt_view = enzim_agent_prompt_view.clone();
+    let enzim_agent_instructions_view = enzim_agent_instructions_view.clone();
+    Rc::new(move |thread_id| {
+        let thread_id = thread_id.trim();
+        if thread_id.is_empty() {
+            return;
+        }
+        let prompt_buffer = enzim_agent_prompt_view.buffer();
+        let prompt_text = prompt_buffer
+            .text(&prompt_buffer.start_iter(), &prompt_buffer.end_iter(), true)
+            .to_string();
+        save_thread_setting(&db, thread_id, "enzim_agent_prompt", &prompt_text);
+
+        let instructions_buffer = enzim_agent_instructions_view.buffer();
+        let instructions_text = instructions_buffer
+            .text(
+                &instructions_buffer.start_iter(),
+                &instructions_buffer.end_iter(),
+                true,
+            )
+            .to_string();
+        save_thread_setting(
+            &db,
+            thread_id,
+            "enzim_agent_instructions",
+            &instructions_text,
+        );
+    })
+};
+
+let load_enzim_drafts_for_thread: Rc<dyn Fn(Option<&str>)> = {
+    let db = db.clone();
+    let enzim_agent_prompt_view = enzim_agent_prompt_view.clone();
+    let enzim_agent_instructions_view = enzim_agent_instructions_view.clone();
+    Rc::new(move |thread_id| {
+        let defaults = crate::services::enzim_agent::load_loop_draft_defaults(db.as_ref());
+        let prompt_text = thread_id
+            .and_then(|thread_id| thread_setting_value(&db, thread_id, "enzim_agent_prompt"))
+            .unwrap_or_else(|| defaults.prompt_text.clone());
+        let instructions_text = thread_id
+            .and_then(|thread_id| {
+                thread_setting_value(&db, thread_id, "enzim_agent_instructions")
+            })
+            .unwrap_or_else(|| defaults.instructions_text.clone());
+
+        let prompt_buffer = enzim_agent_prompt_view.buffer();
+        let current_prompt = prompt_buffer
+            .text(&prompt_buffer.start_iter(), &prompt_buffer.end_iter(), true)
+            .to_string();
+        if current_prompt != prompt_text {
+            prompt_buffer.set_text(&prompt_text);
+        }
+
+        let instructions_buffer = enzim_agent_instructions_view.buffer();
+        let current_instructions = instructions_buffer
+            .text(
+                &instructions_buffer.start_iter(),
+                &instructions_buffer.end_iter(),
+                true,
+            )
+            .to_string();
+        if current_instructions != instructions_text {
+            instructions_buffer.set_text(&instructions_text);
+        }
+    })
+};
+
+{
+    let active_thread_id = active_thread_id.clone();
+    let enzim_agent_last_thread_id = enzim_agent_last_thread_id.clone();
+    let save_enzim_drafts_for_thread = save_enzim_drafts_for_thread.clone();
+    let load_enzim_drafts_for_thread = load_enzim_drafts_for_thread.clone();
+    let enzim_agent_prompt_view = enzim_agent_prompt_view.clone();
+    gtk::glib::timeout_add_local(Duration::from_millis(140), move || {
+        if enzim_agent_prompt_view.root().is_none() {
+            return gtk::glib::ControlFlow::Break;
+        }
+
+        let next_thread_id = active_thread_id.borrow().clone();
+        let previous_thread_id = enzim_agent_last_thread_id.borrow().clone();
+        if next_thread_id == previous_thread_id {
+            return gtk::glib::ControlFlow::Continue;
+        }
+
+        if let Some(previous_thread_id) = previous_thread_id.as_deref() {
+            save_enzim_drafts_for_thread(previous_thread_id);
+        }
+
+        enzim_agent_last_thread_id.replace(next_thread_id.clone());
+        load_enzim_drafts_for_thread(next_thread_id.as_deref());
+        gtk::glib::ControlFlow::Continue
+    });
+}
+
+{
+    let active_thread_id = active_thread_id.clone();
+    let save_enzim_drafts_for_thread = save_enzim_drafts_for_thread.clone();
+    let prompt_buffer = enzim_agent_prompt_view.buffer();
+    prompt_buffer.connect_changed(move |_| {
+        if let Some(thread_id) = active_thread_id.borrow().as_deref() {
+            save_enzim_drafts_for_thread(thread_id);
+        }
+    });
+}
+
+{
+    let active_thread_id = active_thread_id.clone();
+    let save_enzim_drafts_for_thread = save_enzim_drafts_for_thread.clone();
+    let instructions_buffer = enzim_agent_instructions_view.buffer();
+    instructions_buffer.connect_changed(move |_| {
+        if let Some(thread_id) = active_thread_id.borrow().as_deref() {
+            save_enzim_drafts_for_thread(thread_id);
+        }
+    });
+}
 
 let dispatch_enzim_message: Rc<
     dyn Fn(String, String, Option<String>, Option<i64>, Option<i64>, bool) -> Result<(), String>,
@@ -389,29 +508,11 @@ let submit_loop_answer_fn: Rc<dyn Fn(String, String, String) -> Result<(), Strin
 };
 submit_loop_answer.replace(Some(submit_loop_answer_fn.clone()));
 
-{
-    let enzim_agent_popover = enzim_agent_popover.clone();
-    enzim_agent_button.connect_clicked(move |_| {
-        if enzim_agent_popover.is_visible() {
-            enzim_agent_popover.popdown();
-        } else {
-            enzim_agent_popover.popup();
-        }
-    });
-}
-
-{
-    let enzim_agent_popover = enzim_agent_popover.clone();
-    enzim_agent_cancel.connect_clicked(move |_| {
-        enzim_agent_popover.popdown();
-    });
-}
-
-{
+let open_enzim_settings: Rc<dyn Fn()> = {
     let db = db.clone();
     let manager = manager.clone();
     let enzim_agent_button = enzim_agent_button.clone();
-    enzim_agent_settings.connect_clicked(move |_| {
+    Rc::new(move || {
         let parent = enzim_agent_button
             .root()
             .and_then(|root| root.downcast::<gtk::Window>().ok());
@@ -421,6 +522,53 @@ submit_loop_answer.replace(Some(submit_loop_answer_fn.clone()));
             manager.clone(),
             crate::ui::components::settings_dialog::SettingsPage::EnzimAgent,
         );
+    })
+};
+
+{
+    let db = db.clone();
+    let active_thread_id = active_thread_id.clone();
+    let enzim_agent_popover = enzim_agent_popover.clone();
+    let open_enzim_settings = open_enzim_settings.clone();
+    enzim_agent_button.connect_clicked(move |_| {
+        if enzim_agent_popover.is_visible() {
+            enzim_agent_popover.popdown();
+        } else {
+            let has_active_loop = active_thread_id
+                .borrow()
+                .as_deref()
+                .and_then(|thread_id| {
+                    db.get_thread_record_by_remote_thread_id(thread_id)
+                        .ok()
+                        .flatten()
+                        .map(|thread| thread.id)
+                })
+                .and_then(|thread_id| {
+                    db.active_enzim_agent_loop_for_local_thread(thread_id)
+                        .ok()
+                        .flatten()
+                })
+                .is_some();
+            let config = crate::services::enzim_agent::load_config(db.as_ref());
+            let api_key_missing = config
+                .api_key
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .is_none();
+            if api_key_missing && !has_active_loop {
+                open_enzim_settings();
+                return;
+            }
+            enzim_agent_popover.popup();
+        }
+    });
+}
+
+{
+    let open_enzim_settings = open_enzim_settings.clone();
+    enzim_agent_settings.connect_clicked(move |_| {
+        open_enzim_settings();
     });
 }
 

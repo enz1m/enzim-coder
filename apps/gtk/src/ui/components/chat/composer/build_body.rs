@@ -980,7 +980,9 @@ fn build_inner(
     spacer.set_hexpand(true);
     controls.append(&spacer);
 
-    let enzim_agent_button = gtk::Button::builder().icon_name("brain-symbolic").build();
+    let enzim_agent_button = gtk::Button::builder()
+        .icon_name("loop-infinite-symbolic")
+        .build();
     enzim_agent_button.set_has_frame(false);
     enzim_agent_button.add_css_class("app-flat-button");
     enzim_agent_button.add_css_class("composer-icon-button");
@@ -1020,14 +1022,16 @@ fn build_inner(
         .max_content_height(140)
         .build();
     enzim_agent_prompt_scroll.set_has_frame(false);
-    enzim_agent_prompt_scroll.add_css_class("composer-enzim-agent-answer-scroll");
+    enzim_agent_prompt_scroll.add_css_class("composer-input");
+    enzim_agent_prompt_scroll.add_css_class("composer-enzim-agent-input-scroll");
     let enzim_agent_prompt_view = gtk::TextView::new();
     enzim_agent_prompt_view.set_wrap_mode(gtk::WrapMode::WordChar);
     enzim_agent_prompt_view.set_top_margin(8);
     enzim_agent_prompt_view.set_bottom_margin(8);
     enzim_agent_prompt_view.set_left_margin(10);
     enzim_agent_prompt_view.set_right_margin(10);
-    enzim_agent_prompt_view.add_css_class("composer-enzim-agent-answer-view");
+    enzim_agent_prompt_view.add_css_class("composer-input-view");
+    enzim_agent_prompt_view.add_css_class("composer-enzim-agent-input-view");
     enzim_agent_prompt_scroll.set_child(Some(&enzim_agent_prompt_view));
     enzim_agent_box.append(&enzim_agent_prompt_scroll);
 
@@ -1043,14 +1047,16 @@ fn build_inner(
         .max_content_height(140)
         .build();
     enzim_agent_instructions_scroll.set_has_frame(false);
-    enzim_agent_instructions_scroll.add_css_class("composer-enzim-agent-answer-scroll");
+    enzim_agent_instructions_scroll.add_css_class("composer-input");
+    enzim_agent_instructions_scroll.add_css_class("composer-enzim-agent-input-scroll");
     let enzim_agent_instructions_view = gtk::TextView::new();
     enzim_agent_instructions_view.set_wrap_mode(gtk::WrapMode::WordChar);
     enzim_agent_instructions_view.set_top_margin(8);
     enzim_agent_instructions_view.set_bottom_margin(8);
     enzim_agent_instructions_view.set_left_margin(10);
     enzim_agent_instructions_view.set_right_margin(10);
-    enzim_agent_instructions_view.add_css_class("composer-enzim-agent-answer-view");
+    enzim_agent_instructions_view.add_css_class("composer-input-view");
+    enzim_agent_instructions_view.add_css_class("composer-enzim-agent-input-view");
     enzim_agent_instructions_scroll.set_child(Some(&enzim_agent_instructions_view));
     enzim_agent_box.append(&enzim_agent_instructions_scroll);
 
@@ -1108,14 +1114,16 @@ fn build_inner(
         .max_content_height(140)
         .build();
     enzim_agent_answer_scroll.set_has_frame(false);
-    enzim_agent_answer_scroll.add_css_class("composer-enzim-agent-answer-scroll");
+    enzim_agent_answer_scroll.add_css_class("composer-input");
+    enzim_agent_answer_scroll.add_css_class("composer-enzim-agent-input-scroll");
     let enzim_agent_answer_view = gtk::TextView::new();
     enzim_agent_answer_view.set_wrap_mode(gtk::WrapMode::WordChar);
     enzim_agent_answer_view.set_top_margin(8);
     enzim_agent_answer_view.set_bottom_margin(8);
     enzim_agent_answer_view.set_left_margin(10);
     enzim_agent_answer_view.set_right_margin(10);
-    enzim_agent_answer_view.add_css_class("composer-enzim-agent-answer-view");
+    enzim_agent_answer_view.add_css_class("composer-input-view");
+    enzim_agent_answer_view.add_css_class("composer-enzim-agent-input-view");
     enzim_agent_answer_scroll.set_child(Some(&enzim_agent_answer_view));
     enzim_agent_question_box.append(&enzim_agent_answer_scroll);
 
@@ -1127,22 +1135,32 @@ fn build_inner(
     enzim_agent_question_box.append(&enzim_agent_status);
 
     let enzim_agent_settings = gtk::Button::with_label("Settings");
+    enzim_agent_settings.set_has_frame(false);
+    enzim_agent_settings.add_css_class("app-flat-button");
+    enzim_agent_settings.add_css_class("composer-enzim-agent-action");
     let enzim_agent_start = gtk::Button::with_label("Start Loop");
-    enzim_agent_start.add_css_class("suggested-action");
+    enzim_agent_start.set_has_frame(false);
+    enzim_agent_start.add_css_class("app-flat-button");
+    enzim_agent_start.add_css_class("composer-enzim-agent-action");
+    enzim_agent_start.add_css_class("composer-enzim-agent-action-primary");
     let enzim_agent_stop = gtk::Button::with_label("Stop Loop");
-    let enzim_agent_cancel = gtk::Button::with_label("Close");
-    enzim_agent_cancel.add_css_class("composer-enzim-agent-close");
+    enzim_agent_stop.set_has_frame(false);
+    enzim_agent_stop.add_css_class("app-flat-button");
+    enzim_agent_stop.add_css_class("composer-enzim-agent-action");
+    enzim_agent_stop.add_css_class("composer-enzim-agent-action-stop");
     let enzim_agent_answer_submit = gtk::Button::with_label("Send Answer");
-    enzim_agent_answer_submit.add_css_class("suggested-action");
-    enzim_agent_answer_submit.add_css_class("composer-enzim-agent-submit");
+    enzim_agent_answer_submit.set_has_frame(false);
+    enzim_agent_answer_submit.add_css_class("app-flat-button");
+    enzim_agent_answer_submit.add_css_class("composer-enzim-agent-action");
+    enzim_agent_answer_submit.add_css_class("composer-enzim-agent-action-primary");
     enzim_agent_question_box.append(&enzim_agent_answer_submit);
 
     let enzim_agent_actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    enzim_agent_actions.add_css_class("composer-enzim-agent-actions");
     enzim_agent_actions.set_halign(gtk::Align::End);
     enzim_agent_actions.append(&enzim_agent_settings);
     enzim_agent_actions.append(&enzim_agent_start);
     enzim_agent_actions.append(&enzim_agent_stop);
-    enzim_agent_actions.append(&enzim_agent_cancel);
 
     enzim_agent_box.append(&enzim_agent_question_box);
     enzim_agent_box.append(&enzim_agent_actions);

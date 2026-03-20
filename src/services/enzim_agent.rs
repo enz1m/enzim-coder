@@ -10,6 +10,8 @@ use std::time::Duration;
 
 const MAX_LOOP_ITERATIONS: i64 = 25;
 const MAX_LOOP_ERRORS: i64 = 3;
+const DEFAULT_LOOP_PROMPT_KEY: &str = "enzim_agent:default_loop_prompt";
+const DEFAULT_LOOP_INSTRUCTIONS_KEY: &str = "enzim_agent:default_loop_instructions";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EnzimAgentModelOption {
@@ -33,6 +35,12 @@ pub struct PendingUserQuestion {
     pub loop_id: i64,
     pub question: String,
     pub asked_at: i64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LoopDraftDefaults {
+    pub prompt_text: String,
+    pub instructions_text: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -152,6 +160,33 @@ pub fn save_config(db: &AppDb, config: &EnzimAgentConfig) -> Result<(), String> 
     };
     db.upsert_enzim_agent_config(&record)
         .map_err(|err| err.to_string())
+}
+
+pub fn load_loop_draft_defaults(db: &AppDb) -> LoopDraftDefaults {
+    let prompt_text = db
+        .get_setting(DEFAULT_LOOP_PROMPT_KEY)
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let instructions_text = db
+        .get_setting(DEFAULT_LOOP_INSTRUCTIONS_KEY)
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    LoopDraftDefaults {
+        prompt_text,
+        instructions_text,
+    }
+}
+
+pub fn save_loop_draft_defaults(db: &AppDb, defaults: &LoopDraftDefaults) -> Result<(), String> {
+    db.set_setting(DEFAULT_LOOP_PROMPT_KEY, defaults.prompt_text.trim())
+        .map_err(|err| err.to_string())?;
+    db.set_setting(
+        DEFAULT_LOOP_INSTRUCTIONS_KEY,
+        defaults.instructions_text.trim(),
+    )
+    .map_err(|err| err.to_string())
 }
 
 fn config_system_prompt(config: &EnzimAgentConfig) -> String {

@@ -67,7 +67,7 @@ impl SettingsPage {
             SettingsPage::General => "preferences-system-symbolic",
             SettingsPage::Codex => "provider-codex",
             SettingsPage::OpenCode => "provider-opencode",
-            SettingsPage::EnzimAgent => "brain-symbolic",
+            SettingsPage::EnzimAgent => "loop-infinite-symbolic",
             SettingsPage::VoiceInput => "mic-symbolic",
             SettingsPage::SkillsMcp => "3d-box-symbolic",
             SettingsPage::Remote => "waves-and-screen-symbolic",
@@ -284,7 +284,7 @@ pub fn show(
     nav_list.append(&nav_row("preferences-system-symbolic", "General"));
     nav_list.append(&nav_row("provider-codex", "Codex"));
     nav_list.append(&nav_row("provider-opencode", "OpenCode"));
-    nav_list.append(&nav_row("brain-symbolic", "Enzim Agent"));
+    nav_list.append(&nav_row("loop-infinite-symbolic", "Enzim Agent"));
     nav_list.append(&nav_row("mic-symbolic", "Voice input"));
     nav_list.append(&nav_row("3d-box-symbolic", "Skills & MCP"));
     nav_list.append(&nav_row("waves-and-screen-symbolic", "Remote"));

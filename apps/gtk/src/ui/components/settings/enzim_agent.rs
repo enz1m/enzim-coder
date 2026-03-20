@@ -107,6 +107,87 @@ fn open_system_prompt_dialog(
     dialog.present();
 }
 
+fn open_loop_text_dialog(
+    parent: &gtk::Window,
+    title: &str,
+    intro_text: &str,
+    initial_text: &str,
+    on_save: Rc<dyn Fn(String) -> Result<(), String>>,
+) {
+    let dialog = gtk::Window::builder()
+        .title(title)
+        .default_width(720)
+        .default_height(520)
+        .modal(true)
+        .transient_for(parent)
+        .build();
+    dialog.add_css_class("settings-window");
+
+    let root = gtk::Box::new(gtk::Orientation::Vertical, 10);
+    root.set_margin_start(14);
+    root.set_margin_end(14);
+    root.set_margin_top(14);
+    root.set_margin_bottom(14);
+
+    let intro = gtk::Label::new(Some(intro_text));
+    intro.set_xalign(0.0);
+    intro.set_wrap(true);
+    intro.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    intro.add_css_class("dim-label");
+    root.append(&intro);
+
+    let prompt_scroll = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .vexpand(true)
+        .build();
+    prompt_scroll.set_has_frame(false);
+    let prompt_view = gtk::TextView::new();
+    prompt_view.set_wrap_mode(gtk::WrapMode::WordChar);
+    prompt_view.set_top_margin(10);
+    prompt_view.set_bottom_margin(10);
+    prompt_view.set_left_margin(10);
+    prompt_view.set_right_margin(10);
+    let prompt_buf = prompt_view.buffer();
+    prompt_buf.set_text(initial_text);
+    prompt_scroll.set_child(Some(&prompt_view));
+    root.append(&prompt_scroll);
+
+    let status = gtk::Label::new(None);
+    status.set_xalign(0.0);
+    status.add_css_class("dim-label");
+    root.append(&status);
+
+    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    actions.set_halign(gtk::Align::End);
+    let save = gtk::Button::with_label("Save");
+    save.add_css_class("suggested-action");
+    actions.append(&save);
+    root.append(&actions);
+
+    {
+        let prompt_buf = prompt_buf.clone();
+        let status = status.clone();
+        let dialog = dialog.clone();
+        let on_save = on_save.clone();
+        save.connect_clicked(move |_| {
+            let start = prompt_buf.start_iter();
+            let end = prompt_buf.end_iter();
+            let text = prompt_buf.text(&start, &end, true).to_string();
+            match on_save(text) {
+                Ok(()) => {
+                    status.set_text("Saved.");
+                    dialog.close();
+                }
+                Err(err) => status.set_text(&err),
+            }
+        });
+    }
+
+    dialog.set_child(Some(&root));
+    dialog.present();
+}
+
 pub(crate) fn build_settings_page(dialog: &gtk::Window, db: Rc<AppDb>) -> gtk::Box {
     let root = gtk::Box::new(gtk::Orientation::Vertical, 10);
     root.set_margin_start(12);
@@ -200,7 +281,7 @@ pub(crate) fn build_settings_page(dialog: &gtk::Window, db: Rc<AppDb>) -> gtk::B
     (reload_models_ui)();
 
     let prompt_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    let prompt_label = gtk::Label::new(Some("System prompt"));
+    let prompt_label = gtk::Label::new(Some("Loop system prompt"));
     prompt_label.set_width_chars(14);
     prompt_label.set_xalign(0.0);
     let prompt_state_label = gtk::Label::new(Some(if config_state
@@ -225,6 +306,60 @@ pub(crate) fn build_settings_page(dialog: &gtk::Window, db: Rc<AppDb>) -> gtk::B
     prompt_row.append(&prompt_edit);
     prompt_row.append(&prompt_reset);
     section.append(&prompt_row);
+
+    let loop_defaults = Rc::new(RefCell::new(
+        crate::services::enzim_agent::load_loop_draft_defaults(db.as_ref()),
+    ));
+
+    let default_prompt_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let default_prompt_label = gtk::Label::new(Some("Default prompt"));
+    default_prompt_label.set_width_chars(14);
+    default_prompt_label.set_xalign(0.0);
+    let default_prompt_state = gtk::Label::new(Some(if loop_defaults
+        .borrow()
+        .prompt_text
+        .trim()
+        .is_empty()
+    {
+        "No default prompt saved"
+    } else {
+        "Default prompt saved"
+    }));
+    default_prompt_state.set_xalign(0.0);
+    default_prompt_state.set_hexpand(true);
+    default_prompt_state.add_css_class("dim-label");
+    let default_prompt_edit = gtk::Button::with_label("Edit");
+    let default_prompt_reset = gtk::Button::with_label("Reset");
+    default_prompt_row.append(&default_prompt_label);
+    default_prompt_row.append(&default_prompt_state);
+    default_prompt_row.append(&default_prompt_edit);
+    default_prompt_row.append(&default_prompt_reset);
+    section.append(&default_prompt_row);
+
+    let default_instructions_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let default_instructions_label = gtk::Label::new(Some("Default instructions"));
+    default_instructions_label.set_width_chars(14);
+    default_instructions_label.set_xalign(0.0);
+    let default_instructions_state = gtk::Label::new(Some(if loop_defaults
+        .borrow()
+        .instructions_text
+        .trim()
+        .is_empty()
+    {
+        "No default instructions saved"
+    } else {
+        "Default instructions saved"
+    }));
+    default_instructions_state.set_xalign(0.0);
+    default_instructions_state.set_hexpand(true);
+    default_instructions_state.add_css_class("dim-label");
+    let default_instructions_edit = gtk::Button::with_label("Edit");
+    let default_instructions_reset = gtk::Button::with_label("Reset");
+    default_instructions_row.append(&default_instructions_label);
+    default_instructions_row.append(&default_instructions_state);
+    default_instructions_row.append(&default_instructions_edit);
+    default_instructions_row.append(&default_instructions_reset);
+    section.append(&default_instructions_row);
 
     let status = gtk::Label::new(None);
     status.set_xalign(0.0);
@@ -290,6 +425,110 @@ pub(crate) fn build_settings_page(dialog: &gtk::Window, db: Rc<AppDb>) -> gtk::B
                     (reload_models_ui)();
                 }),
             );
+        });
+    }
+
+    {
+        let db = db.clone();
+        let dialog = dialog.clone();
+        let loop_defaults = loop_defaults.clone();
+        let default_prompt_state = default_prompt_state.clone();
+        default_prompt_edit.connect_clicked(move |_| {
+            let dialog = dialog.clone();
+            let db = db.clone();
+            let loop_defaults = loop_defaults.clone();
+            let default_prompt_state = default_prompt_state.clone();
+            let initial_text = loop_defaults.borrow().prompt_text.clone();
+            open_loop_text_dialog(
+                &dialog,
+                "Default Loop Prompt",
+                "This fills the composer popup prompt field for new Enzim loops. Leave empty if you don't want a saved default.",
+                &initial_text,
+                Rc::new(move |text| {
+                    let mut defaults =
+                        crate::services::enzim_agent::load_loop_draft_defaults(db.as_ref());
+                    defaults.prompt_text = text;
+                    crate::services::enzim_agent::save_loop_draft_defaults(db.as_ref(), &defaults)?;
+                    loop_defaults.replace(defaults.clone());
+                    default_prompt_state.set_text(if defaults.prompt_text.trim().is_empty() {
+                        "No default prompt saved"
+                    } else {
+                        "Default prompt saved"
+                    });
+                    Ok(())
+                }),
+            );
+        });
+    }
+
+    {
+        let db = db.clone();
+        let loop_defaults = loop_defaults.clone();
+        let default_prompt_state = default_prompt_state.clone();
+        default_prompt_reset.connect_clicked(move |_| {
+            let mut defaults = crate::services::enzim_agent::load_loop_draft_defaults(db.as_ref());
+            defaults.prompt_text.clear();
+            match crate::services::enzim_agent::save_loop_draft_defaults(db.as_ref(), &defaults) {
+                Ok(()) => {
+                    loop_defaults.replace(defaults);
+                    default_prompt_state.set_text("No default prompt saved");
+                }
+                Err(err) => eprintln!("failed to reset Enzim Agent default prompt: {err}"),
+            }
+        });
+    }
+
+    {
+        let db = db.clone();
+        let dialog = dialog.clone();
+        let loop_defaults = loop_defaults.clone();
+        let default_instructions_state = default_instructions_state.clone();
+        default_instructions_edit.connect_clicked(move |_| {
+            let dialog = dialog.clone();
+            let db = db.clone();
+            let loop_defaults = loop_defaults.clone();
+            let default_instructions_state = default_instructions_state.clone();
+            let initial_text = loop_defaults.borrow().instructions_text.clone();
+            open_loop_text_dialog(
+                &dialog,
+                "Default Looping Instructions",
+                "This fills the composer popup looping-instructions field for new Enzim loops. Leave empty if you don't want a saved default.",
+                &initial_text,
+                Rc::new(move |text| {
+                    let mut defaults =
+                        crate::services::enzim_agent::load_loop_draft_defaults(db.as_ref());
+                    defaults.instructions_text = text;
+                    crate::services::enzim_agent::save_loop_draft_defaults(db.as_ref(), &defaults)?;
+                    loop_defaults.replace(defaults.clone());
+                    default_instructions_state.set_text(
+                        if defaults.instructions_text.trim().is_empty() {
+                            "No default instructions saved"
+                        } else {
+                            "Default instructions saved"
+                        },
+                    );
+                    Ok(())
+                }),
+            );
+        });
+    }
+
+    {
+        let db = db.clone();
+        let loop_defaults = loop_defaults.clone();
+        let default_instructions_state = default_instructions_state.clone();
+        default_instructions_reset.connect_clicked(move |_| {
+            let mut defaults = crate::services::enzim_agent::load_loop_draft_defaults(db.as_ref());
+            defaults.instructions_text.clear();
+            match crate::services::enzim_agent::save_loop_draft_defaults(db.as_ref(), &defaults) {
+                Ok(()) => {
+                    loop_defaults.replace(defaults);
+                    default_instructions_state.set_text("No default instructions saved");
+                }
+                Err(err) => {
+                    eprintln!("failed to reset Enzim Agent default instructions: {err}")
+                }
+            }
         });
     }
 

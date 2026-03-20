@@ -206,14 +206,12 @@ popover.composer-enzim-agent-popover > contents {
   padding: 7px 8px;
 }
 
-.composer-enzim-agent-answer-scroll {
-  border-radius: 8px;
-  background: alpha(@window_fg_color, 0.05);
-  border: 1px solid alpha(@window_fg_color, 0.12);
+.composer-enzim-agent-input-scroll {
+  min-height: 90px;
 }
 
-textview.composer-enzim-agent-answer-view,
-textview.composer-enzim-agent-answer-view text {
+textview.composer-enzim-agent-input-view,
+textview.composer-enzim-agent-input-view text {
   background: transparent;
   background-color: transparent;
   background-image: none;
@@ -223,10 +221,60 @@ textview.composer-enzim-agent-answer-view text {
   min-height: 16px;
 }
 
-.composer-enzim-agent-close,
-.composer-enzim-agent-submit {
-  min-height: 28px;
-  padding: 0 12px;
+.composer-enzim-agent-actions {
+  margin-top: 2px;
+}
+
+button.composer-enzim-agent-action {
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid alpha(@window_fg_color, 0.14);
+  background: alpha(@window_fg_color, 0.05);
+  color: alpha(@window_fg_color, 0.9);
+  font-size: 0.74rem;
+  font-weight: 640;
+  box-shadow: none;
+}
+
+button.composer-enzim-agent-action:hover {
+  border-color: alpha(@window_fg_color, 0.2);
+  background: alpha(@window_fg_color, 0.09);
+  color: alpha(@window_fg_color, 0.98);
+}
+
+button.composer-enzim-agent-action:active {
+  border-color: alpha(@window_fg_color, 0.24);
+  background: alpha(@window_fg_color, 0.12);
+}
+
+button.composer-enzim-agent-action-primary {
+  border-color: alpha(@accent_bg_color, 0.54);
+  background: alpha(@accent_bg_color, 0.18);
+  color: alpha(white, 0.96);
+}
+
+button.composer-enzim-agent-action-primary:hover {
+  border-color: alpha(@accent_bg_color, 0.72);
+  background: alpha(@accent_bg_color, 0.26);
+  color: alpha(white, 0.99);
+}
+
+button.composer-enzim-agent-action-primary:active {
+  border-color: alpha(@accent_bg_color, 0.82);
+  background: alpha(@accent_bg_color, 0.32);
+}
+
+button.composer-enzim-agent-action-stop {
+  border-color: alpha(#d35d5d, 0.28);
+  background: alpha(#d35d5d, 0.09);
+  color: alpha(#f7c6c6, 0.96);
+}
+
+button.composer-enzim-agent-action-stop:hover {
+  border-color: alpha(#d35d5d, 0.44);
+  background: alpha(#d35d5d, 0.14);
+  color: alpha(#ffdede, 0.98);
 }
 
 .composer-worktree-popover-box {
