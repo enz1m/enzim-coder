@@ -270,7 +270,11 @@ impl TelegramClient {
 
 fn extract_auth_match(update: &Value, expected_code: &str) -> Option<TelegramAuthMatch> {
     let message = update.get("message")?;
-    let text = message.get("text").and_then(Value::as_str)?.trim().to_string();
+    let text = message
+        .get("text")
+        .and_then(Value::as_str)?
+        .trim()
+        .to_string();
     if text != expected_code {
         return None;
     }

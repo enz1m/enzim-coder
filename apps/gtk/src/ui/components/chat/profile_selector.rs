@@ -1,7 +1,7 @@
 use super::{composer, runtime_controls};
-use crate::services::app::runtime::RuntimeClient;
 use crate::services::app::CodexProfileManager;
 use crate::services::app::chat::{AppDb, CodexProfileRecord};
+use crate::services::app::runtime::RuntimeClient;
 use crate::ui::widget_tree;
 use adw::prelude::*;
 use std::cell::RefCell;
@@ -53,8 +53,9 @@ fn selector_profile_identity(profile: &CodexProfileRecord) -> Option<String> {
 }
 
 fn selector_is_system_profile(profile: &CodexProfileRecord) -> bool {
-    let system_home =
-        crate::services::app::chat::configured_profile_home_dir(&crate::services::app::chat::default_app_data_dir());
+    let system_home = crate::services::app::chat::configured_profile_home_dir(
+        &crate::services::app::chat::default_app_data_dir(),
+    );
     profile.home_dir.trim() == system_home.to_string_lossy().trim()
 }
 
@@ -303,8 +304,9 @@ pub(super) fn attach(args: AttachArgs) {
 
                 let section_heading = gtk::Box::new(gtk::Orientation::Vertical, 1);
                 section_heading.set_hexpand(true);
-                let section_title =
-                    gtk::Label::new(Some(crate::services::app::runtime::backend_display_name(backend_kind)));
+                let section_title = gtk::Label::new(Some(
+                    crate::services::app::runtime::backend_display_name(backend_kind),
+                ));
                 section_title.add_css_class("chat-profile-section-title");
                 section_title.set_xalign(0.0);
                 section_heading.append(&section_title);
@@ -406,7 +408,8 @@ pub(super) fn attach(args: AttachArgs) {
                 for profile in cards_to_render {
                     let profile_id = profile.as_ref().map(|profile| profile.id);
                     let backend_display_name =
-                        crate::services::app::runtime::backend_display_name(backend_kind).to_string();
+                        crate::services::app::runtime::backend_display_name(backend_kind)
+                            .to_string();
                     let is_system_profile = profile
                         .as_ref()
                         .map(selector_is_system_profile)

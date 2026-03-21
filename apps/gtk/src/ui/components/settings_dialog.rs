@@ -353,7 +353,10 @@ pub fn show(
     stack.add_named(&general_page, Some(SettingsPage::General.stack_name()));
     stack.add_named(&codex_page, Some(SettingsPage::Codex.stack_name()));
     stack.add_named(&opencode_page, Some(SettingsPage::OpenCode.stack_name()));
-    stack.add_named(&enzim_agent_page, Some(SettingsPage::EnzimAgent.stack_name()));
+    stack.add_named(
+        &enzim_agent_page,
+        Some(SettingsPage::EnzimAgent.stack_name()),
+    );
     stack.add_named(&voice_page, Some(SettingsPage::VoiceInput.stack_name()));
     stack.add_named(
         &skills_mcp_scroll,

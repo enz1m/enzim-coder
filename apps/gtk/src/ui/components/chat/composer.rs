@@ -1,6 +1,6 @@
-use crate::services::app::runtime::RuntimeClient;
 use crate::services::app::CodexProfileManager;
 use crate::services::app::chat::AppDb;
+use crate::services::app::runtime::RuntimeClient;
 use gtk::prelude::*;
 use serde_json::{Value, json};
 use std::cell::RefCell;
@@ -20,6 +20,8 @@ pub(super) struct ComposerSection {
     pub(super) live_turn_status_label: gtk::Label,
     pub(super) live_turn_timer_label: gtk::Label,
 }
+
+mod build_body_ask_section;
 
 #[derive(Clone)]
 struct MentionAttachment {
@@ -250,7 +252,9 @@ fn ensure_composer_image_dir() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-fn worktree_merge_action_label(action: &crate::services::app::worktree::WorktreeMergeAction) -> &'static str {
+fn worktree_merge_action_label(
+    action: &crate::services::app::worktree::WorktreeMergeAction,
+) -> &'static str {
     match action {
         crate::services::app::worktree::WorktreeMergeAction::Write => "Update",
         crate::services::app::worktree::WorktreeMergeAction::Delete => "Delete",
@@ -515,6 +519,10 @@ fn create_send_button() -> gtk::Button {
     button.add_css_class("send-button");
     button.set_size_request(30, 30);
     button
+}
+
+pub(crate) fn build_ask_popup_button(db: Rc<AppDb>) -> gtk::Box {
+    build_body_ask_section::build_ask_button(db)
 }
 
 fn collaboration_mode_payload(mode: &str, model_id: &str, effort: &str) -> Option<Value> {

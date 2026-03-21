@@ -2,8 +2,8 @@ pub mod background_repo;
 pub use enzim_core::csv;
 pub use enzim_core::data_model::{
     CodexProfileRecord, LocalChatTurnInput, LocalChatTurnRecord, RemotePendingPromptRecord,
-    RemoteTelegramAccountRecord, ThreadAutocloseConfig, ThreadRecord, VoiceToTextConfig, WorkspaceRecord,
-    WorkspaceWithThreads,
+    RemoteTelegramAccountRecord, ThreadAutocloseConfig, ThreadRecord, VoiceToTextConfig,
+    WorkspaceRecord, WorkspaceWithThreads,
 };
 pub use enzim_core::data_support::{
     PROFILE_HOME_OVERRIDE_ENV, PROFILE_ICON_POOL, configured_profile_home_dir,

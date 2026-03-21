@@ -1,7 +1,7 @@
-use crate::services::app::runtime::RuntimeClient;
-use crate::services::app::runtime::AppServerNotification;
 use crate::services::app::CodexProfileManager;
 use crate::services::app::chat::AppDb;
+use crate::services::app::runtime::AppServerNotification;
+use crate::services::app::runtime::RuntimeClient;
 use gtk::prelude::*;
 use serde_json::{Value, json};
 use std::cell::RefCell;
@@ -67,10 +67,9 @@ fn cached_profile_login_state(profile_id: i64) -> Option<(bool, bool)> {
 
 fn cache_profile_login_state(profile_id: i64, is_logged_in: bool) {
     if let Ok(mut state) = profile_login_probe_state().lock() {
-        state.cached_login_by_profile.insert(
-            profile_id,
-            (is_logged_in, gtk::glib::monotonic_time()),
-        );
+        state
+            .cached_login_by_profile
+            .insert(profile_id, (is_logged_in, gtk::glib::monotonic_time()));
     }
 }
 
@@ -98,10 +97,9 @@ fn refresh_profile_login_state_async(profile_id: i64, client: Arc<RuntimeClient>
             })
             .unwrap_or(false);
         if let Ok(mut state) = profile_login_probe_state().lock() {
-            state.cached_login_by_profile.insert(
-                profile_id,
-                (is_logged_in, gtk::glib::monotonic_time()),
-            );
+            state
+                .cached_login_by_profile
+                .insert(profile_id, (is_logged_in, gtk::glib::monotonic_time()));
             state.inflight_profiles.remove(&profile_id);
         }
     });
@@ -360,10 +358,11 @@ pub(super) fn maybe_replace_profile_auth_error_message(
         return message.to_string();
     }
 
-    let system_home =
-        crate::services::app::chat::configured_profile_home_dir(&crate::services::app::chat::default_app_data_dir())
-            .to_string_lossy()
-            .to_string();
+    let system_home = crate::services::app::chat::configured_profile_home_dir(
+        &crate::services::app::chat::default_app_data_dir(),
+    )
+    .to_string_lossy()
+    .to_string();
     let is_system_profile = profile.home_dir.trim() == system_home.trim();
 
     if is_system_profile {

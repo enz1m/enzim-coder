@@ -397,8 +397,7 @@ pub fn build_git_tab(
             if total_entries > MAX_RENDERED_GIT_FILES {
                 let overflow = gtk::Label::new(Some(&format!(
                     "Showing the first {} of {} changed paths. This workspace is very large; use Refresh after narrowing the repo state or use Git in the terminal for the full list.",
-                    visible_count,
-                    total_entries
+                    visible_count, total_entries
                 )));
                 overflow.add_css_class("git-tab-muted");
                 overflow.add_css_class("dim-label");

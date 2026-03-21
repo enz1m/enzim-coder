@@ -49,8 +49,9 @@ fn normalize_profile_icon_name(icon_name: Option<&str>) -> String {
 }
 
 fn is_system_profile_record(profile: &crate::services::app::chat::CodexProfileRecord) -> bool {
-    let system_home =
-        crate::services::app::chat::configured_profile_home_dir(&crate::services::app::chat::default_app_data_dir());
+    let system_home = crate::services::app::chat::configured_profile_home_dir(
+        &crate::services::app::chat::default_app_data_dir(),
+    );
     profile.home_dir.trim() == system_home.to_string_lossy().trim()
 }
 
@@ -62,7 +63,9 @@ fn profile_icon_label(icon_name: &str) -> &'static str {
         .unwrap_or("Profile Icon")
 }
 
-fn opencode_provider_dropdown_label(provider: &crate::services::app::runtime::AccountProviderInfo) -> String {
+fn opencode_provider_dropdown_label(
+    provider: &crate::services::app::runtime::AccountProviderInfo,
+) -> String {
     if provider.connected || provider.has_saved_auth {
         format!("{} (Added)", provider.provider_name)
     } else {
@@ -149,8 +152,9 @@ fn selected_profile_id(dropdown: &gtk::DropDown, profile_ids: &[i64]) -> Option<
 }
 
 fn is_system_home_profile(db: &AppDb, profile_id: i64) -> bool {
-    let system_home =
-        crate::services::app::chat::configured_profile_home_dir(&crate::services::app::chat::default_app_data_dir());
+    let system_home = crate::services::app::chat::configured_profile_home_dir(
+        &crate::services::app::chat::default_app_data_dir(),
+    );
     let system_home = system_home.to_string_lossy().to_string();
     db.get_codex_profile(profile_id)
         .ok()
@@ -726,8 +730,9 @@ pub(super) fn build_profile_settings_page(
             refresh_runtime_only_models_cache(profile_id);
             operation_label.set_visible(true);
             operation_label.set_text("Loading OpenCode providers...");
-            let (tx, rx) =
-                mpsc::channel::<Result<Vec<crate::services::app::runtime::AccountProviderInfo>, String>>();
+            let (tx, rx) = mpsc::channel::<
+                Result<Vec<crate::services::app::runtime::AccountProviderInfo>, String>,
+            >();
             thread::spawn(move || {
                 let _ = tx.send(client.account_provider_list());
             });
@@ -1177,9 +1182,11 @@ pub(super) fn build_profile_settings_page(
                 return;
             };
             if let Ok(Some(profile)) = db.get_codex_profile(profile_id) {
-                let capabilities =
-                    crate::services::app::runtime::capabilities_for_backend_kind(&profile.backend_kind);
-                let backend_name = crate::services::app::runtime::backend_display_name(&profile.backend_kind);
+                let capabilities = crate::services::app::runtime::capabilities_for_backend_kind(
+                    &profile.backend_kind,
+                );
+                let backend_name =
+                    crate::services::app::runtime::backend_display_name(&profile.backend_kind);
                 let profile_icon_name = normalize_profile_icon_name(Some(&profile.icon_name));
                 selected_profile_icon_name.replace(profile_icon_name.clone());
                 selected_profile_icon_image.set_icon_name(Some(&profile_icon_name));
@@ -1576,8 +1583,9 @@ pub(super) fn build_profile_settings_page(
         });
     }
 
-    let pending_runtime_oauth_flow: Rc<RefCell<Option<(i64, crate::services::app::runtime::OAuthFlowInfo)>>> =
-        Rc::new(RefCell::new(None));
+    let pending_runtime_oauth_flow: Rc<
+        RefCell<Option<(i64, crate::services::app::runtime::OAuthFlowInfo)>>,
+    > = Rc::new(RefCell::new(None));
     let complete_runtime_oauth_flow: Rc<
         dyn Fn(i64, crate::services::app::runtime::OAuthFlowInfo, Option<String>),
     > = {
@@ -1602,7 +1610,9 @@ pub(super) fn build_profile_settings_page(
         let login_waiting_spinner = login_waiting_spinner.clone();
         let pending_runtime_oauth_flow = pending_runtime_oauth_flow.clone();
         Rc::new(
-            move |profile_id: i64, flow: crate::services::app::runtime::OAuthFlowInfo, code: Option<String>| {
+            move |profile_id: i64,
+                  flow: crate::services::app::runtime::OAuthFlowInfo,
+                  code: Option<String>| {
                 operation_label.set_visible(true);
                 operation_label.set_text("Completing OAuth login...");
                 login_code_button.set_sensitive(false);
@@ -1617,8 +1627,9 @@ pub(super) fn build_profile_settings_page(
                 };
                 let provider_id = flow.provider_id.clone();
                 let method_index = flow.method_index;
-                let (tx, rx) =
-                    mpsc::channel::<Result<Option<crate::services::app::runtime::AccountInfo>, String>>();
+                let (tx, rx) = mpsc::channel::<
+                    Result<Option<crate::services::app::runtime::AccountInfo>, String>,
+                >();
                 thread::spawn(move || {
                     let _ = tx.send(client.account_complete_oauth_for_provider(
                         &provider_id,
@@ -1796,7 +1807,8 @@ pub(super) fn build_profile_settings_page(
             login_waiting_label.set_text("Waiting for authorization...");
             if runtime_only {
                 let provider_for_thread = provider.clone();
-                let (tx, rx) = mpsc::channel::<Result<crate::services::app::runtime::OAuthFlowInfo, String>>();
+                let (tx, rx) =
+                    mpsc::channel::<Result<crate::services::app::runtime::OAuthFlowInfo, String>>();
                 thread::spawn(move || {
                     let result = match provider_for_thread {
                         Some((provider_id, _)) => {

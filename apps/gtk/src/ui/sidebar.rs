@@ -608,16 +608,19 @@ fn build_workspace(
                         .map(str::trim)
                         .filter(|value| !value.is_empty())
                     {
-                        if let Err(err) = crate::services::app::worktree::stop_worktree_checkout(path) {
+                        if let Err(err) =
+                            crate::services::app::worktree::stop_worktree_checkout(path)
+                        {
                             errors.push(format!(
                                 "worktree cleanup failed for thread {}: {err}",
                                 thread.id
                             ));
                         }
                     }
-                    if let Err(err) =
-                        crate::services::app::restore::clear_thread_restore_data(db.as_ref(), thread.id)
-                    {
+                    if let Err(err) = crate::services::app::restore::clear_thread_restore_data(
+                        db.as_ref(),
+                        thread.id,
+                    ) {
                         errors.push(format!(
                             "checkpoint cleanup failed for thread {}: {err}",
                             thread.id

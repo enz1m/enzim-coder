@@ -2,8 +2,8 @@ pub use crate::data::background_repo::BackgroundRepo;
 pub use crate::data::{
     AppDb, CodexProfileRecord, EnzimAgentConfigRecord, EnzimAgentLoopEventRecord,
     EnzimAgentLoopRecord, LocalChatTurnInput, LocalChatTurnRecord, RemotePendingPromptRecord,
-    RemoteTelegramAccountRecord, ThreadAutocloseConfig, ThreadRecord, VoiceToTextConfig, WorkspaceRecord,
-    WorkspaceWithThreads,
+    RemoteTelegramAccountRecord, ThreadAutocloseConfig, ThreadRecord, VoiceToTextConfig,
+    WorkspaceRecord, WorkspaceWithThreads,
 };
 
 pub fn default_app_data_dir() -> std::path::PathBuf {

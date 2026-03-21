@@ -71,11 +71,7 @@ fn loop_default_state_label(value: &str) -> &'static str {
     }
 }
 
-fn open_system_prompt_dialog(
-    parent: &gtk::Window,
-    db: Rc<AppDb>,
-    on_saved: Rc<dyn Fn()>,
-) {
+fn open_system_prompt_dialog(parent: &gtk::Window, db: Rc<AppDb>, on_saved: Rc<dyn Fn()>) {
     let dialog = gtk::Window::builder()
         .title("Loop System Prompt")
         .default_width(720)
@@ -170,13 +166,12 @@ fn open_system_prompt_dialog(
             let end = prompt_buf.end_iter();
             let prompt = prompt_buf.text(&start, &end, true).to_string();
             let mut config = crate::services::enzim_agent::load_config(db.as_ref());
-            config.system_prompt_override = if prompt.trim().is_empty()
-                || prompt.trim() == default_prompt.trim()
-            {
-                None
-            } else {
-                Some(prompt)
-            };
+            config.system_prompt_override =
+                if prompt.trim().is_empty() || prompt.trim() == default_prompt.trim() {
+                    None
+                } else {
+                    Some(prompt)
+                };
             match crate::services::enzim_agent::save_config(db.as_ref(), &config) {
                 Ok(()) => {
                     status.set_text("Saved.");
@@ -408,6 +403,29 @@ pub(crate) fn build_settings_page(dialog: &gtk::Window, db: Rc<AppDb>) -> gtk::B
     prompt_row.append(&prompt_reset);
     section.append(&prompt_row);
 
+    let ask_prompt_state = Rc::new(RefCell::new(
+        crate::services::enzim_agent::load_ask_system_prompt_override(db.as_ref())
+            .unwrap_or_default(),
+    ));
+
+    let ask_prompt_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let ask_prompt_label = gtk::Label::new(Some("General chat prompt"));
+    ask_prompt_label.set_width_chars(14);
+    ask_prompt_label.set_xalign(0.0);
+    let ask_prompt_state_label = gtk::Label::new(Some(loop_default_state_label(
+        ask_prompt_state.borrow().as_str(),
+    )));
+    ask_prompt_state_label.set_xalign(0.0);
+    ask_prompt_state_label.set_hexpand(true);
+    ask_prompt_state_label.add_css_class("dim-label");
+    let ask_prompt_edit = gtk::Button::with_label("Edit");
+    let ask_prompt_reset = gtk::Button::with_label("Reset");
+    ask_prompt_row.append(&ask_prompt_label);
+    ask_prompt_row.append(&ask_prompt_state_label);
+    ask_prompt_row.append(&ask_prompt_edit);
+    ask_prompt_row.append(&ask_prompt_reset);
+    section.append(&ask_prompt_row);
+
     let loop_defaults = Rc::new(RefCell::new(
         crate::services::enzim_agent::load_loop_draft_defaults(db.as_ref()),
     ));
@@ -518,6 +536,67 @@ pub(crate) fn build_settings_page(dialog: &gtk::Window, db: Rc<AppDb>) -> gtk::B
                     (reload_models_ui)();
                 }),
             );
+        });
+    }
+
+    {
+        let db = db.clone();
+        let dialog = dialog.clone();
+        let ask_prompt_state = ask_prompt_state.clone();
+        let ask_prompt_state_label = ask_prompt_state_label.clone();
+        ask_prompt_edit.connect_clicked(move |_| {
+            let dialog = dialog.clone();
+            let db = db.clone();
+            let ask_prompt_state = ask_prompt_state.clone();
+            let ask_prompt_state_label = ask_prompt_state_label.clone();
+            let stored_text = ask_prompt_state.borrow().clone();
+            let initial_text = if stored_text.trim().is_empty() {
+                crate::services::enzim_agent::ask_system_prompt().to_string()
+            } else {
+                stored_text
+            };
+            open_loop_text_dialog(
+                &dialog,
+                "General Chat System Prompt",
+                "This system prompt is used by the Ask popup for general chat. Reset restores the built-in default.",
+                &initial_text,
+                crate::services::enzim_agent::ask_system_prompt(),
+                Rc::new(move |text| {
+                    let next_value = if text.trim().is_empty()
+                        || text.trim() == crate::services::enzim_agent::ask_system_prompt().trim()
+                    {
+                        None
+                    } else {
+                        Some(text.as_str())
+                    };
+                    crate::services::enzim_agent::save_ask_system_prompt_override(
+                        db.as_ref(),
+                        next_value,
+                    )?;
+                    let stored = crate::services::enzim_agent::load_ask_system_prompt_override(
+                        db.as_ref(),
+                    )
+                    .unwrap_or_default();
+                    ask_prompt_state.replace(stored.clone());
+                    ask_prompt_state_label.set_text(loop_default_state_label(&stored));
+                    Ok(())
+                }),
+            );
+        });
+    }
+
+    {
+        let db = db.clone();
+        let ask_prompt_state = ask_prompt_state.clone();
+        let ask_prompt_state_label = ask_prompt_state_label.clone();
+        ask_prompt_reset.connect_clicked(move |_| {
+            match crate::services::enzim_agent::save_ask_system_prompt_override(db.as_ref(), None) {
+                Ok(()) => {
+                    ask_prompt_state.replace(String::new());
+                    ask_prompt_state_label.set_text("Using built-in default");
+                }
+                Err(err) => eprintln!("failed to reset Enzim Agent general chat prompt: {err}"),
+            }
         });
     }
 
@@ -686,7 +765,9 @@ pub(crate) fn build_settings_page(dialog: &gtk::Window, db: Rc<AppDb>) -> gtk::B
                 return;
             }
 
-            let (tx, rx) = mpsc::channel::<Result<Vec<crate::services::enzim_agent::EnzimAgentModelOption>, String>>();
+            let (tx, rx) = mpsc::channel::<
+                Result<Vec<crate::services::enzim_agent::EnzimAgentModelOption>, String>,
+            >();
             std::thread::spawn(move || {
                 let result = AppDb::open_detached()
                     .map_err(|err| err.to_string())
@@ -703,8 +784,9 @@ pub(crate) fn build_settings_page(dialog: &gtk::Window, db: Rc<AppDb>) -> gtk::B
             let refresh_models_for_timer = refresh_models.clone();
             gtk::glib::timeout_add_local(Duration::from_millis(60), move || match rx.try_recv() {
                 Ok(Ok(models)) => {
-                    config_state_for_timer
-                        .replace(crate::services::enzim_agent::load_config(db_for_timer.as_ref()));
+                    config_state_for_timer.replace(crate::services::enzim_agent::load_config(
+                        db_for_timer.as_ref(),
+                    ));
                     (reload_models_ui_for_timer)();
                     if !models.is_empty()
                         && model_dropdown_for_timer.selected() == gtk::INVALID_LIST_POSITION
@@ -717,8 +799,9 @@ pub(crate) fn build_settings_page(dialog: &gtk::Window, db: Rc<AppDb>) -> gtk::B
                     gtk::glib::ControlFlow::Break
                 }
                 Ok(Err(err)) => {
-                    config_state_for_timer
-                        .replace(crate::services::enzim_agent::load_config(db_for_timer.as_ref()));
+                    config_state_for_timer.replace(crate::services::enzim_agent::load_config(
+                        db_for_timer.as_ref(),
+                    ));
                     (reload_models_ui_for_timer)();
                     status_for_timer.set_text(&err);
                     save_for_timer.set_sensitive(true);

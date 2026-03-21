@@ -198,6 +198,8 @@ button.chat-worktree-overlay-action:focus-visible image {
 popover.composer-worktree-popover > contents,
 popover.composer-worktree-popover.background > contents,
 popover.composer-enzim-agent-popover > contents,
+popover.composer-ask-popover > contents,
+popover.composer-ask-popover.background > contents,
 popover.composer-enzim-agent-popover.background > contents {
   padding: 4px;
   border-radius: 10px;
@@ -211,6 +213,8 @@ popover.composer-enzim-agent-popover.background > contents {
 popover.composer-worktree-popover > arrow,
 popover.composer-worktree-popover.background > arrow,
 popover.composer-enzim-agent-popover > arrow,
+popover.composer-ask-popover > arrow,
+popover.composer-ask-popover.background > arrow,
 popover.composer-enzim-agent-popover.background > arrow {
   background: alpha(@window_bg_color, 0.98);
   border: 1px solid alpha(@window_fg_color, 0.14);
@@ -222,6 +226,87 @@ popover.composer-enzim-agent-popover.background > arrow {
 .composer-enzim-agent-box {
   min-width: 360px;
   max-width: 400px;
+}
+
+.composer-ask-box {
+  min-width: 400px;
+  max-width: 460px;
+}
+
+.composer-ask-header-action {
+  padding: 0;
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: alpha(@window_fg_color, 0.82);
+}
+
+.composer-ask-header-action.is-hover,
+.composer-ask-header-action.is-active {
+  color: alpha(@window_fg_color, 0.98);
+}
+
+.composer-ask-messages-scroll {
+  border-radius: 10px;
+  background: transparent;
+  background-color: transparent;
+}
+
+.composer-ask-empty {
+  font-size: 0.8rem;
+  color: alpha(@window_fg_color, 0.7);
+  background: alpha(@window_fg_color, 0.04);
+  border: 1px solid alpha(@window_fg_color, 0.08);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.composer-ask-composer {
+  gap: 6px;
+}
+
+.composer-ask-footer {
+  align-items: center;
+}
+
+.composer-ask-status {
+  font-size: 0.78rem;
+  color: alpha(@window_fg_color, 0.72);
+}
+
+.composer-ask-model-empty {
+  font-size: 0.78rem;
+  color: alpha(@window_fg_color, 0.62);
+}
+
+.composer-ask-history-list {
+  min-width: 280px;
+  padding: 4px;
+}
+
+button.composer-ask-history-row {
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+button.composer-ask-history-row:hover {
+  background: alpha(@window_fg_color, 0.06);
+}
+
+button.composer-ask-history-row.composer-ask-history-row-active {
+  background: alpha(@accent_bg_color, 0.12);
+}
+
+.composer-ask-history-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: alpha(@window_fg_color, 0.92);
+}
+
+.composer-ask-history-meta,
+.composer-ask-history-empty {
+  font-size: 0.74rem;
+  color: alpha(@window_fg_color, 0.62);
 }
 
 .composer-enzim-agent-running-box {
@@ -982,6 +1067,7 @@ button.chat-queued-cancel {
 }
 
 button.composer-input-mic,
+button.composer-ask-button,
 button.composer-enzim-agent-button,
 button.composer-worktree-button {
   color: alpha(@window_fg_color, 0.82);
@@ -992,12 +1078,14 @@ button.composer-worktree-button {
 }
 
 button.composer-input-mic image,
+button.composer-ask-button image,
 button.composer-enzim-agent-button image,
 button.composer-worktree-button image {
   color: alpha(@window_fg_color, 0.82);
 }
 
 button.composer-input-mic:hover,
+button.composer-ask-button:hover,
 button.composer-enzim-agent-button:hover,
 button.composer-worktree-button:hover {
   color: alpha(@window_fg_color, 0.96);
@@ -1006,12 +1094,14 @@ button.composer-worktree-button:hover {
 }
 
 button.composer-input-mic:hover image,
+button.composer-ask-button:hover image,
 button.composer-enzim-agent-button:hover image,
 button.composer-worktree-button:hover image {
   color: alpha(@window_fg_color, 0.96);
 }
 
 button.composer-input-mic:active,
+button.composer-ask-button:active,
 button.composer-enzim-agent-button:active,
 button.composer-worktree-button:active {
   background: alpha(@window_fg_color, 0.14);

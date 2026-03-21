@@ -19,9 +19,7 @@ pub(crate) fn build_settings_page(_dialog: &gtk::Window, db: Rc<AppDb>) -> gtk::
     root.set_margin_top(12);
     root.set_margin_bottom(12);
 
-    let intro = gtk::Label::new(Some(
-        "General app behavior and housekeeping settings.",
-    ));
+    let intro = gtk::Label::new(Some("General app behavior and housekeeping settings."));
     intro.set_xalign(0.0);
     intro.set_wrap(true);
     intro.set_wrap_mode(gtk::pango::WrapMode::WordChar);
@@ -96,7 +94,11 @@ pub(crate) fn build_settings_page(_dialog: &gtk::Window, db: Rc<AppDb>) -> gtk::
         let db = db.clone();
         let toggle = toggle.clone();
         days_spin.connect_value_changed(move |spin| {
-            persist_thread_autoclose_config(db.as_ref(), toggle.is_active(), spin.value_as_int() as i64);
+            persist_thread_autoclose_config(
+                db.as_ref(),
+                toggle.is_active(),
+                spin.value_as_int() as i64,
+            );
         });
     }
 

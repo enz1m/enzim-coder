@@ -14,11 +14,36 @@ const MAX_LOOP_JSON_RETRIES: usize = 3;
 const DEFAULT_LOOP_PROMPT_KEY: &str = "enzim_agent:default_loop_prompt";
 const DEFAULT_LOOP_INSTRUCTIONS_KEY: &str = "enzim_agent:default_loop_instructions";
 const TELEGRAM_QUESTION_SESSION_KEY: &str = "enzim_agent:telegram_question_session";
+const ASK_STATE_KEY: &str = "enzim_agent:ask_state";
+const ASK_MODEL_KEY: &str = "enzim_agent:ask_model_id";
+const ASK_SYSTEM_PROMPT_OVERRIDE_KEY: &str = "enzim_agent:ask_system_prompt_override";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EnzimAgentModelOption {
     pub id: String,
     pub display_name: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EnzimAskState {
+    pub current_chat_id: Option<String>,
+    pub chats: Vec<EnzimAskChat>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EnzimAskChat {
+    pub id: String,
+    pub title: String,
+    pub messages: Vec<EnzimAskMessage>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EnzimAskMessage {
+    pub role: String,
+    pub content: String,
+    pub created_at: i64,
 }
 
 #[derive(Clone, Debug)]
@@ -147,9 +172,7 @@ pub fn stop_telegram_question_session(db: &AppDb) -> Result<(), String> {
 }
 
 pub fn stop_telegram_question_session_for_loop(db: &AppDb, loop_id: i64) -> Result<(), String> {
-    if active_telegram_question_session(db)
-        .is_some_and(|session| session.loop_id == loop_id)
-    {
+    if active_telegram_question_session(db).is_some_and(|session| session.loop_id == loop_id) {
         stop_telegram_question_session(db)?;
     }
     Ok(())
@@ -172,7 +195,9 @@ pub fn start_telegram_question_session(
     let account = db
         .remote_telegram_active_account()
         .map_err(|err| err.to_string())?
-        .ok_or_else(|| "No linked Telegram account is available for Enzim Agent questions.".to_string())?;
+        .ok_or_else(|| {
+            "No linked Telegram account is available for Enzim Agent questions.".to_string()
+        })?;
     let thread_title = db
         .get_thread_record(loop_record.local_thread_id)
         .ok()
@@ -221,7 +246,9 @@ pub fn enqueue_telegram_question_answer_if_match(
         return Ok(false);
     }
     if active_loop_for_remote_thread(db, &session.remote_thread_id)
-        .map(|loop_record| loop_record.id != session.loop_id || loop_record.status != "waiting_user")
+        .map(|loop_record| {
+            loop_record.id != session.loop_id || loop_record.status != "waiting_user"
+        })
         .unwrap_or(true)
     {
         stop_telegram_question_session(db)?;
@@ -300,6 +327,41 @@ pub fn default_loop_prompt() -> &'static str {
 
 pub fn default_loop_instructions() -> &'static str {
     ""
+}
+
+pub fn ask_system_prompt() -> &'static str {
+    "You are Enzim Agent, Enzim's quick helper AI.\n\
+\n\
+ROLE\n\
+- This conversation is separate from the project thread.\n\
+- Answer the user's question directly and helpfully.\n\
+- Use markdown when it improves readability.\n\
+\n\
+CONSTRAINTS\n\
+- Do not claim you inspected files, ran commands, or used tools unless the user explicitly provided that context in this chat.\n\
+- Do not refer to hidden project state or background loop state.\n\
+- Keep answers concise unless the user asks for depth."
+}
+
+pub fn load_ask_system_prompt_override(db: &AppDb) -> Option<String> {
+    db.get_setting(ASK_SYSTEM_PROMPT_OVERRIDE_KEY)
+        .ok()
+        .flatten()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+pub fn save_ask_system_prompt_override(db: &AppDb, prompt: Option<&str>) -> Result<(), String> {
+    let value = prompt
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("");
+    db.set_setting(ASK_SYSTEM_PROMPT_OVERRIDE_KEY, value)
+        .map_err(|err| err.to_string())
+}
+
+pub fn effective_ask_system_prompt(db: &AppDb) -> String {
+    load_ask_system_prompt_override(db).unwrap_or_else(|| ask_system_prompt().to_string())
 }
 
 impl Default for EnzimAgentConfig {
@@ -412,6 +474,79 @@ pub fn save_loop_draft_defaults(db: &AppDb, defaults: &LoopDraftDefaults) -> Res
     .map_err(|err| err.to_string())
 }
 
+pub fn load_ask_state(db: &AppDb) -> EnzimAskState {
+    db.get_setting(ASK_STATE_KEY)
+        .ok()
+        .flatten()
+        .and_then(|raw| serde_json::from_str::<EnzimAskState>(&raw).ok())
+        .unwrap_or_default()
+}
+
+pub fn save_ask_state(db: &AppDb, state: &EnzimAskState) -> Result<(), String> {
+    let mut normalized = state.clone();
+    normalized.chats.sort_by(|left, right| {
+        right
+            .updated_at
+            .cmp(&left.updated_at)
+            .then_with(|| right.created_at.cmp(&left.created_at))
+            .then_with(|| right.id.cmp(&left.id))
+    });
+    let raw = serde_json::to_string(&normalized).map_err(|err| err.to_string())?;
+    db.set_setting(ASK_STATE_KEY, &raw)
+        .map_err(|err| err.to_string())
+}
+
+pub fn load_ask_model_choice(db: &AppDb) -> Option<String> {
+    db.get_setting(ASK_MODEL_KEY)
+        .ok()
+        .flatten()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+pub fn save_ask_model_choice(db: &AppDb, model_id: &str) -> Result<(), String> {
+    db.set_setting(ASK_MODEL_KEY, model_id.trim())
+        .map_err(|err| err.to_string())
+}
+
+pub fn ask_model_options(config: &EnzimAgentConfig) -> Vec<EnzimAgentModelOption> {
+    let mut models = config.cached_models.clone();
+    if let Some(selected) = config
+        .model_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if !models.iter().any(|model| model.id == selected) {
+            models.insert(
+                0,
+                EnzimAgentModelOption {
+                    id: selected.to_string(),
+                    display_name: selected.to_string(),
+                },
+            );
+        }
+    }
+    models
+}
+
+pub fn effective_ask_model_id(db: &AppDb) -> Option<String> {
+    let config = load_config(db);
+    let models = ask_model_options(&config);
+    if let Some(saved) = load_ask_model_choice(db) {
+        if models.iter().any(|model| model.id == saved) {
+            return Some(saved);
+        }
+    }
+    config
+        .model_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| models.first().map(|model| model.id.clone()))
+}
+
 fn config_system_prompt(config: &EnzimAgentConfig) -> String {
     config
         .system_prompt_override
@@ -447,7 +582,11 @@ fn build_client(api_key: Option<&str>) -> Result<Client, String> {
 }
 
 fn endpoint(base_url: &str, path: &str) -> String {
-    format!("{}/{}", normalized_base_url(base_url), path.trim_start_matches('/'))
+    format!(
+        "{}/{}",
+        normalized_base_url(base_url),
+        path.trim_start_matches('/')
+    )
 }
 
 fn extract_response_text(value: &Value) -> Option<String> {
@@ -470,11 +609,17 @@ fn extract_response_text(value: &Value) -> Option<String> {
 }
 
 fn parse_error_body(value: &Value) -> Option<String> {
-    value.get("error")
+    value
+        .get("error")
         .and_then(|error| error.get("message"))
         .and_then(Value::as_str)
         .map(ToOwned::to_owned)
-        .or_else(|| value.get("message").and_then(Value::as_str).map(ToOwned::to_owned))
+        .or_else(|| {
+            value
+                .get("message")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned)
+        })
 }
 
 fn extract_agent_message_text(item: &Value) -> Option<String> {
@@ -517,11 +662,7 @@ fn extract_agent_message_text(item: &Value) -> Option<String> {
     }
 
     let out = out.trim().to_string();
-    if out.is_empty() {
-        None
-    } else {
-        Some(out)
-    }
+    if out.is_empty() { None } else { Some(out) }
 }
 
 fn effective_assistant_text(turn: &LocalChatTurnRecord) -> String {
@@ -543,11 +684,7 @@ fn effective_assistant_text(turn: &LocalChatTurnRecord) -> String {
         .to_string()
 }
 
-fn cached_turn_error_message(
-    db: &AppDb,
-    remote_thread_id: &str,
-    turn_id: &str,
-) -> Option<String> {
+fn cached_turn_error_message(db: &AppDb, remote_thread_id: &str, turn_id: &str) -> Option<String> {
     let raw = db
         .get_setting(&format!("thread_turn_errors:{remote_thread_id}"))
         .ok()
@@ -576,7 +713,9 @@ fn build_failed_turn_diagnostics(
     if let Some(message) = cached_turn_error_message(db, remote_thread_id, &turn.external_turn_id) {
         lines.push(format!("Runtime error: {message}"));
     } else {
-        lines.push("No detailed runtime error was captured from the runtime event stream.".to_string());
+        lines.push(
+            "No detailed runtime error was captured from the runtime event stream.".to_string(),
+        );
     }
 
     let assistant_text = effective_assistant_text(turn);
@@ -594,8 +733,12 @@ pub fn detailed_runtime_error_for_turn(
     local_thread_id: i64,
     turn_id: &str,
 ) -> Option<String> {
-    let turns = db.list_local_chat_turns_for_local_thread(local_thread_id).ok()?;
-    let turn = turns.into_iter().find(|turn| turn.external_turn_id == turn_id)?;
+    let turns = db
+        .list_local_chat_turns_for_local_thread(local_thread_id)
+        .ok()?;
+    let turn = turns
+        .into_iter()
+        .find(|turn| turn.external_turn_id == turn_id)?;
     Some(build_failed_turn_diagnostics(db, remote_thread_id, &turn))
 }
 
@@ -619,7 +762,11 @@ fn parse_models(value: &Value) -> Vec<EnzimAgentModelOption> {
             Some(EnzimAgentModelOption { id, display_name })
         })
         .collect::<Vec<_>>();
-    out.sort_by(|left, right| left.display_name.cmp(&right.display_name).then_with(|| left.id.cmp(&right.id)));
+    out.sort_by(|left, right| {
+        left.display_name
+            .cmp(&right.display_name)
+            .then_with(|| left.id.cmp(&right.id))
+    });
     out
 }
 
@@ -667,8 +814,10 @@ fn extract_json_object(raw: &str) -> Option<String> {
 }
 
 fn parse_decision(raw: &str) -> Result<LoopDecision, String> {
-    let json_slice = extract_json_object(raw).ok_or_else(|| "Agent response did not contain JSON.".to_string())?;
-    let decision = serde_json::from_str::<LoopDecision>(&json_slice).map_err(|err| err.to_string())?;
+    let json_slice = extract_json_object(raw)
+        .ok_or_else(|| "Agent response did not contain JSON.".to_string())?;
+    let decision =
+        serde_json::from_str::<LoopDecision>(&json_slice).map_err(|err| err.to_string())?;
     match decision.action.as_str() {
         "continue" => {
             if decision
@@ -791,10 +940,8 @@ fn call_loop_model(
         let status = response.status();
         let value = response.json::<Value>().map_err(|err| err.to_string())?;
         if !status.is_success() {
-            return Err(
-                parse_error_body(&value)
-                    .unwrap_or_else(|| format!("Loop model request failed: {status}"))
-            );
+            return Err(parse_error_body(&value)
+                .unwrap_or_else(|| format!("Loop model request failed: {status}")));
         }
 
         let raw = match extract_response_text(&value) {
@@ -827,6 +974,68 @@ fn call_loop_model(
             &last_json_error
         },
     ))
+}
+
+pub fn ask_chat_completion(
+    config: &EnzimAgentConfig,
+    system_prompt: &str,
+    model_id: &str,
+    messages: &[EnzimAskMessage],
+) -> Result<String, String> {
+    let model_id = model_id.trim();
+    if model_id.is_empty() {
+        return Err("Ask model is not configured.".to_string());
+    }
+    let base_url = normalized_base_url(&config.base_url);
+    if base_url.is_empty() {
+        return Err("Enzim Agent base URL is not configured.".to_string());
+    }
+
+    let payload_messages = std::iter::once(json!({
+        "role": "system",
+        "content": system_prompt.trim(),
+    }))
+    .chain(messages.iter().filter_map(|message| {
+        let role = message.role.trim();
+        let content = message.content.trim();
+        if content.is_empty() {
+            return None;
+        }
+        let normalized_role = match role {
+            "assistant" => "assistant",
+            _ => "user",
+        };
+        Some(json!({
+            "role": normalized_role,
+            "content": content,
+        }))
+    }))
+    .collect::<Vec<_>>();
+
+    let body = json!({
+        "model": model_id,
+        "temperature": 0.4,
+        "messages": payload_messages,
+    });
+
+    let client = build_client(config.api_key.as_deref())?;
+    let url = endpoint(&base_url, "/chat/completions");
+    let response = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .map_err(|err| err.to_string())?;
+    let status = response.status();
+    let value = response.json::<Value>().map_err(|err| err.to_string())?;
+    if !status.is_success() {
+        return Err(
+            parse_error_body(&value).unwrap_or_else(|| format!("Ask request failed: {status}"))
+        );
+    }
+    extract_response_text(&value)
+        .map(|text| text.trim().to_string())
+        .filter(|text| !text.is_empty())
+        .ok_or_else(|| "Ask response did not include any message content.".to_string())
 }
 
 fn recent_agent_followup(events: &[EnzimAgentLoopEventRecord]) -> Option<String> {
@@ -865,8 +1074,11 @@ fn apply_decision(
                 .unwrap_or_default()
                 .trim()
                 .to_string();
-            if recent_agent_followup(&db.list_enzim_agent_loop_events(loop_record.id).map_err(|err| err.to_string())?)
-                .as_deref()
+            if recent_agent_followup(
+                &db.list_enzim_agent_loop_events(loop_record.id)
+                    .map_err(|err| err.to_string())?,
+            )
+            .as_deref()
                 == Some(message.as_str())
             {
                 db.update_enzim_agent_loop_progress(
@@ -879,7 +1091,9 @@ fn apply_decision(
                     None,
                 )
                 .map_err(|err| err.to_string())?;
-                return Err("Enzim Agent generated a duplicate follow-up and paused the loop.".to_string());
+                return Err(
+                    "Enzim Agent generated a duplicate follow-up and paused the loop.".to_string(),
+                );
             }
             let decision_json = serde_json::to_string(decision).ok();
             let event = db
@@ -975,8 +1189,9 @@ fn apply_decision(
             })
         }
         "respond" => {
-            let pending_request = pending_request
-                .ok_or_else(|| "Respond decision was returned without a pending request.".to_string())?;
+            let pending_request = pending_request.ok_or_else(|| {
+                "Respond decision was returned without a pending request.".to_string()
+            })?;
             let option_id = decision
                 .request_option_id
                 .as_deref()
@@ -986,7 +1201,9 @@ fn apply_decision(
                 .options
                 .iter()
                 .find(|option| option.id == option_id)
-                .ok_or_else(|| "Respond decision selected an unknown request option.".to_string())?;
+                .ok_or_else(|| {
+                    "Respond decision selected an unknown request option.".to_string()
+                })?;
             let decision_json = serde_json::to_string(decision).ok();
             db.append_enzim_agent_loop_event(
                 loop_record.id,
@@ -1034,7 +1251,13 @@ fn evaluate_loop_from_history(
     let events = db
         .list_enzim_agent_loop_events(loop_record.id)
         .map_err(|err| err.to_string())?;
-    let decision = call_loop_model(&config, &system_prompt, loop_record, &events, pending_request)?;
+    let decision = call_loop_model(
+        &config,
+        &system_prompt,
+        loop_record,
+        &events,
+        pending_request,
+    )?;
     apply_decision(db, loop_record, &decision, pending_request)
 }
 
@@ -1102,7 +1325,10 @@ pub fn start_loop(
     Ok(loop_record)
 }
 
-pub fn active_loop_for_remote_thread(db: &AppDb, remote_thread_id: &str) -> Option<EnzimAgentLoopRecord> {
+pub fn active_loop_for_remote_thread(
+    db: &AppDb,
+    remote_thread_id: &str,
+) -> Option<EnzimAgentLoopRecord> {
     let local_thread_id = db
         .get_thread_record_by_remote_thread_id(remote_thread_id)
         .ok()
@@ -1113,7 +1339,10 @@ pub fn active_loop_for_remote_thread(db: &AppDb, remote_thread_id: &str) -> Opti
         .flatten()
 }
 
-pub fn cancel_active_loop_for_remote_thread(db: &AppDb, remote_thread_id: &str) -> Result<(), String> {
+pub fn cancel_active_loop_for_remote_thread(
+    db: &AppDb,
+    remote_thread_id: &str,
+) -> Result<(), String> {
     let Some(loop_record) = active_loop_for_remote_thread(db, remote_thread_id) else {
         return Ok(());
     };
@@ -1140,7 +1369,10 @@ pub fn pending_question(db: &AppDb, remote_thread_id: &str) -> Option<PendingUse
         return None;
     }
     let events = db.list_enzim_agent_loop_events(loop_record.id).ok()?;
-    let event = events.into_iter().rev().find(|event| event.event_kind == "agent_question")?;
+    let event = events
+        .into_iter()
+        .rev()
+        .find(|event| event.event_kind == "agent_question")?;
     Some(PendingUserQuestion {
         loop_id: loop_record.id,
         question: event.full_text.unwrap_or_default(),
@@ -1177,7 +1409,7 @@ pub fn process_user_answer(
         None,
         None,
     )
-        .map_err(|err| err.to_string())?;
+    .map_err(|err| err.to_string())?;
     let action = evaluate_loop_from_history(db, &loop_record, None).map_err(|err| {
         let _ = db.update_enzim_agent_loop_progress(
             loop_record.id,
@@ -1194,7 +1426,10 @@ pub fn process_user_answer(
     Ok(action)
 }
 
-fn latest_completed_turn(loop_record: &EnzimAgentLoopRecord, turns: &[LocalChatTurnRecord]) -> Option<LocalChatTurnRecord> {
+fn latest_completed_turn(
+    loop_record: &EnzimAgentLoopRecord,
+    turns: &[LocalChatTurnRecord],
+) -> Option<LocalChatTurnRecord> {
     turns
         .iter()
         .rev()
@@ -1236,8 +1471,7 @@ pub fn process_waiting_runtime_turn(
     };
 
     if turn.status == "failed" {
-        let detailed_error =
-            build_failed_turn_diagnostics(db, remote_thread_id, &turn);
+        let detailed_error = build_failed_turn_diagnostics(db, remote_thread_id, &turn);
         let short_error = cached_turn_error_message(db, remote_thread_id, &turn.external_turn_id)
             .map(|message| format!("The coding agent turn failed: {message}"))
             .unwrap_or_else(|| {
@@ -1393,16 +1627,8 @@ pub fn record_dispatch_error(db: &AppDb, loop_id: i64, error: &str) -> Result<()
     if message.is_empty() {
         return Ok(());
     }
-    db.update_enzim_agent_loop_progress(
-        loop_id,
-        "paused_error",
-        None,
-        0,
-        1,
-        Some(message),
-        None,
-    )
-    .map_err(|err| err.to_string())
+    db.update_enzim_agent_loop_progress(loop_id, "paused_error", None, 0, 1, Some(message), None)
+        .map_err(|err| err.to_string())
 }
 
 pub fn latest_finished_summary(db: &AppDb, local_thread_id: i64) -> Option<String> {

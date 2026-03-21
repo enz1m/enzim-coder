@@ -4,9 +4,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::services::app::runtime::RuntimeClient;
 use crate::services::app::CodexProfileManager;
 use crate::services::app::chat::AppDb;
+use crate::services::app::runtime::RuntimeClient;
 use crate::ui::settings::{
     SETTING_MULTIVIEW_ENABLED, SETTING_PANE_LAYOUT_V1, is_multiview_enabled,
 };

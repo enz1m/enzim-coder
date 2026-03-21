@@ -442,7 +442,9 @@ impl AppDb {
         thread_id: &str,
         turn_id: &str,
     ) -> rusqlite::Result<Option<String>> {
-        self.get_setting(&format!("enzim_agent:thread:{thread_id}:turn_origin:{turn_id}"))
+        self.get_setting(&format!(
+            "enzim_agent:thread:{thread_id}:turn_origin:{turn_id}"
+        ))
     }
 
     pub fn list_local_chat_turns_for_local_thread(

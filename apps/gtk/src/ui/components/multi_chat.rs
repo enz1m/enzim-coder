@@ -1,6 +1,6 @@
-use crate::services::app::runtime::RuntimeClient;
 use crate::services::app::CodexProfileManager;
 use crate::services::app::chat::AppDb;
+use crate::services::app::runtime::RuntimeClient;
 use crate::ui::components::{actions_menu, chat, file_browser, git_tab, skills_mcp_menu};
 use crate::ui::settings::SETTING_PANE_LAYOUT_V1;
 use adw::prelude::*;

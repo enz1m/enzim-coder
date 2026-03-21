@@ -132,7 +132,9 @@ fn start_remote_thread_activation_loop(
 ) {
     crate::ui::scheduler::every(Duration::from_millis(120), move || {
         let Some(raw_thread_id) = db
-            .get_setting(crate::services::app::remote::SETTING_REMOTE_TELEGRAM_ACTIVATE_LOCAL_THREAD_ID)
+            .get_setting(
+                crate::services::app::remote::SETTING_REMOTE_TELEGRAM_ACTIVATE_LOCAL_THREAD_ID,
+            )
             .ok()
             .flatten()
             .filter(|value| !value.trim().is_empty())
@@ -247,12 +249,14 @@ fn start_thread_autoclose_loop(
                     if is_active_thread || is_selected_local_thread || is_pending_profile_thread {
                         continue;
                     }
-                    if let Err(err) = crate::ui::components::thread_list::close_local_thread_everywhere(
-                        &db,
-                        &manager,
-                        &active_thread_id,
-                        thread_id,
-                    ) {
+                    if let Err(err) =
+                        crate::ui::components::thread_list::close_local_thread_everywhere(
+                            &db,
+                            &manager,
+                            &active_thread_id,
+                            thread_id,
+                        )
+                    {
                         eprintln!("failed to auto-close thread {thread_id}: {err}");
                     }
                 }
@@ -449,7 +453,11 @@ pub fn build_ui(app: &adw::Application) {
         active_thread_id.clone(),
         active_workspace_path.clone(),
     );
-    start_thread_autoclose_loop(db.clone(), profile_manager.clone(), active_thread_id.clone());
+    start_thread_autoclose_loop(
+        db.clone(),
+        profile_manager.clone(),
+        active_thread_id.clone(),
+    );
 
     let main_container = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     main_container.add_css_class("main-container");

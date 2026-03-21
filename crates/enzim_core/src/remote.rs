@@ -5,8 +5,7 @@ pub const SETTING_REMOTE_TELEGRAM_ACTIVE_ACCOUNT_ID: &str = "remote_telegram_act
 pub const SETTING_REMOTE_TELEGRAM_POLLING_ENABLED: &str = "remote_telegram_polling_enabled";
 pub const SETTING_REMOTE_TELEGRAM_ACTIVATE_LOCAL_THREAD_ID: &str =
     "remote_telegram_activate_local_thread_id";
-pub const SETTING_REMOTE_TELEGRAM_AUTH_EXPECTED_CODE: &str =
-    "remote_telegram_auth_expected_code";
+pub const SETTING_REMOTE_TELEGRAM_AUTH_EXPECTED_CODE: &str = "remote_telegram_auth_expected_code";
 pub const SETTING_REMOTE_TELEGRAM_AUTH_EXPIRES_AT: &str = "remote_telegram_auth_expires_at";
 
 pub fn bool_from_setting(raw: Option<String>, default: bool) -> bool {

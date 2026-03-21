@@ -1,7 +1,7 @@
-use crate::services::app::runtime::RuntimeClient;
 use crate::services::app::CodexProfileManager;
 use crate::services::app::chat::{AppDb, LocalChatTurnInput, LocalChatTurnRecord};
 use crate::services::app::restore::RestoreCheckpoint;
+use crate::services::app::runtime::RuntimeClient;
 use crate::ui::components::restore_preview;
 use gtk::prelude::*;
 use rusqlite::{Connection, params};
@@ -1465,7 +1465,8 @@ pub(super) fn render_local_thread_history_from_db(
         let turns = db
             .list_local_chat_turns_for_remote_thread(thread_id)
             .unwrap_or_default();
-        let checkpoints = crate::services::app::restore::list_checkpoints_for_remote_thread(db, thread_id);
+        let checkpoints =
+            crate::services::app::restore::list_checkpoints_for_remote_thread(db, thread_id);
         let checkpoint_by_turn = resolve_checkpoint_map_for_turns(&turns, checkpoints);
         (
             turns,

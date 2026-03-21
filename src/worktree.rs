@@ -28,5 +28,8 @@ pub fn apply_worktree_merge(
 }
 
 pub fn stop_worktree_checkout(worktree_path: &str) -> Result<(), String> {
-    enzim_core::worktree::stop_worktree_checkout(worktree_path, &crate::data::default_app_data_dir())
+    enzim_core::worktree::stop_worktree_checkout(
+        worktree_path,
+        &crate::data::default_app_data_dir(),
+    )
 }

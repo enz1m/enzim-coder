@@ -49,7 +49,6 @@ pub fn write_skill_assignment_for_profile(
     Ok(())
 }
 
-
 pub fn load_catalog(db: &AppDb) -> SkillMcpCatalog {
     let raw = db
         .get_setting(CATALOG_KEY)
@@ -151,7 +150,6 @@ pub fn remove_catalog_mcp(db: &AppDb, key_or_name: &str) -> Result<(), String> {
     catalog.mcps.retain(|entry| entry.key != key);
     save_catalog(db, &catalog)
 }
-
 
 pub fn load_profile_assignments(db: &AppDb, profile_id: i64) -> ProfileAssignments {
     let raw = db

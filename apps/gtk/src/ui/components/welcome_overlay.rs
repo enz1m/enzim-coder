@@ -109,7 +109,9 @@ fn select_welcome_profile<'a>(
 ) -> Option<&'a CodexProfileRecord> {
     profiles
         .iter()
-        .filter(|profile| crate::services::app::runtime::runtime_cli_available_for_backend(&profile.backend_kind))
+        .filter(|profile| {
+            crate::services::app::runtime::runtime_cli_available_for_backend(&profile.backend_kind)
+        })
         .max_by_key(|profile| {
             (
                 profile_has_account_identity(profile),
@@ -1326,8 +1328,10 @@ pub fn attach(
             }
             poll_in_flight.replace(true);
 
-            let codex_installed = crate::services::app::runtime::runtime_cli_available_for_backend("codex");
-            let opencode_installed = crate::services::app::runtime::runtime_cli_available_for_backend("opencode");
+            let codex_installed =
+                crate::services::app::runtime::runtime_cli_available_for_backend("codex");
+            let opencode_installed =
+                crate::services::app::runtime::runtime_cli_available_for_backend("opencode");
             let active_profile_id = db.active_profile_id().ok().flatten();
             let current_runtime_profile_id = db
                 .runtime_profile_id()

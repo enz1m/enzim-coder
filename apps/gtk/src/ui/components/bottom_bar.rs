@@ -38,6 +38,13 @@ fn active_branch_label(db: &AppDb) -> Option<String> {
         })
 }
 
+fn widget_has_focus_within(widget: &impl IsA<gtk::Widget>) -> bool {
+    widget
+        .root()
+        .and_then(|root| root.focus())
+        .is_some_and(|focus| focus.is_ancestor(widget))
+}
+
 pub fn build_bottom_bar(db: Rc<AppDb>, manager: Rc<CodexProfileManager>) -> gtk::CenterBox {
     let bottom_bar = gtk::CenterBox::new();
     bottom_bar.add_css_class("bottom-section");
@@ -51,12 +58,42 @@ pub fn build_bottom_bar(db: Rc<AppDb>, manager: Rc<CodexProfileManager>) -> gtk:
     location.add_css_class("bottom-location");
     location.set_valign(gtk::Align::Center);
     bottom_bar.set_start_widget(Some(&location));
+    let right_box = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    right_box.set_valign(gtk::Align::Center);
+
+    let ask_button = super::chat::composer::build_ask_popup_button(db.clone());
+    ask_button.add_css_class("bottom-icon-button");
+    ask_button.add_css_class("bottom-ask-button");
+    ask_button.set_width_request(18);
+    ask_button.set_height_request(18);
+    ask_button.set_halign(gtk::Align::Center);
+    ask_button.set_valign(gtk::Align::Center);
+    ask_button.set_can_focus(false);
+    ask_button.set_tooltip_text(Some("Ask Enzim Agent"));
+    {
+        let motion_target = ask_button.clone();
+        let motion = gtk::EventControllerMotion::new();
+        motion.connect_enter(move |_, _, _| {
+            motion_target.add_css_class("is-hover");
+        });
+
+        let motion_target = ask_button.clone();
+        motion.connect_leave(move |_| {
+            motion_target.remove_css_class("is-hover");
+        });
+        ask_button.add_controller(motion);
+    }
+    right_box.append(&ask_button);
     {
         let db = db.clone();
         let location = location.clone();
+        let ask_button = ask_button.clone();
         gtk::glib::timeout_add_local(std::time::Duration::from_millis(900), move || {
             if location.root().is_none() {
                 return gtk::glib::ControlFlow::Break;
+            }
+            if widget_has_focus_within(&ask_button) {
+                return gtk::glib::ControlFlow::Continue;
             }
             let branch = active_branch_label(&db);
             if let Some(name) = branch {
@@ -71,9 +108,6 @@ pub fn build_bottom_bar(db: Rc<AppDb>, manager: Rc<CodexProfileManager>) -> gtk:
             gtk::glib::ControlFlow::Continue
         });
     }
-
-    let right_box = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    right_box.set_valign(gtk::Align::Center);
 
     let remote_button = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     remote_button.add_css_class("bottom-icon-button");
@@ -138,7 +172,11 @@ pub fn build_bottom_bar(db: Rc<AppDb>, manager: Rc<CodexProfileManager>) -> gtk:
     {
         let db = db.clone();
         let remote_button = remote_button.clone();
+        let ask_button = ask_button.clone();
         gtk::glib::timeout_add_local(std::time::Duration::from_millis(150), move || {
+            if widget_has_focus_within(&ask_button) {
+                return gtk::glib::ControlFlow::Continue;
+            }
             if db.remote_mode_enabled() {
                 remote_button.add_css_class("is-on");
             } else {

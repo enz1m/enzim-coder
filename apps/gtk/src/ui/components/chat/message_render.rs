@@ -232,7 +232,11 @@ fn process_action_append_queue() -> gtk::glib::ControlFlow {
     })
 }
 
-fn enqueue_action_append(body_box: &gtk::Box, action_ui: &ActionSectionUi, revealer: &gtk::Revealer) {
+fn enqueue_action_append(
+    body_box: &gtk::Box,
+    action_ui: &ActionSectionUi,
+    revealer: &gtk::Revealer,
+) {
     ACTION_APPEND_QUEUE.with(|state_cell| {
         let mut state = state_cell.borrow_mut();
         state.queue.push_back(PendingActionAppend {
@@ -776,7 +780,11 @@ fn build_tool_call_details_ui(
         output_label,
     };
 
-    refresh_tool_call_output_widgets(&details.details_revealer, &details.output_label, output_text);
+    refresh_tool_call_output_widgets(
+        &details.details_revealer,
+        &details.output_label,
+        output_text,
+    );
     details
 }
 
@@ -888,7 +896,11 @@ fn refresh_generic_item_details_widgets(
         output_label.set_visible(show_output);
         output_scroll.set_visible(show_output);
         drop(output);
-        sync_thinking_output_scroll_layout(output_label, output_scroll, output_text.borrow().trim());
+        sync_thinking_output_scroll_layout(
+            output_label,
+            output_scroll,
+            output_text.borrow().trim(),
+        );
     } else if details_revealer.reveals_child() {
         set_plain_label_text(output_label, output.as_str());
         output_label.set_visible(show_output);
@@ -978,7 +990,8 @@ impl CommandUi {
         }
         if running {
             let text = self.headline_text.borrow().clone();
-            self.running_wave_frames.replace(build_wave_markup_frames(&text));
+            self.running_wave_frames
+                .replace(build_wave_markup_frames(&text));
             let header_label = self.header_label.clone();
             let headline_text = self.headline_text.clone();
             let wave_phase = self.running_wave_phase.clone();
@@ -1048,11 +1061,7 @@ impl CommandUi {
                 if !details_revealer.reveals_child() {
                     return gtk::glib::ControlFlow::Break;
                 }
-                refresh_command_output_widgets(
-                    &output_revealer,
-                    &output_label,
-                    &output_text,
-                );
+                refresh_command_output_widgets(&output_revealer, &output_label, &output_text);
                 gtk::glib::ControlFlow::Break
             },
         );
@@ -1141,7 +1150,11 @@ impl GenericItemUi {
             return;
         };
         let output = self.output_text.borrow();
-        sync_thinking_output_scroll_layout(&details.output_label, &details.output_scroll, output.trim());
+        sync_thinking_output_scroll_layout(
+            &details.output_label,
+            &details.output_scroll,
+            output.trim(),
+        );
     }
 
     fn schedule_output_scroll_layout_sync(&self) {
@@ -1192,7 +1205,8 @@ impl GenericItemUi {
         }
         if running {
             let text = self.headline_text.borrow().clone();
-            self.running_wave_frames.replace(build_wave_markup_frames(&text));
+            self.running_wave_frames
+                .replace(build_wave_markup_frames(&text));
             let title_label = self.title_label.clone();
             let headline_text = self.headline_text.clone();
             let wave_phase = self.running_wave_phase.clone();
@@ -1271,7 +1285,8 @@ impl GenericItemUi {
     pub(super) fn append_output_delta(&self, delta: &str) {
         self.output_text.borrow_mut().push_str(delta);
         self.details_enabled.replace(
-            !self.summary_text.borrow().trim().is_empty() || !self.output_text.borrow().trim().is_empty(),
+            !self.summary_text.borrow().trim().is_empty()
+                || !self.output_text.borrow().trim().is_empty(),
         );
         let Some(details) = self.details_ui.borrow().as_ref().cloned() else {
             return;
@@ -1505,6 +1520,43 @@ pub(super) fn append_message(
     );
 
     bubble
+}
+
+pub(super) fn append_assistant_markdown_message(
+    messages_box: &gtk::Box,
+    messages_scroll: Option<&gtk::ScrolledWindow>,
+    conversation_stack: &gtk::Stack,
+    text: &str,
+    timestamp: SystemTime,
+) -> gtk::Label {
+    conversation_stack.set_visible_child_name("messages");
+    ensure_shared_message_context_menu(messages_box);
+
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    row.add_css_class("chat-message-row");
+    row.set_halign(gtk::Align::Fill);
+    row.set_hexpand(true);
+    apply_first_message_top_spacing(messages_box, &row);
+
+    let bubble = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    bubble.add_css_class("chat-assistant-surface");
+
+    let body_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    body_box.add_css_class("chat-command-list");
+    bubble.append(&body_box);
+
+    let label = create_text_segment(&body_box);
+    crate::ui::components::chat::markdown::set_markdown(&label, text);
+
+    append_hover_timestamp(messages_box, &row, &bubble, false, timestamp);
+    make_assistant_row_full_width(&row);
+    messages_box.append(&row);
+
+    if let Some(scroll) = messages_scroll {
+        scroll_to_bottom(scroll);
+    }
+
+    label
 }
 
 pub(super) fn append_user_message_with_images_badged(
@@ -2216,7 +2268,10 @@ impl StreamingMarkdownUi {
             crate::ui::components::chat::markdown::set_markdown(&self.tail_label, "");
             self.tail_label.set_visible(false);
         } else {
-            crate::ui::components::chat::markdown::set_markdown(&self.tail_label, &blocks.tail_block);
+            crate::ui::components::chat::markdown::set_markdown(
+                &self.tail_label,
+                &blocks.tail_block,
+            );
             self.tail_label.set_visible(true);
         }
     }
@@ -2233,7 +2288,9 @@ impl StreamingMarkdownUi {
     }
 }
 
-pub(super) fn create_streaming_markdown_segment_revealed(body_box: &gtk::Box) -> StreamingMarkdownUi {
+pub(super) fn create_streaming_markdown_segment_revealed(
+    body_box: &gtk::Box,
+) -> StreamingMarkdownUi {
     set_active_action_section_wave(body_box, false);
     let text_section = ensure_text_section(body_box);
     let root = gtk::Box::new(gtk::Orientation::Vertical, 4);
@@ -2857,8 +2914,7 @@ pub(super) fn create_command_widget(command: &str) -> (gtk::Box, CommandUi) {
     let running_wave_source: Rc<RefCell<Option<gtk::glib::SourceId>>> = Rc::new(RefCell::new(None));
     let running_wave_phase: Rc<RefCell<f64>> = Rc::new(RefCell::new(0.0));
     let running_wave_frames: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
-    let output_flush_source: Rc<RefCell<Option<gtk::glib::SourceId>>> =
-        Rc::new(RefCell::new(None));
+    let output_flush_source: Rc<RefCell<Option<gtk::glib::SourceId>>> = Rc::new(RefCell::new(None));
 
     {
         let running_wave_source = running_wave_source.clone();
@@ -2937,8 +2993,7 @@ pub(super) fn create_tool_call_widget(tool_name: &str, arguments: &str) -> (gtk:
     let arguments_text: Rc<RefCell<String>> = Rc::new(RefCell::new(arguments.to_string()));
     let details_ui: Rc<RefCell<Option<ToolCallDetailsUi>>> = Rc::new(RefCell::new(None));
     let output_text: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
-    let output_flush_source: Rc<RefCell<Option<gtk::glib::SourceId>>> =
-        Rc::new(RefCell::new(None));
+    let output_flush_source: Rc<RefCell<Option<gtk::glib::SourceId>>> = Rc::new(RefCell::new(None));
 
     {
         let output_flush_source = output_flush_source.clone();
@@ -3195,7 +3250,9 @@ pub(super) fn create_reasoning_widget() -> (gtk::Box, GenericItemUi) {
         let output_label = details.output_label.clone();
         let output_scroll = details.output_scroll.clone();
         let output_text = generic_ui.output_text.clone();
-        details.output_scroll.connect_notify_local(Some("width"), move |_, _| {
+        details
+            .output_scroll
+            .connect_notify_local(Some("width"), move |_, _| {
                 schedule_thinking_output_scroll_layout_sync(
                     output_label.clone(),
                     output_scroll.clone(),
@@ -3208,7 +3265,9 @@ pub(super) fn create_reasoning_widget() -> (gtk::Box, GenericItemUi) {
         let output_label = details.output_label.clone();
         let output_scroll = details.output_scroll.clone();
         let output_text = generic_ui.output_text.clone();
-        details.output_label.connect_notify_local(Some("width"), move |_, _| {
+        details
+            .output_label
+            .connect_notify_local(Some("width"), move |_, _| {
                 schedule_thinking_output_scroll_layout_sync(
                     output_label.clone(),
                     output_scroll.clone(),

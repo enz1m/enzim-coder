@@ -1,6 +1,6 @@
-use crate::services::app::runtime::RuntimeClient;
 use crate::services::app::CodexProfileManager;
 use crate::services::app::chat::AppDb;
+use crate::services::app::runtime::RuntimeClient;
 use crate::ui::widget_tree;
 use adw::prelude::*;
 use serde_json::Value;

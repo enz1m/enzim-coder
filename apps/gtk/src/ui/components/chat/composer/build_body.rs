@@ -353,7 +353,11 @@ fn build_inner(
         #enzim-agent-answer-scroll > viewport,
         #enzim-agent-answer-scroll > viewport > textview.view,
         textview#enzim-agent-answer-view,
-        textview#enzim-agent-answer-view text {
+        textview#enzim-agent-answer-view text,
+        #ask-popup-answer-scroll > viewport,
+        #ask-popup-answer-scroll > viewport > textview.view,
+        textview#ask-popup-answer-view,
+        textview#ask-popup-answer-view text {
           background: transparent;
           background-color: transparent;
           background-image: none;
@@ -379,7 +383,11 @@ fn build_inner(
         scrolledwindow#enzim-agent-answer-scroll > scrollbar.vertical,
         scrolledwindow#enzim-agent-answer-scroll > scrollbar.vertical > range,
         scrolledwindow#enzim-agent-answer-scroll > scrollbar.vertical > range > trough,
-        scrolledwindow#enzim-agent-answer-scroll > scrollbar.vertical > range > trough > slider {
+        scrolledwindow#enzim-agent-answer-scroll > scrollbar.vertical > range > trough > slider,
+        scrolledwindow#ask-popup-answer-scroll > scrollbar.vertical,
+        scrolledwindow#ask-popup-answer-scroll > scrollbar.vertical > range,
+        scrolledwindow#ask-popup-answer-scroll > scrollbar.vertical > range > trough,
+        scrolledwindow#ask-popup-answer-scroll > scrollbar.vertical > range > trough > slider {
           min-width: 0;
           min-height: 0;
           margin: 0;
@@ -1122,8 +1130,7 @@ fn build_inner(
     enzim_agent_instructions_view.add_css_class("composer-enzim-agent-input-view");
     enzim_agent_instructions_scroll.set_child(Some(&enzim_agent_instructions_view));
     let enzim_agent_instructions_revealer = gtk::Revealer::new();
-    enzim_agent_instructions_revealer
-        .set_transition_type(gtk::RevealerTransitionType::SlideDown);
+    enzim_agent_instructions_revealer.set_transition_type(gtk::RevealerTransitionType::SlideDown);
     enzim_agent_instructions_revealer.set_reveal_child(false);
     enzim_agent_instructions_revealer.set_child(Some(&enzim_agent_instructions_scroll));
     enzim_agent_box.append(&enzim_agent_instructions_revealer);
@@ -1407,9 +1414,7 @@ fn build_inner(
     controls.append(&send);
     let thread_locked = Rc::new(RefCell::new(false));
     let submit_loop_answer: Rc<
-        RefCell<
-            Option<Rc<dyn Fn(String, String, String) -> Result<(), String>>>,
-        >,
+        RefCell<Option<Rc<dyn Fn(String, String, String) -> Result<(), String>>>>,
     > = Rc::new(RefCell::new(None));
 
     include!("build_body_enzim_agent_section.rs");

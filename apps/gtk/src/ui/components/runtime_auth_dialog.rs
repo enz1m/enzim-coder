@@ -1,6 +1,6 @@
-use crate::services::app::runtime::AccountInfo;
 use crate::services::app::CodexProfileManager;
 use crate::services::app::chat::AppDb;
+use crate::services::app::runtime::AccountInfo;
 use adw::prelude::*;
 use std::rc::Rc;
 use std::sync::mpsc;

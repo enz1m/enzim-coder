@@ -1,5 +1,5 @@
-use crate::services::app::runtime::RuntimeClient;
 use crate::services::app::chat::AppDb;
+use crate::services::app::runtime::RuntimeClient;
 use serde_json::Value;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -147,12 +147,7 @@ fn rollback_thread_to_target_worker(
         .unwrap_or(0);
     eprintln!(
         "[restore] rollback request thread_id={} target_turn_id={} total_turns={} target_index={} chrono_target_pos={} rollback_count={}",
-        thread_id,
-        target_turn_id,
-        total_turns,
-        target_index,
-        chrono_target_pos,
-        rollback_count
+        thread_id, target_turn_id, total_turns, target_index, chrono_target_pos, rollback_count
     );
 
     if rollback_count == 0 {
@@ -327,9 +322,13 @@ pub(super) fn apply_restore_worker(
                 "Restore applied, but chat trim failed: runtime client unavailable.".to_string(),
             );
         };
-        let (next_status, next_thread_sync) =
-            rollback_thread_to_target_worker(client, workspace_path, codex_thread_id, target_turn_id)
-                .map_err(|err| format!("Restore apply aborted because {err}"))?;
+        let (next_status, next_thread_sync) = rollback_thread_to_target_worker(
+            client,
+            workspace_path,
+            codex_thread_id,
+            target_turn_id,
+        )
+        .map_err(|err| format!("Restore apply aborted because {err}"))?;
         rollback_status = next_status;
         thread_sync = next_thread_sync;
     }
@@ -354,9 +353,13 @@ pub(super) fn apply_restore_worker(
                 );
             };
 
-            let (next_status, next_thread_sync) =
-                rollback_thread_to_target_worker(client, workspace_path, codex_thread_id, target_turn_id)
-                    .map_err(|err| format!("Restore applied, but {err}"))?;
+            let (next_status, next_thread_sync) = rollback_thread_to_target_worker(
+                client,
+                workspace_path,
+                codex_thread_id,
+                target_turn_id,
+            )
+            .map_err(|err| format!("Restore applied, but {err}"))?;
             thread_sync = next_thread_sync;
             next_status
         } else {
@@ -381,9 +384,10 @@ pub(super) fn undo_restore_worker(
 ) -> Result<Option<UndoRestoreWorkerOutcome>, String> {
     let mut chat_restore_status = String::new();
     let mut thread_sync = None;
-    if codex.as_ref().is_some_and(|client| {
-        client.backend_kind().eq_ignore_ascii_case("opencode")
-    }) {
+    if codex
+        .as_ref()
+        .is_some_and(|client| client.backend_kind().eq_ignore_ascii_case("opencode"))
+    {
         match undo_opencode_restore_worker(codex.clone(), workspace_path, codex_thread_id) {
             Ok(outcome) => {
                 chat_restore_status = outcome.status_text;

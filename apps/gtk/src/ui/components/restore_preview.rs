@@ -1,6 +1,6 @@
-use crate::services::app::runtime::RuntimeClient;
 use crate::services::app::chat::{AppDb, LocalChatTurnRecord};
 use crate::services::app::restore::{RestoreAction, RestoreCheckpoint, RestorePreview};
+use crate::services::app::runtime::RuntimeClient;
 use crate::ui::widget_tree;
 use gtk::prelude::*;
 use serde_json::Value;
@@ -9,17 +9,17 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
 use std::rc::Rc;
-use std::sync::mpsc;
 use std::sync::Arc;
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[path = "restore_preview/worker.rs"]
 mod worker;
 use worker::{
-    apply_opencode_restore_worker, apply_restore_worker, undo_opencode_restore_worker,
-    undo_restore_worker, ApplyRestoreWorkerOutcome, ChatRestoreWorkerOutcome,
-    ThreadSyncOutcome, UndoRestoreWorkerOutcome,
+    ApplyRestoreWorkerOutcome, ChatRestoreWorkerOutcome, ThreadSyncOutcome,
+    UndoRestoreWorkerOutcome, apply_opencode_restore_worker, apply_restore_worker,
+    undo_opencode_restore_worker, undo_restore_worker,
 };
 
 #[derive(Clone, Copy)]
@@ -36,9 +36,12 @@ struct RestoreGitRiskSummary {
 }
 
 fn workspace_is_git_backed(workspace_path: &str) -> bool {
-    crate::services::ops::git::run_git_text(Path::new(workspace_path), &["rev-parse", "--show-toplevel"])
-        .map(|output| !output.trim().is_empty())
-        .unwrap_or(false)
+    crate::services::ops::git::run_git_text(
+        Path::new(workspace_path),
+        &["rev-parse", "--show-toplevel"],
+    )
+    .map(|output| !output.trim().is_empty())
+    .unwrap_or(false)
 }
 
 fn backend_kind_for_restore_thread(
@@ -1148,7 +1151,10 @@ pub fn open_restore_preview_dialog(
     let selected_user_prompt: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
     let selected_git_risk: Rc<RefCell<Option<RestoreGitRiskSummary>>> = Rc::new(RefCell::new(None));
     let last_backup_checkpoint_id: Rc<RefCell<Option<i64>>> = Rc::new(RefCell::new(
-        crate::services::app::restore::last_backup_checkpoint_for_remote_thread(&db, &codex_thread_id),
+        crate::services::app::restore::last_backup_checkpoint_for_remote_thread(
+            &db,
+            &codex_thread_id,
+        ),
     ));
     let reload_checkpoint_choices: Rc<RefCell<Option<Rc<dyn Fn(Option<i64>)>>>> =
         Rc::new(RefCell::new(None));
