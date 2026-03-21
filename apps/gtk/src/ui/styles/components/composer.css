@@ -15,17 +15,48 @@
     inset 0 1px 0 alpha(white, 0.06);
 }
 
-.composer-input {
+.composer-input,
+scrolledwindow.composer-input,
+scrolledwindow.composer-input > viewport,
+scrolledwindow.composer-input > viewport.view,
+scrolledwindow.composer-input > viewport > textview,
+scrolledwindow.composer-input > viewport > textview.view,
+.composer-input > viewport,
+.composer-input > viewport.view,
+.composer-input > textview,
+.composer-input > textview.view,
+textview.composer-input-view,
+textview.composer-input-view.view,
+textview.composer-input-view text {
   font-size: 0.88rem;
+  color: @window_fg_color;
+}
+
+.composer-input,
+scrolledwindow.composer-input {
   min-height: 40px;
   border-radius: 12px;
+  background: alpha(@window_fg_color, 0.06);
   background-color: alpha(@window_fg_color, 0.06);
+  background-image: none;
   border: 1px solid alpha(@window_fg_color, 0.09);
   box-shadow: none;
 }
 
 
 #composer-input-scroll,
+#composer-input-scroll > viewport,
+#composer-input-scroll > viewport.view,
+#composer-input-scroll > viewport > textview,
+#composer-input-scroll > viewport > textview.view,
+scrolledwindow.composer-input > viewport,
+scrolledwindow.composer-input > viewport.view,
+scrolledwindow.composer-input > viewport > textview,
+scrolledwindow.composer-input > viewport > textview.view,
+.composer-input > viewport,
+.composer-input > viewport.view,
+.composer-input > textview,
+.composer-input > textview.view,
 #composer-input-scroll>viewport,
 #composer-input-scroll>viewport.view,
 #composer-input-scroll>viewport>textview,
@@ -49,7 +80,11 @@ textview.composer-input-view text {
 scrolledwindow#composer-input-scroll > scrollbar.vertical,
 scrolledwindow#composer-input-scroll > scrollbar.vertical > range,
 scrolledwindow#composer-input-scroll > scrollbar.vertical > range > trough,
-scrolledwindow#composer-input-scroll > scrollbar.vertical > range > trough > slider {
+scrolledwindow#composer-input-scroll > scrollbar.vertical > range > trough > slider,
+scrolledwindow.composer-input > scrollbar.vertical,
+scrolledwindow.composer-input > scrollbar.vertical > range,
+scrolledwindow.composer-input > scrollbar.vertical > range > trough,
+scrolledwindow.composer-input > scrollbar.vertical > range > trough > slider {
   min-width: 0;
   min-height: 0;
   margin: 0;
@@ -160,7 +195,10 @@ button.chat-worktree-overlay-action:focus-visible image {
       alpha(@view_bg_color, 0.92) 100%);
 }
 
-popover.composer-worktree-popover > contents {
+popover.composer-worktree-popover > contents,
+popover.composer-worktree-popover.background > contents,
+popover.composer-enzim-agent-popover > contents,
+popover.composer-enzim-agent-popover.background > contents {
   padding: 4px;
   border-radius: 10px;
   border: 1px solid alpha(@window_fg_color, 0.14);
@@ -170,18 +208,29 @@ popover.composer-worktree-popover > contents {
   box-shadow: 0 8px 20px alpha(black, 0.24);
 }
 
-popover.composer-enzim-agent-popover > contents {
-  padding: 4px;
-  border-radius: 10px;
-  border: 1px solid alpha(@window_fg_color, 0.14);
+popover.composer-worktree-popover > arrow,
+popover.composer-worktree-popover.background > arrow,
+popover.composer-enzim-agent-popover > arrow,
+popover.composer-enzim-agent-popover.background > arrow {
   background: alpha(@window_bg_color, 0.98);
+  border: 1px solid alpha(@window_fg_color, 0.14);
   background-color: alpha(@window_bg_color, 0.98);
   background-image: none;
-  box-shadow: 0 8px 20px alpha(black, 0.24);
+  box-shadow: none;
 }
 
 .composer-enzim-agent-box {
-  min-width: 340px;
+  min-width: 360px;
+  max-width: 400px;
+}
+
+.composer-enzim-agent-running-box {
+  margin-top: 2px;
+}
+
+.composer-enzim-agent-toggle-row {
+  align-items: center;
+  min-height: 28px;
 }
 
 .composer-enzim-agent-title,
@@ -206,8 +255,50 @@ popover.composer-enzim-agent-popover > contents {
   padding: 7px 8px;
 }
 
+.composer-enzim-agent-brief-card {
+  font-size: 0.79rem;
+  color: alpha(@window_fg_color, 0.9);
+  background: alpha(@window_fg_color, 0.045);
+  border: 1px solid alpha(@window_fg_color, 0.1);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.composer-enzim-agent-status-card {
+  border-radius: 10px;
+  border: 1px solid alpha(@window_fg_color, 0.11);
+  background: linear-gradient(
+    to bottom,
+    alpha(@window_fg_color, 0.055),
+    alpha(@window_fg_color, 0.032)
+  );
+  padding: 8px 10px;
+}
+
+.composer-enzim-agent-status-key {
+  font-size: 0.74rem;
+  font-weight: 650;
+  color: alpha(@window_fg_color, 0.68);
+}
+
+.composer-enzim-agent-header-note {
+  max-width: 160px;
+}
+
+.composer-enzim-agent-status-value {
+  font-size: 0.76rem;
+  font-weight: 620;
+  color: alpha(@window_fg_color, 0.95);
+}
+
 .composer-enzim-agent-input-scroll {
   min-height: 90px;
+  border-radius: 12px;
+  border: 1px solid alpha(@window_fg_color, 0.09);
+  background: alpha(@window_fg_color, 0.06);
+  background-color: alpha(@window_fg_color, 0.06);
+  background-image: none;
+  box-shadow: none;
 }
 
 textview.composer-enzim-agent-input-view,
@@ -275,6 +366,145 @@ button.composer-enzim-agent-action-stop:hover {
   border-color: alpha(#d35d5d, 0.44);
   background: alpha(#d35d5d, 0.14);
   color: alpha(#ffdede, 0.98);
+}
+
+.enzim-loop-details-window {
+  background: alpha(@window_bg_color, 0.99);
+}
+
+.enzim-loop-details-pill {
+  border-radius: 999px;
+  border: 1px solid alpha(@window_fg_color, 0.12);
+  background: alpha(@window_fg_color, 0.05);
+  color: alpha(@window_fg_color, 0.82);
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.enzim-loop-details-pill-strong {
+  border-color: alpha(@accent_bg_color, 0.34);
+  background: alpha(@accent_bg_color, 0.16);
+  color: alpha(white, 0.96);
+}
+
+.enzim-loop-details-summary-card {
+  border-radius: 12px;
+  border: 1px solid alpha(@window_fg_color, 0.1);
+  background: linear-gradient(
+    to bottom,
+    alpha(@window_fg_color, 0.05),
+    alpha(@window_fg_color, 0.025)
+  );
+  padding: 12px;
+}
+
+.enzim-loop-details-section-toggle {
+  min-height: 24px;
+  padding: 0 4px;
+  border-radius: 8px;
+  font-size: 0.77rem;
+  font-weight: 650;
+}
+
+.enzim-loop-details-scroll {
+  background: transparent;
+}
+
+.enzim-loop-details-timeline {
+  padding-top: 2px;
+  padding-bottom: 6px;
+}
+
+.enzim-loop-details-row {
+  margin-bottom: 2px;
+}
+
+.enzim-loop-details-rail {
+  min-width: 18px;
+  margin-top: 2px;
+}
+
+.enzim-loop-details-dot {
+  border-radius: 999px;
+  background: alpha(@accent_bg_color, 0.88);
+  border: 2px solid alpha(white, 0.2);
+  min-width: 12px;
+  min-height: 12px;
+}
+
+.enzim-loop-details-line {
+  min-width: 2px;
+  margin: 4px 0 0 0;
+  background: linear-gradient(
+    to bottom,
+    alpha(@accent_bg_color, 0.4),
+    alpha(@window_fg_color, 0.08)
+  );
+}
+
+.enzim-loop-details-card {
+  border-radius: 12px;
+  border: 1px solid alpha(@window_fg_color, 0.11);
+  background: alpha(@window_fg_color, 0.04);
+  padding: 10px 12px;
+}
+
+.enzim-loop-details-kind {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: alpha(@window_fg_color, 0.96);
+}
+
+.enzim-loop-details-meta {
+  font-size: 0.72rem;
+  color: alpha(@window_fg_color, 0.6);
+}
+
+.enzim-loop-details-compact {
+  font-size: 0.77rem;
+  color: alpha(@window_fg_color, 0.86);
+  line-height: 1.3;
+}
+
+.enzim-loop-details-inline-toggle-row {
+  margin-top: 2px;
+}
+
+button.enzim-loop-details-inline-toggle {
+  min-height: 18px;
+  min-width: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+button.enzim-loop-details-inline-toggle:hover,
+button.enzim-loop-details-inline-toggle:active,
+button.enzim-loop-details-inline-toggle:focus-visible {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+button.enzim-loop-details-inline-toggle image {
+  color: @accent_bg_color;
+}
+
+.enzim-loop-details-json {
+  font-family: monospace;
+  font-size: 0.72rem;
+  color: alpha(@window_fg_color, 0.78);
+  background: alpha(@window_fg_color, 0.04);
+  border: 1px solid alpha(@window_fg_color, 0.08);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.enzim-loop-details-json-expander {
+  margin-top: 4px;
 }
 
 .composer-worktree-popover-box {

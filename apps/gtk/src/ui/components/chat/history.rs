@@ -1201,10 +1201,16 @@ pub(super) fn sync_completed_turns_from_thread(
             .unwrap_or_default();
 
         let assistant_text = extract_assistant_turn_text(items);
-        let status = if turn.get("error").is_some() {
-            "failed"
-        } else {
-            "completed"
+        let explicit_status = turn
+            .get("status")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let status = match explicit_status {
+            Some("failed") => "failed",
+            Some(_) => "completed",
+            None if turn.get("error").is_some() && turn.get("completedAt").is_none() => "failed",
+            None => "completed",
         }
         .to_string();
 

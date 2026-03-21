@@ -177,6 +177,8 @@ fn worker_loop(running: Arc<AtomicBool>) {
 
     while running.load(Ordering::Relaxed) {
         let remote_mode_enabled = db.remote_mode_enabled();
+        let loop_question_active =
+            crate::services::enzim_agent::active_telegram_question_session(db.as_ref()).is_some();
         let transitioned_enabled = remote_mode_enabled && !last_remote_mode_enabled;
         let transitioned_disabled = !remote_mode_enabled && last_remote_mode_enabled;
         if transitioned_enabled {
@@ -201,7 +203,7 @@ fn worker_loop(running: Arc<AtomicBool>) {
                 .flatten(),
             true,
         );
-        if !remote_mode_enabled || !polling_enabled {
+        if !(remote_mode_enabled && polling_enabled) && !loop_question_active {
             thread::sleep(Duration::from_millis(750));
             continue;
         }
@@ -233,7 +235,7 @@ fn worker_loop(running: Arc<AtomicBool>) {
                 if let Some(next_offset) = next_offset {
                     update_offset = Some(next_offset);
                 }
-                process_updates(db.as_ref(), client, &account, updates);
+                process_updates(db.as_ref(), client, &account, updates, remote_mode_enabled);
             }
             Err(err) => {
                 eprintln!("[remote] telegram polling error: {err}");
@@ -292,8 +294,73 @@ fn process_updates(
     client: &TelegramClient,
     account: &RemoteTelegramAccountRecord,
     updates: Vec<Value>,
+    remote_mode_enabled: bool,
 ) {
     for update in updates {
+        if !remote_mode_enabled {
+            let Some(message) = update.get("message") else {
+                continue;
+            };
+            let Some(chat_id) =
+                value_to_id_string(message.get("chat").and_then(|chat| chat.get("id")))
+            else {
+                continue;
+            };
+            if chat_id != account.telegram_chat_id {
+                continue;
+            }
+            let message_id = value_to_id_string(message.get("message_id"));
+            let from = message.get("from");
+            let from_is_bot = from
+                .and_then(|value| value.get("is_bot"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            if from_is_bot {
+                continue;
+            }
+            let from_user_id = value_to_id_string(from.and_then(|value| value.get("id")));
+            let from_username = from
+                .and_then(|value| value.get("username"))
+                .and_then(Value::as_str)
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            let text = message
+                .get("text")
+                .and_then(Value::as_str)
+                .map(|value| value.trim().to_string())
+                .unwrap_or_default();
+            if text.is_empty() {
+                continue;
+            }
+            let reply_to_message_id = value_to_id_string(
+                message
+                    .get("reply_to_message")
+                    .and_then(|value| value.get("message_id")),
+            );
+            match crate::services::enzim_agent::enqueue_telegram_question_answer_if_match(
+                db,
+                &chat_id,
+                reply_to_message_id.as_deref(),
+                &text,
+                message_id.as_deref(),
+                from_user_id.as_deref(),
+                from_username.as_deref(),
+            ) {
+                Ok(true) => {
+                    let _ = client.send_html_message(
+                        &chat_id,
+                        "<b>Sent to Enzim Agent.</b>\nYour reply will be used as the loop answer.",
+                        None,
+                    );
+                }
+                Ok(false) => {}
+                Err(err) => {
+                    eprintln!("[remote] failed to handle Enzim Telegram reply: {err}");
+                }
+            }
+            continue;
+        }
+
         if let Some(callback) = update.get("callback_query") {
             handle_callback_query(db, client, account, callback);
             continue;
@@ -342,6 +409,28 @@ fn process_updates(
                 .get("reply_to_message")
                 .and_then(|value| value.get("message_id")),
         );
+        match crate::services::enzim_agent::enqueue_telegram_question_answer_if_match(
+            db,
+            &chat_id,
+            reply_to_message_id.as_deref(),
+            &text,
+            message_id.as_deref(),
+            from_user_id.as_deref(),
+            from_username.as_deref(),
+        ) {
+            Ok(true) => {
+                let _ = client.send_html_message(
+                    &chat_id,
+                    "<b>Sent to Enzim Agent.</b>\nYour reply will be used as the loop answer.",
+                    None,
+                );
+                continue;
+            }
+            Ok(false) => {}
+            Err(err) => {
+                eprintln!("[remote] failed to handle Enzim Telegram reply: {err}");
+            }
+        }
         if let Some(reply_to_message_id) = reply_to_message_id {
             handle_reply_to_forwarded_message(
                 db,

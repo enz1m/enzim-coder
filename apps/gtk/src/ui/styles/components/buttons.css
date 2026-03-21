@@ -108,6 +108,28 @@ button.profile-create-button image {
   color: inherit;
 }
 
+button.save-confirmed {
+  border-radius: 10px;
+  border: 1px solid alpha(#4da46a, 0.76);
+  background: alpha(#4da46a, 0.24);
+  color: alpha(white, 0.98);
+}
+
+button.save-confirmed:hover {
+  border-color: alpha(#4da46a, 0.86);
+  background: alpha(#4da46a, 0.32);
+}
+
+button.save-confirmed:active {
+  border-color: alpha(#4da46a, 0.92);
+  background: alpha(#4da46a, 0.38);
+}
+
+button.save-confirmed label,
+button.save-confirmed image {
+  color: inherit;
+}
+
 button.destructive-action {
   border-radius: 10px;
   border: 1px solid alpha(#d35d5d, 0.72);

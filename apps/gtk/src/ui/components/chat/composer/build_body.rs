@@ -341,7 +341,19 @@ fn build_inner(
         #composer-input-scroll > viewport,
         #composer-input-scroll > viewport > textview.view,
         textview#composer-input-view,
-        textview#composer-input-view text {
+        textview#composer-input-view text,
+        #enzim-agent-prompt-scroll > viewport,
+        #enzim-agent-prompt-scroll > viewport > textview.view,
+        textview#enzim-agent-prompt-view,
+        textview#enzim-agent-prompt-view text,
+        #enzim-agent-instructions-scroll > viewport,
+        #enzim-agent-instructions-scroll > viewport > textview.view,
+        textview#enzim-agent-instructions-view,
+        textview#enzim-agent-instructions-view text,
+        #enzim-agent-answer-scroll > viewport,
+        #enzim-agent-answer-scroll > viewport > textview.view,
+        textview#enzim-agent-answer-view,
+        textview#enzim-agent-answer-view text {
           background: transparent;
           background-color: transparent;
           background-image: none;
@@ -355,7 +367,19 @@ fn build_inner(
         scrolledwindow#composer-input-scroll > scrollbar.vertical,
         scrolledwindow#composer-input-scroll > scrollbar.vertical > range,
         scrolledwindow#composer-input-scroll > scrollbar.vertical > range > trough,
-        scrolledwindow#composer-input-scroll > scrollbar.vertical > range > trough > slider {
+        scrolledwindow#composer-input-scroll > scrollbar.vertical > range > trough > slider,
+        scrolledwindow#enzim-agent-prompt-scroll > scrollbar.vertical,
+        scrolledwindow#enzim-agent-prompt-scroll > scrollbar.vertical > range,
+        scrolledwindow#enzim-agent-prompt-scroll > scrollbar.vertical > range > trough,
+        scrolledwindow#enzim-agent-prompt-scroll > scrollbar.vertical > range > trough > slider,
+        scrolledwindow#enzim-agent-instructions-scroll > scrollbar.vertical,
+        scrolledwindow#enzim-agent-instructions-scroll > scrollbar.vertical > range,
+        scrolledwindow#enzim-agent-instructions-scroll > scrollbar.vertical > range > trough,
+        scrolledwindow#enzim-agent-instructions-scroll > scrollbar.vertical > range > trough > slider,
+        scrolledwindow#enzim-agent-answer-scroll > scrollbar.vertical,
+        scrolledwindow#enzim-agent-answer-scroll > scrollbar.vertical > range,
+        scrolledwindow#enzim-agent-answer-scroll > scrollbar.vertical > range > trough,
+        scrolledwindow#enzim-agent-answer-scroll > scrollbar.vertical > range > trough > slider {
           min-width: 0;
           min-height: 0;
           margin: 0;
@@ -995,20 +1019,48 @@ fn build_inner(
     enzim_agent_popover.set_autohide(true);
     enzim_agent_popover.set_position(gtk::PositionType::Top);
     enzim_agent_popover.set_parent(&enzim_agent_button);
+    enzim_agent_popover.add_css_class("composer-worktree-popover");
     enzim_agent_popover.add_css_class("composer-enzim-agent-popover");
 
     let enzim_agent_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    enzim_agent_box.add_css_class("composer-worktree-popover-box");
     enzim_agent_box.add_css_class("composer-enzim-agent-box");
     enzim_agent_box.set_margin_start(10);
     enzim_agent_box.set_margin_end(10);
     enzim_agent_box.set_margin_top(10);
     enzim_agent_box.set_margin_bottom(10);
-    enzim_agent_box.set_size_request(340, -1);
+    enzim_agent_box.set_size_request(400, -1);
 
+    let enzim_agent_header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let enzim_agent_title = gtk::Label::new(Some("Enzim Agent"));
     enzim_agent_title.set_xalign(0.0);
+    enzim_agent_title.set_hexpand(true);
     enzim_agent_title.add_css_class("composer-enzim-agent-title");
-    enzim_agent_box.append(&enzim_agent_title);
+    enzim_agent_header.append(&enzim_agent_title);
+
+    let enzim_agent_header_meta = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    enzim_agent_header_meta.set_halign(gtk::Align::End);
+    let enzim_agent_header_note = gtk::Label::new(None);
+    enzim_agent_header_note.add_css_class("enzim-loop-details-pill");
+    enzim_agent_header_note.add_css_class("composer-enzim-agent-header-note");
+    enzim_agent_header_note.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    enzim_agent_header_note.set_max_width_chars(20);
+    enzim_agent_header_note.set_visible(false);
+    let enzim_agent_header_status = gtk::Label::new(None);
+    enzim_agent_header_status.add_css_class("enzim-loop-details-pill");
+    let enzim_agent_header_backend = gtk::Label::new(None);
+    enzim_agent_header_backend.add_css_class("enzim-loop-details-pill");
+    let enzim_agent_header_iterations = gtk::Label::new(None);
+    enzim_agent_header_iterations.add_css_class("enzim-loop-details-pill");
+    let enzim_agent_header_errors = gtk::Label::new(None);
+    enzim_agent_header_errors.add_css_class("enzim-loop-details-pill");
+    enzim_agent_header_meta.append(&enzim_agent_header_note);
+    enzim_agent_header_meta.append(&enzim_agent_header_status);
+    enzim_agent_header_meta.append(&enzim_agent_header_backend);
+    enzim_agent_header_meta.append(&enzim_agent_header_iterations);
+    enzim_agent_header_meta.append(&enzim_agent_header_errors);
+    enzim_agent_header.append(&enzim_agent_header_meta);
+    enzim_agent_box.append(&enzim_agent_header);
 
     let enzim_agent_loop_prompt_title = gtk::Label::new(Some("Prompt"));
     enzim_agent_loop_prompt_title.set_xalign(0.0);
@@ -1021,10 +1073,12 @@ fn build_inner(
         .min_content_height(90)
         .max_content_height(140)
         .build();
+    enzim_agent_prompt_scroll.set_widget_name("enzim-agent-prompt-scroll");
     enzim_agent_prompt_scroll.set_has_frame(false);
     enzim_agent_prompt_scroll.add_css_class("composer-input");
     enzim_agent_prompt_scroll.add_css_class("composer-enzim-agent-input-scroll");
     let enzim_agent_prompt_view = gtk::TextView::new();
+    enzim_agent_prompt_view.set_widget_name("enzim-agent-prompt-view");
     enzim_agent_prompt_view.set_wrap_mode(gtk::WrapMode::WordChar);
     enzim_agent_prompt_view.set_top_margin(8);
     enzim_agent_prompt_view.set_bottom_margin(8);
@@ -1035,10 +1089,17 @@ fn build_inner(
     enzim_agent_prompt_scroll.set_child(Some(&enzim_agent_prompt_view));
     enzim_agent_box.append(&enzim_agent_prompt_scroll);
 
-    let enzim_agent_loop_instructions_title = gtk::Label::new(Some("Looping instructions"));
+    let enzim_agent_loop_instructions_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    let enzim_agent_loop_instructions_title = gtk::Label::new(Some("Extra instructions"));
     enzim_agent_loop_instructions_title.set_xalign(0.0);
+    enzim_agent_loop_instructions_title.set_hexpand(true);
     enzim_agent_loop_instructions_title.add_css_class("composer-enzim-agent-question-title");
-    enzim_agent_box.append(&enzim_agent_loop_instructions_title);
+    let enzim_agent_loop_instructions_arrow =
+        gtk::Image::from_icon_name("disclose-arrow-down-symbolic");
+    enzim_agent_loop_instructions_arrow.add_css_class("composer-enzim-agent-inline-arrow");
+    enzim_agent_loop_instructions_row.append(&enzim_agent_loop_instructions_title);
+    enzim_agent_loop_instructions_row.append(&enzim_agent_loop_instructions_arrow);
+    enzim_agent_box.append(&enzim_agent_loop_instructions_row);
 
     let enzim_agent_instructions_scroll = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
@@ -1046,10 +1107,12 @@ fn build_inner(
         .min_content_height(90)
         .max_content_height(140)
         .build();
+    enzim_agent_instructions_scroll.set_widget_name("enzim-agent-instructions-scroll");
     enzim_agent_instructions_scroll.set_has_frame(false);
     enzim_agent_instructions_scroll.add_css_class("composer-input");
     enzim_agent_instructions_scroll.add_css_class("composer-enzim-agent-input-scroll");
     let enzim_agent_instructions_view = gtk::TextView::new();
+    enzim_agent_instructions_view.set_widget_name("enzim-agent-instructions-view");
     enzim_agent_instructions_view.set_wrap_mode(gtk::WrapMode::WordChar);
     enzim_agent_instructions_view.set_top_margin(8);
     enzim_agent_instructions_view.set_bottom_margin(8);
@@ -1058,19 +1121,178 @@ fn build_inner(
     enzim_agent_instructions_view.add_css_class("composer-input-view");
     enzim_agent_instructions_view.add_css_class("composer-enzim-agent-input-view");
     enzim_agent_instructions_scroll.set_child(Some(&enzim_agent_instructions_view));
-    enzim_agent_box.append(&enzim_agent_instructions_scroll);
+    let enzim_agent_instructions_revealer = gtk::Revealer::new();
+    enzim_agent_instructions_revealer
+        .set_transition_type(gtk::RevealerTransitionType::SlideDown);
+    enzim_agent_instructions_revealer.set_reveal_child(false);
+    enzim_agent_instructions_revealer.set_child(Some(&enzim_agent_instructions_scroll));
+    enzim_agent_box.append(&enzim_agent_instructions_revealer);
+    {
+        let enzim_agent_instructions_revealer = enzim_agent_instructions_revealer.clone();
+        let enzim_agent_loop_instructions_arrow = enzim_agent_loop_instructions_arrow.clone();
+        let click = gtk::GestureClick::new();
+        click.connect_released(move |_, _, _, _| {
+            let next = !enzim_agent_instructions_revealer.reveals_child();
+            enzim_agent_instructions_revealer.set_reveal_child(next);
+            enzim_agent_loop_instructions_arrow.set_icon_name(Some(if next {
+                "disclose-arrow-up-symbolic"
+            } else {
+                "disclose-arrow-down-symbolic"
+            }));
+        });
+        enzim_agent_loop_instructions_row.add_controller(click);
+    }
+
+    let enzim_agent_telegram_questions_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    enzim_agent_telegram_questions_row.add_css_class("composer-enzim-agent-toggle-row");
+    let enzim_agent_telegram_questions_label = gtk::Label::new(Some("Ask via Telegram"));
+    enzim_agent_telegram_questions_label.set_xalign(0.0);
+    enzim_agent_telegram_questions_label.set_hexpand(true);
+    enzim_agent_telegram_questions_label.add_css_class("composer-enzim-agent-question-title");
+    let enzim_agent_telegram_questions_switch = gtk::Switch::new();
+    enzim_agent_telegram_questions_switch.set_halign(gtk::Align::End);
+    enzim_agent_telegram_questions_row.append(&enzim_agent_telegram_questions_label);
+    enzim_agent_telegram_questions_row.append(&enzim_agent_telegram_questions_switch);
+    enzim_agent_box.append(&enzim_agent_telegram_questions_row);
+
+    let enzim_agent_running_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    enzim_agent_running_box.add_css_class("composer-enzim-agent-running-box");
+    enzim_agent_running_box.set_visible(false);
+
+    let enzim_agent_running_status_card = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    enzim_agent_running_status_card.add_css_class("composer-enzim-agent-status-card");
+
+    let enzim_agent_running_state_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let enzim_agent_running_state_label = gtk::Label::new(Some("State"));
+    enzim_agent_running_state_label.set_xalign(0.0);
+    enzim_agent_running_state_label.set_hexpand(true);
+    enzim_agent_running_state_label.add_css_class("composer-enzim-agent-status-key");
+    let enzim_agent_running_state_value = gtk::Label::new(Some("Idle"));
+    enzim_agent_running_state_value.set_xalign(1.0);
+    enzim_agent_running_state_value.add_css_class("composer-enzim-agent-status-value");
+    enzim_agent_running_state_row.append(&enzim_agent_running_state_label);
+    enzim_agent_running_state_row.append(&enzim_agent_running_state_value);
+    enzim_agent_running_status_card.append(&enzim_agent_running_state_row);
+
+    let enzim_agent_running_backend_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let enzim_agent_running_backend_label = gtk::Label::new(Some("Backend"));
+    enzim_agent_running_backend_label.set_xalign(0.0);
+    enzim_agent_running_backend_label.set_hexpand(true);
+    enzim_agent_running_backend_label.add_css_class("composer-enzim-agent-status-key");
+    let enzim_agent_running_backend_value = gtk::Label::new(Some("-"));
+    enzim_agent_running_backend_value.set_xalign(1.0);
+    enzim_agent_running_backend_value.add_css_class("composer-enzim-agent-status-value");
+    enzim_agent_running_backend_row.append(&enzim_agent_running_backend_label);
+    enzim_agent_running_backend_row.append(&enzim_agent_running_backend_value);
+    enzim_agent_running_status_card.append(&enzim_agent_running_backend_row);
+
+    let enzim_agent_running_iterations_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let enzim_agent_running_iterations_label = gtk::Label::new(Some("Iterations"));
+    enzim_agent_running_iterations_label.set_xalign(0.0);
+    enzim_agent_running_iterations_label.set_hexpand(true);
+    enzim_agent_running_iterations_label.add_css_class("composer-enzim-agent-status-key");
+    let enzim_agent_running_iterations_value = gtk::Label::new(Some("0"));
+    enzim_agent_running_iterations_value.set_xalign(1.0);
+    enzim_agent_running_iterations_value.add_css_class("composer-enzim-agent-status-value");
+    enzim_agent_running_iterations_row.append(&enzim_agent_running_iterations_label);
+    enzim_agent_running_iterations_row.append(&enzim_agent_running_iterations_value);
+    enzim_agent_running_status_card.append(&enzim_agent_running_iterations_row);
+
+    let enzim_agent_running_errors_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let enzim_agent_running_errors_label = gtk::Label::new(Some("Errors"));
+    enzim_agent_running_errors_label.set_xalign(0.0);
+    enzim_agent_running_errors_label.set_hexpand(true);
+    enzim_agent_running_errors_label.add_css_class("composer-enzim-agent-status-key");
+    let enzim_agent_running_errors_value = gtk::Label::new(Some("0"));
+    enzim_agent_running_errors_value.set_xalign(1.0);
+    enzim_agent_running_errors_value.add_css_class("composer-enzim-agent-status-value");
+    enzim_agent_running_errors_row.append(&enzim_agent_running_errors_label);
+    enzim_agent_running_errors_row.append(&enzim_agent_running_errors_value);
+    enzim_agent_running_status_card.append(&enzim_agent_running_errors_row);
+
+    enzim_agent_running_box.append(&enzim_agent_running_status_card);
+
+    let enzim_agent_running_prompt_title = gtk::Label::new(Some("Prompt Snapshot"));
+    enzim_agent_running_prompt_title.set_xalign(0.0);
+    enzim_agent_running_prompt_title.add_css_class("composer-enzim-agent-question-title");
+    enzim_agent_running_box.append(&enzim_agent_running_prompt_title);
+
+    let enzim_agent_running_prompt_value = gtk::Label::new(None);
+    enzim_agent_running_prompt_value.set_xalign(0.0);
+    enzim_agent_running_prompt_value.set_wrap(true);
+    enzim_agent_running_prompt_value.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    enzim_agent_running_prompt_value.add_css_class("composer-enzim-agent-brief-card");
+    enzim_agent_running_box.append(&enzim_agent_running_prompt_value);
+
+    let enzim_agent_running_instructions_title = gtk::Label::new(Some("Loop Rules"));
+    enzim_agent_running_instructions_title.set_xalign(0.0);
+    enzim_agent_running_instructions_title.add_css_class("composer-enzim-agent-question-title");
+    enzim_agent_running_box.append(&enzim_agent_running_instructions_title);
+
+    let enzim_agent_running_instructions_value = gtk::Label::new(None);
+    enzim_agent_running_instructions_value.set_xalign(0.0);
+    enzim_agent_running_instructions_value.set_wrap(true);
+    enzim_agent_running_instructions_value.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    enzim_agent_running_instructions_value.add_css_class("composer-enzim-agent-brief-card");
+    enzim_agent_running_box.append(&enzim_agent_running_instructions_value);
+
+    enzim_agent_box.append(&enzim_agent_running_box);
+
+    let enzim_agent_finished_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    enzim_agent_finished_box.add_css_class("composer-enzim-agent-running-box");
+    enzim_agent_finished_box.set_visible(false);
+    let enzim_agent_finished_stats = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    enzim_agent_finished_stats.add_css_class("composer-enzim-agent-status-card");
+    let enzim_agent_finished_backend_value = gtk::Label::new(Some("-"));
+    enzim_agent_finished_backend_value.set_xalign(1.0);
+    enzim_agent_finished_backend_value.add_css_class("composer-enzim-agent-status-value");
+    let enzim_agent_finished_iterations_value = gtk::Label::new(Some("0"));
+    enzim_agent_finished_iterations_value.set_xalign(1.0);
+    enzim_agent_finished_iterations_value.add_css_class("composer-enzim-agent-status-value");
+    let enzim_agent_finished_errors_value = gtk::Label::new(Some("0"));
+    enzim_agent_finished_errors_value.set_xalign(1.0);
+    enzim_agent_finished_errors_value.add_css_class("composer-enzim-agent-status-value");
+    for (title, value) in [
+        ("Backend", &enzim_agent_finished_backend_value),
+        ("Iterations", &enzim_agent_finished_iterations_value),
+        ("Errors", &enzim_agent_finished_errors_value),
+    ] {
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let key = gtk::Label::new(Some(title));
+        key.set_xalign(0.0);
+        key.set_hexpand(true);
+        key.add_css_class("composer-enzim-agent-status-key");
+        row.append(&key);
+        row.append(value);
+        enzim_agent_finished_stats.append(&row);
+    }
+    enzim_agent_finished_box.append(&enzim_agent_finished_stats);
+    let enzim_agent_finished_title = gtk::Label::new(Some("Loop finished"));
+    enzim_agent_finished_title.set_xalign(0.0);
+    enzim_agent_finished_title.add_css_class("composer-enzim-agent-question-title");
+    enzim_agent_finished_box.append(&enzim_agent_finished_title);
+    let enzim_agent_finished_summary = gtk::Label::new(None);
+    enzim_agent_finished_summary.set_xalign(0.0);
+    enzim_agent_finished_summary.set_wrap(true);
+    enzim_agent_finished_summary.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    enzim_agent_finished_summary.set_max_width_chars(42);
+    enzim_agent_finished_summary.add_css_class("composer-enzim-agent-question");
+    enzim_agent_finished_box.append(&enzim_agent_finished_summary);
+    enzim_agent_box.append(&enzim_agent_finished_box);
 
     let enzim_agent_loop_status = gtk::Label::new(Some("No active loop on this thread."));
     enzim_agent_loop_status.set_xalign(0.0);
     enzim_agent_loop_status.set_wrap(true);
     enzim_agent_loop_status.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     enzim_agent_loop_status.add_css_class("composer-enzim-agent-subtitle");
+    enzim_agent_loop_status.set_visible(false);
     enzim_agent_box.append(&enzim_agent_loop_status);
 
     let enzim_agent_summary_label = gtk::Label::new(None);
     enzim_agent_summary_label.set_xalign(0.0);
     enzim_agent_summary_label.set_wrap(true);
     enzim_agent_summary_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    enzim_agent_summary_label.set_max_width_chars(42);
     enzim_agent_summary_label.add_css_class("composer-enzim-agent-question");
     enzim_agent_summary_label.set_visible(false);
     enzim_agent_box.append(&enzim_agent_summary_label);
@@ -1113,10 +1335,12 @@ fn build_inner(
         .min_content_height(90)
         .max_content_height(140)
         .build();
+    enzim_agent_answer_scroll.set_widget_name("enzim-agent-answer-scroll");
     enzim_agent_answer_scroll.set_has_frame(false);
     enzim_agent_answer_scroll.add_css_class("composer-input");
     enzim_agent_answer_scroll.add_css_class("composer-enzim-agent-input-scroll");
     let enzim_agent_answer_view = gtk::TextView::new();
+    enzim_agent_answer_view.set_widget_name("enzim-agent-answer-view");
     enzim_agent_answer_view.set_wrap_mode(gtk::WrapMode::WordChar);
     enzim_agent_answer_view.set_top_margin(8);
     enzim_agent_answer_view.set_bottom_margin(8);
@@ -1132,22 +1356,23 @@ fn build_inner(
     enzim_agent_status.set_wrap(true);
     enzim_agent_status.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     enzim_agent_status.add_css_class("composer-enzim-agent-status");
+    enzim_agent_status.set_visible(false);
     enzim_agent_question_box.append(&enzim_agent_status);
 
     let enzim_agent_settings = gtk::Button::with_label("Settings");
     enzim_agent_settings.set_has_frame(false);
     enzim_agent_settings.add_css_class("app-flat-button");
     enzim_agent_settings.add_css_class("composer-enzim-agent-action");
-    let enzim_agent_start = gtk::Button::with_label("Start Loop");
-    enzim_agent_start.set_has_frame(false);
-    enzim_agent_start.add_css_class("app-flat-button");
-    enzim_agent_start.add_css_class("composer-enzim-agent-action");
-    enzim_agent_start.add_css_class("composer-enzim-agent-action-primary");
-    let enzim_agent_stop = gtk::Button::with_label("Stop Loop");
-    enzim_agent_stop.set_has_frame(false);
-    enzim_agent_stop.add_css_class("app-flat-button");
-    enzim_agent_stop.add_css_class("composer-enzim-agent-action");
-    enzim_agent_stop.add_css_class("composer-enzim-agent-action-stop");
+    let enzim_agent_turn_details = gtk::Button::with_label("Turn Details");
+    enzim_agent_turn_details.set_has_frame(false);
+    enzim_agent_turn_details.add_css_class("app-flat-button");
+    enzim_agent_turn_details.add_css_class("composer-enzim-agent-action");
+    enzim_agent_turn_details.set_visible(false);
+    let enzim_agent_loop_toggle = gtk::Button::with_label("Start Loop");
+    enzim_agent_loop_toggle.set_has_frame(false);
+    enzim_agent_loop_toggle.add_css_class("app-flat-button");
+    enzim_agent_loop_toggle.add_css_class("composer-enzim-agent-action");
+    enzim_agent_loop_toggle.add_css_class("composer-enzim-agent-action-primary");
     let enzim_agent_answer_submit = gtk::Button::with_label("Send Answer");
     enzim_agent_answer_submit.set_has_frame(false);
     enzim_agent_answer_submit.add_css_class("app-flat-button");
@@ -1157,10 +1382,14 @@ fn build_inner(
 
     let enzim_agent_actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     enzim_agent_actions.add_css_class("composer-enzim-agent-actions");
-    enzim_agent_actions.set_halign(gtk::Align::End);
+    enzim_agent_actions.set_halign(gtk::Align::Fill);
+    enzim_agent_actions.set_hexpand(true);
     enzim_agent_actions.append(&enzim_agent_settings);
-    enzim_agent_actions.append(&enzim_agent_start);
-    enzim_agent_actions.append(&enzim_agent_stop);
+    enzim_agent_actions.append(&enzim_agent_turn_details);
+    let enzim_agent_actions_spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    enzim_agent_actions_spacer.set_hexpand(true);
+    enzim_agent_actions.append(&enzim_agent_actions_spacer);
+    enzim_agent_actions.append(&enzim_agent_loop_toggle);
 
     enzim_agent_box.append(&enzim_agent_question_box);
     enzim_agent_box.append(&enzim_agent_actions);

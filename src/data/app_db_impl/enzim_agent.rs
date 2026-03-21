@@ -413,16 +413,14 @@ impl AppDb {
         &self,
         event_id: i64,
         external_turn_id: Option<&str>,
-        compact_text: Option<&str>,
         decision_json: Option<&str>,
     ) -> rusqlite::Result<()> {
         self.conn.borrow_mut().execute(
             "UPDATE enzim_agent_loop_events
              SET external_turn_id = COALESCE(?1, external_turn_id),
-                 compact_text = COALESCE(?2, compact_text),
-                 decision_json = COALESCE(?3, decision_json)
-             WHERE id = ?4",
-            params![external_turn_id, compact_text, decision_json, event_id],
+                 decision_json = COALESCE(?2, decision_json)
+             WHERE id = ?3",
+            params![external_turn_id, decision_json, event_id],
         )?;
         Ok(())
     }

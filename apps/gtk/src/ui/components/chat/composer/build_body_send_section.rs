@@ -131,6 +131,7 @@
         let refresh_queue_ui = refresh_queue_ui.clone();
         let thread_locked = thread_locked.clone();
         let queue_steer_allowed_for_thread = queue_steer_allowed_for_thread.clone();
+        let submit_loop_answer_for_send = submit_loop_answer.clone();
         send.connect_clicked(move |_| {
             let skills_allowed_for_text = |text: &str| -> Result<(), String> {
                 if text.trim().is_empty() {
@@ -203,7 +204,7 @@
                         );
                         return;
                     }
-                    let submit_loop_answer = submit_loop_answer.borrow().clone();
+                    let submit_loop_answer = submit_loop_answer_for_send.borrow().clone();
                     let Some(submit_loop_answer) = submit_loop_answer else {
                         super::message_render::append_message(
                             &messages_box,
@@ -798,6 +799,16 @@
                     return;
                 };
 
+                if let Err(err) =
+                    crate::services::enzim_agent::cancel_active_loop_for_remote_thread(
+                        db.as_ref(),
+                        &thread_id,
+                    )
+                {
+                    let _ = send_error_tx.send(format!("Failed to stop Enzim loop: {err}"));
+                    return;
+                }
+
                 let send_error_tx_for_interrupt = send_error_tx.clone();
                 thread::spawn(move || {
                     if let Err(err) = client.turn_interrupt(&thread_id, &turn_id) {
@@ -1083,6 +1094,7 @@
         let selected_access_mode = selected_access_mode.clone();
         let resolve_client_for_thread = resolve_client_for_thread.clone();
         let send = send.clone();
+        let submit_loop_answer = submit_loop_answer.clone();
         let input_view = input_view.clone();
         let input_scroll = input_scroll.clone();
         let placeholder = placeholder.clone();
@@ -1110,6 +1122,27 @@
             }
 
             for prompt in pending_prompts {
+                if prompt.source == "telegram-loop-answer" {
+                    if !crate::services::enzim_agent::has_pending_question(db.as_ref(), &active_thread_id) {
+                        continue;
+                    }
+                    let submit_loop_answer = submit_loop_answer.borrow().clone();
+                    let Some(submit_loop_answer) = submit_loop_answer else {
+                        continue;
+                    };
+                    match submit_loop_answer(
+                        active_thread_id.clone(),
+                        prompt.text.clone(),
+                        "telegram".to_string(),
+                    ) {
+                        Ok(()) => {
+                            let _ = db.mark_remote_pending_prompt_consumed(prompt.id);
+                        }
+                        Err(_) => {}
+                    }
+                    continue;
+                }
+
                 let already_queued = queued_entries.borrow().iter().any(|entry| {
                     entry.payload.borrow().remote_prompt_id == Some(prompt.id)
                 });

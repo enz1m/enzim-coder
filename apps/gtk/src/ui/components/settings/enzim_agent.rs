@@ -5,6 +5,72 @@ use std::rc::Rc;
 use std::sync::mpsc;
 use std::time::Duration;
 
+fn apply_loop_editor_theme(
+    scroll: &gtk::ScrolledWindow,
+    view: &gtk::TextView,
+    scroll_name: &str,
+    view_name: &str,
+) {
+    scroll.set_widget_name(scroll_name);
+    view.set_widget_name(view_name);
+
+    let provider = gtk::CssProvider::new();
+    let css = format!(
+        r#"
+#{scroll_name},
+#{scroll_name} > viewport,
+#{scroll_name} > viewport.view,
+#{scroll_name} > viewport > textview,
+#{scroll_name} > viewport > textview.view,
+textview#{view_name},
+textview#{view_name}.view,
+textview#{view_name} text {{
+  border-radius: 12px;
+  border: 1px solid alpha(@window_fg_color, 0.09);
+  background: alpha(@window_fg_color, 0.06);
+  background-color: alpha(@window_fg_color, 0.06);
+  background-image: none;
+  color: @window_fg_color;
+  box-shadow: none;
+  outline: none;
+}}
+
+scrolledwindow#{scroll_name} > scrollbar.vertical,
+scrolledwindow#{scroll_name} > scrollbar.vertical > range,
+scrolledwindow#{scroll_name} > scrollbar.vertical > range > trough,
+scrolledwindow#{scroll_name} > scrollbar.vertical > range > trough > slider {{
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+  opacity: 0;
+}}
+"#
+    );
+    provider.load_from_string(&css);
+
+    if let Some(display) = gtk::gdk::Display::default() {
+        gtk::style_context_add_provider_for_display(
+            &display,
+            &provider,
+            gtk::STYLE_PROVIDER_PRIORITY_USER,
+        );
+    }
+}
+
+fn loop_default_state_label(value: &str) -> &'static str {
+    if value.trim().is_empty() {
+        "Using built-in default"
+    } else {
+        "Custom default saved"
+    }
+}
+
 fn open_system_prompt_dialog(
     parent: &gtk::Window,
     db: Rc<AppDb>,
@@ -20,6 +86,7 @@ fn open_system_prompt_dialog(
     dialog.add_css_class("settings-window");
 
     let config = crate::services::enzim_agent::load_config(db.as_ref());
+    let default_prompt = crate::services::enzim_agent::default_system_prompt().to_string();
 
     let root = gtk::Box::new(gtk::Orientation::Vertical, 10);
     root.set_margin_start(14);
@@ -42,14 +109,28 @@ fn open_system_prompt_dialog(
         .vexpand(true)
         .build();
     prompt_scroll.set_has_frame(false);
+    prompt_scroll.add_css_class("composer-input");
     let prompt_view = gtk::TextView::new();
     prompt_view.set_wrap_mode(gtk::WrapMode::WordChar);
     prompt_view.set_top_margin(10);
     prompt_view.set_bottom_margin(10);
     prompt_view.set_left_margin(10);
     prompt_view.set_right_margin(10);
+    prompt_view.add_css_class("composer-input-view");
+    apply_loop_editor_theme(
+        &prompt_scroll,
+        &prompt_view,
+        "enzim-agent-system-prompt-scroll",
+        "enzim-agent-system-prompt-view",
+    );
     let prompt_buf = prompt_view.buffer();
-    prompt_buf.set_text(config.system_prompt_override.as_deref().unwrap_or(""));
+    prompt_buf.set_text(
+        config
+            .system_prompt_override
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or(default_prompt.as_str()),
+    );
     prompt_scroll.set_child(Some(&prompt_view));
     root.append(&prompt_scroll);
 
@@ -70,9 +151,10 @@ fn open_system_prompt_dialog(
     {
         let prompt_buf = prompt_buf.clone();
         let status = status.clone();
+        let default_prompt = default_prompt.clone();
         reset.connect_clicked(move |_| {
-            prompt_buf.set_text("");
-            status.set_text("Override cleared. The default prompt will be used.");
+            prompt_buf.set_text(&default_prompt);
+            status.set_text("Restored the built-in default prompt.");
         });
     }
 
@@ -82,12 +164,15 @@ fn open_system_prompt_dialog(
         let status = status.clone();
         let dialog = dialog.clone();
         let on_saved = on_saved.clone();
+        let default_prompt = default_prompt.clone();
         save.connect_clicked(move |_| {
             let start = prompt_buf.start_iter();
             let end = prompt_buf.end_iter();
             let prompt = prompt_buf.text(&start, &end, true).to_string();
             let mut config = crate::services::enzim_agent::load_config(db.as_ref());
-            config.system_prompt_override = if prompt.trim().is_empty() {
+            config.system_prompt_override = if prompt.trim().is_empty()
+                || prompt.trim() == default_prompt.trim()
+            {
                 None
             } else {
                 Some(prompt)
@@ -112,6 +197,7 @@ fn open_loop_text_dialog(
     title: &str,
     intro_text: &str,
     initial_text: &str,
+    default_text: &str,
     on_save: Rc<dyn Fn(String) -> Result<(), String>>,
 ) {
     let dialog = gtk::Window::builder()
@@ -142,12 +228,20 @@ fn open_loop_text_dialog(
         .vexpand(true)
         .build();
     prompt_scroll.set_has_frame(false);
+    prompt_scroll.add_css_class("composer-input");
     let prompt_view = gtk::TextView::new();
     prompt_view.set_wrap_mode(gtk::WrapMode::WordChar);
     prompt_view.set_top_margin(10);
     prompt_view.set_bottom_margin(10);
     prompt_view.set_left_margin(10);
     prompt_view.set_right_margin(10);
+    prompt_view.add_css_class("composer-input-view");
+    apply_loop_editor_theme(
+        &prompt_scroll,
+        &prompt_view,
+        "enzim-agent-loop-text-scroll",
+        "enzim-agent-loop-text-view",
+    );
     let prompt_buf = prompt_view.buffer();
     prompt_buf.set_text(initial_text);
     prompt_scroll.set_child(Some(&prompt_view));
@@ -160,10 +254,22 @@ fn open_loop_text_dialog(
 
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     actions.set_halign(gtk::Align::End);
+    let reset = gtk::Button::with_label("Reset");
     let save = gtk::Button::with_label("Save");
     save.add_css_class("suggested-action");
+    actions.append(&reset);
     actions.append(&save);
     root.append(&actions);
+
+    {
+        let prompt_buf = prompt_buf.clone();
+        let status = status.clone();
+        let default_text = default_text.to_string();
+        reset.connect_clicked(move |_| {
+            prompt_buf.set_text(&default_text);
+            status.set_text("Restored the built-in default.");
+        });
+    }
 
     {
         let prompt_buf = prompt_buf.clone();
@@ -284,18 +390,13 @@ pub(crate) fn build_settings_page(dialog: &gtk::Window, db: Rc<AppDb>) -> gtk::B
     let prompt_label = gtk::Label::new(Some("Loop system prompt"));
     prompt_label.set_width_chars(14);
     prompt_label.set_xalign(0.0);
-    let prompt_state_label = gtk::Label::new(Some(if config_state
-        .borrow()
-        .system_prompt_override
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .is_some()
-    {
-        "Custom override saved"
-    } else {
-        "Using built-in default"
-    }));
+    let prompt_state_label = gtk::Label::new(Some(loop_default_state_label(
+        config_state
+            .borrow()
+            .system_prompt_override
+            .as_deref()
+            .unwrap_or(""),
+    )));
     prompt_state_label.set_xalign(0.0);
     prompt_state_label.set_hexpand(true);
     prompt_state_label.add_css_class("dim-label");
@@ -315,16 +416,9 @@ pub(crate) fn build_settings_page(dialog: &gtk::Window, db: Rc<AppDb>) -> gtk::B
     let default_prompt_label = gtk::Label::new(Some("Default prompt"));
     default_prompt_label.set_width_chars(14);
     default_prompt_label.set_xalign(0.0);
-    let default_prompt_state = gtk::Label::new(Some(if loop_defaults
-        .borrow()
-        .prompt_text
-        .trim()
-        .is_empty()
-    {
-        "No default prompt saved"
-    } else {
-        "Default prompt saved"
-    }));
+    let default_prompt_state = gtk::Label::new(Some(loop_default_state_label(
+        &loop_defaults.borrow().prompt_text,
+    )));
     default_prompt_state.set_xalign(0.0);
     default_prompt_state.set_hexpand(true);
     default_prompt_state.add_css_class("dim-label");
@@ -340,16 +434,9 @@ pub(crate) fn build_settings_page(dialog: &gtk::Window, db: Rc<AppDb>) -> gtk::B
     let default_instructions_label = gtk::Label::new(Some("Default instructions"));
     default_instructions_label.set_width_chars(14);
     default_instructions_label.set_xalign(0.0);
-    let default_instructions_state = gtk::Label::new(Some(if loop_defaults
-        .borrow()
-        .instructions_text
-        .trim()
-        .is_empty()
-    {
-        "No default instructions saved"
-    } else {
-        "Default instructions saved"
-    }));
+    let default_instructions_state = gtk::Label::new(Some(loop_default_state_label(
+        &loop_defaults.borrow().instructions_text,
+    )));
     default_instructions_state.set_xalign(0.0);
     default_instructions_state.set_hexpand(true);
     default_instructions_state.add_css_class("dim-label");
@@ -379,18 +466,29 @@ pub(crate) fn build_settings_page(dialog: &gtk::Window, db: Rc<AppDb>) -> gtk::B
 
     root.append(&section);
 
+    let reset_save_button: Rc<dyn Fn()> = {
+        let save = save.clone();
+        Rc::new(move || {
+            save.set_label("Save");
+            save.remove_css_class("save-confirmed");
+        })
+    };
+
     {
         let config_state = config_state.clone();
         let models_state = models_state.clone();
+        let reset_save_button = reset_save_button.clone();
         model_dropdown.connect_selected_notify(move |dropdown| {
             let selected = dropdown.selected();
             if selected == gtk::INVALID_LIST_POSITION {
                 config_state.borrow_mut().model_id = None;
+                reset_save_button();
                 return;
             }
             let models = models_state.borrow();
             config_state.borrow_mut().model_id =
                 models.get(selected as usize).map(|model| model.id.clone());
+            reset_save_button();
         });
     }
 
@@ -410,18 +508,13 @@ pub(crate) fn build_settings_page(dialog: &gtk::Window, db: Rc<AppDb>) -> gtk::B
                 db.clone(),
                 Rc::new(move || {
                     config_state.replace(crate::services::enzim_agent::load_config(db.as_ref()));
-                    prompt_state_label.set_text(if config_state
-                        .borrow()
-                        .system_prompt_override
-                        .as_deref()
-                        .map(str::trim)
-                        .filter(|value| !value.is_empty())
-                        .is_some()
-                    {
-                        "Custom override saved"
-                    } else {
-                        "Using built-in default"
-                    });
+                    prompt_state_label.set_text(loop_default_state_label(
+                        config_state
+                            .borrow()
+                            .system_prompt_override
+                            .as_deref()
+                            .unwrap_or(""),
+                    ));
                     (reload_models_ui)();
                 }),
             );
@@ -438,23 +531,33 @@ pub(crate) fn build_settings_page(dialog: &gtk::Window, db: Rc<AppDb>) -> gtk::B
             let db = db.clone();
             let loop_defaults = loop_defaults.clone();
             let default_prompt_state = default_prompt_state.clone();
-            let initial_text = loop_defaults.borrow().prompt_text.clone();
+            let stored_text = loop_defaults.borrow().prompt_text.clone();
+            let initial_text = if stored_text.trim().is_empty() {
+                crate::services::enzim_agent::default_loop_prompt().to_string()
+            } else {
+                stored_text
+            };
             open_loop_text_dialog(
                 &dialog,
                 "Default Loop Prompt",
-                "This fills the composer popup prompt field for new Enzim loops. Leave empty if you don't want a saved default.",
+                "This fills the composer popup prompt field for new Enzim loops. Reset restores the built-in default.",
                 &initial_text,
+                crate::services::enzim_agent::default_loop_prompt(),
                 Rc::new(move |text| {
                     let mut defaults =
                         crate::services::enzim_agent::load_loop_draft_defaults(db.as_ref());
-                    defaults.prompt_text = text;
+                    defaults.prompt_text = if text.trim().is_empty()
+                        || text.trim()
+                            == crate::services::enzim_agent::default_loop_prompt().trim()
+                    {
+                        String::new()
+                    } else {
+                        text
+                    };
                     crate::services::enzim_agent::save_loop_draft_defaults(db.as_ref(), &defaults)?;
                     loop_defaults.replace(defaults.clone());
-                    default_prompt_state.set_text(if defaults.prompt_text.trim().is_empty() {
-                        "No default prompt saved"
-                    } else {
-                        "Default prompt saved"
-                    });
+                    default_prompt_state
+                        .set_text(loop_default_state_label(&defaults.prompt_text));
                     Ok(())
                 }),
             );
@@ -471,7 +574,7 @@ pub(crate) fn build_settings_page(dialog: &gtk::Window, db: Rc<AppDb>) -> gtk::B
             match crate::services::enzim_agent::save_loop_draft_defaults(db.as_ref(), &defaults) {
                 Ok(()) => {
                     loop_defaults.replace(defaults);
-                    default_prompt_state.set_text("No default prompt saved");
+                    default_prompt_state.set_text("Using built-in default");
                 }
                 Err(err) => eprintln!("failed to reset Enzim Agent default prompt: {err}"),
             }
@@ -488,25 +591,33 @@ pub(crate) fn build_settings_page(dialog: &gtk::Window, db: Rc<AppDb>) -> gtk::B
             let db = db.clone();
             let loop_defaults = loop_defaults.clone();
             let default_instructions_state = default_instructions_state.clone();
-            let initial_text = loop_defaults.borrow().instructions_text.clone();
+            let stored_text = loop_defaults.borrow().instructions_text.clone();
+            let initial_text = if stored_text.trim().is_empty() {
+                crate::services::enzim_agent::default_loop_instructions().to_string()
+            } else {
+                stored_text
+            };
             open_loop_text_dialog(
                 &dialog,
                 "Default Looping Instructions",
-                "This fills the composer popup looping-instructions field for new Enzim loops. Leave empty if you don't want a saved default.",
+                "This fills the composer popup looping-instructions field for new Enzim loops. Reset restores the built-in default.",
                 &initial_text,
+                crate::services::enzim_agent::default_loop_instructions(),
                 Rc::new(move |text| {
                     let mut defaults =
                         crate::services::enzim_agent::load_loop_draft_defaults(db.as_ref());
-                    defaults.instructions_text = text;
+                    defaults.instructions_text = if text.trim().is_empty()
+                        || text.trim()
+                            == crate::services::enzim_agent::default_loop_instructions().trim()
+                    {
+                        String::new()
+                    } else {
+                        text
+                    };
                     crate::services::enzim_agent::save_loop_draft_defaults(db.as_ref(), &defaults)?;
                     loop_defaults.replace(defaults.clone());
-                    default_instructions_state.set_text(
-                        if defaults.instructions_text.trim().is_empty() {
-                            "No default instructions saved"
-                        } else {
-                            "Default instructions saved"
-                        },
-                    );
+                    default_instructions_state
+                        .set_text(loop_default_state_label(&defaults.instructions_text));
                     Ok(())
                 }),
             );
@@ -523,7 +634,7 @@ pub(crate) fn build_settings_page(dialog: &gtk::Window, db: Rc<AppDb>) -> gtk::B
             match crate::services::enzim_agent::save_loop_draft_defaults(db.as_ref(), &defaults) {
                 Ok(()) => {
                     loop_defaults.replace(defaults);
-                    default_instructions_state.set_text("No default instructions saved");
+                    default_instructions_state.set_text("Using built-in default");
                 }
                 Err(err) => {
                     eprintln!("failed to reset Enzim Agent default instructions: {err}")
@@ -555,13 +666,15 @@ pub(crate) fn build_settings_page(dialog: &gtk::Window, db: Rc<AppDb>) -> gtk::B
         let url_entry = url_entry.clone();
         let key_entry = key_entry.clone();
         let status = status.clone();
+        let reset_save_button = reset_save_button.clone();
         let model_dropdown = model_dropdown.clone();
         let save = save.clone();
         let refresh_models = refresh_models.clone();
         let reload_models_ui = reload_models_ui.clone();
+        let url_entry_for_refresh = url_entry.clone();
         refresh_models.clone().connect_clicked(move |_| {
             let mut config = config_state.borrow().clone();
-            config.base_url = url_entry.text().to_string();
+            config.base_url = url_entry_for_refresh.text().to_string();
             config.api_key = Some(key_entry.text().to_string());
             status.set_text("Refreshing models...");
             save.set_sensitive(false);
@@ -621,6 +734,17 @@ pub(crate) fn build_settings_page(dialog: &gtk::Window, db: Rc<AppDb>) -> gtk::B
                 }
             });
         });
+
+        url_entry.connect_changed(move |_| {
+            reset_save_button();
+        });
+    }
+
+    {
+        let reset_save_button = reset_save_button.clone();
+        key_entry.connect_changed(move |_| {
+            reset_save_button();
+        });
     }
 
     {
@@ -629,14 +753,17 @@ pub(crate) fn build_settings_page(dialog: &gtk::Window, db: Rc<AppDb>) -> gtk::B
         let url_entry = url_entry.clone();
         let key_entry = key_entry.clone();
         let status = status.clone();
-        save.connect_clicked(move |_| {
+        let save = save.clone();
+        save.clone().connect_clicked(move |_| {
             let mut config = config_state.borrow().clone();
             config.base_url = url_entry.text().to_string();
             config.api_key = Some(key_entry.text().to_string());
             match crate::services::enzim_agent::save_config(db.as_ref(), &config) {
                 Ok(()) => {
                     config_state.replace(crate::services::enzim_agent::load_config(db.as_ref()));
-                    status.set_text("Saved.");
+                    status.set_text("");
+                    save.set_label("Saved");
+                    save.add_css_class("save-confirmed");
                 }
                 Err(err) => status.set_text(&err),
             }

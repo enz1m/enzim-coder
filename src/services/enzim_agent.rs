@@ -10,8 +10,10 @@ use std::time::Duration;
 
 const MAX_LOOP_ITERATIONS: i64 = 25;
 const MAX_LOOP_ERRORS: i64 = 3;
+const MAX_LOOP_JSON_RETRIES: usize = 3;
 const DEFAULT_LOOP_PROMPT_KEY: &str = "enzim_agent:default_loop_prompt";
 const DEFAULT_LOOP_INSTRUCTIONS_KEY: &str = "enzim_agent:default_loop_instructions";
+const TELEGRAM_QUESTION_SESSION_KEY: &str = "enzim_agent:telegram_question_session";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EnzimAgentModelOption {
@@ -43,13 +45,40 @@ pub struct LoopDraftDefaults {
     pub instructions_text: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TelegramQuestionSession {
+    pub loop_id: i64,
+    pub local_thread_id: i64,
+    pub remote_thread_id: String,
+    pub telegram_chat_id: String,
+    pub question_message_id: String,
+    pub question_text: String,
+    pub started_at: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoopPendingRequestOption {
+    pub id: String,
+    pub label: String,
+    pub payload: Value,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoopPendingRequest {
+    pub request_id: i64,
+    pub method: String,
+    pub title: String,
+    pub details: String,
+    pub options: Vec<LoopPendingRequestOption>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 struct LoopDecision {
     action: String,
     message: Option<String>,
-    compacted_last_message: Option<String>,
     reason: Option<String>,
     summary_for_user: Option<String>,
+    request_option_id: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -67,6 +96,12 @@ pub enum LoopDriverAction {
         loop_id: i64,
         summary: String,
     },
+    Respond {
+        loop_id: i64,
+        request_id: i64,
+        option_label: String,
+        payload: Value,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -81,18 +116,190 @@ fn now() -> i64 {
     crate::data::unix_now()
 }
 
+fn escape_html(raw: &str) -> String {
+    raw.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+fn save_telegram_question_session(
+    db: &AppDb,
+    session: Option<&TelegramQuestionSession>,
+) -> Result<(), String> {
+    let value = session
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(|err| err.to_string())?
+        .unwrap_or_default();
+    db.set_setting(TELEGRAM_QUESTION_SESSION_KEY, &value)
+        .map_err(|err| err.to_string())
+}
+
+pub fn active_telegram_question_session(db: &AppDb) -> Option<TelegramQuestionSession> {
+    db.get_setting(TELEGRAM_QUESTION_SESSION_KEY)
+        .ok()
+        .flatten()
+        .and_then(|raw| serde_json::from_str::<TelegramQuestionSession>(&raw).ok())
+}
+
+pub fn stop_telegram_question_session(db: &AppDb) -> Result<(), String> {
+    save_telegram_question_session(db, None)
+}
+
+pub fn stop_telegram_question_session_for_loop(db: &AppDb, loop_id: i64) -> Result<(), String> {
+    if active_telegram_question_session(db)
+        .is_some_and(|session| session.loop_id == loop_id)
+    {
+        stop_telegram_question_session(db)?;
+    }
+    Ok(())
+}
+
+pub fn start_telegram_question_session(
+    db: &AppDb,
+    loop_id: i64,
+    remote_thread_id: &str,
+    question: &str,
+) -> Result<(), String> {
+    let question = question.trim();
+    if question.is_empty() {
+        return Err("Telegram question text is empty.".to_string());
+    }
+    let loop_record = db
+        .get_enzim_agent_loop(loop_id)
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| "Loop record not found.".to_string())?;
+    let account = db
+        .remote_telegram_active_account()
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| "No linked Telegram account is available for Enzim Agent questions.".to_string())?;
+    let thread_title = db
+        .get_thread_record(loop_record.local_thread_id)
+        .ok()
+        .flatten()
+        .map(|thread| thread.title)
+        .unwrap_or_else(|| remote_thread_id.to_string());
+    let client = crate::remote::telegram::TelegramClient::new(account.bot_token.clone())?;
+    let body = format!(
+        "<b>Enzim Agent question</b>\n<b>Thread:</b> {}\n\n{}\n\nReply directly to this message to answer.",
+        escape_html(&thread_title),
+        escape_html(question),
+    );
+    let message_id = client
+        .send_html_message(&account.telegram_chat_id, &body, None)?
+        .to_string();
+    let session = TelegramQuestionSession {
+        loop_id,
+        local_thread_id: loop_record.local_thread_id,
+        remote_thread_id: remote_thread_id.trim().to_string(),
+        telegram_chat_id: account.telegram_chat_id,
+        question_message_id: message_id,
+        question_text: question.to_string(),
+        started_at: now(),
+    };
+    save_telegram_question_session(db, Some(&session))?;
+    crate::services::app::remote::start_background_worker();
+    Ok(())
+}
+
+pub fn enqueue_telegram_question_answer_if_match(
+    db: &AppDb,
+    chat_id: &str,
+    reply_to_message_id: Option<&str>,
+    text: &str,
+    incoming_message_id: Option<&str>,
+    from_user_id: Option<&str>,
+    from_username: Option<&str>,
+) -> Result<bool, String> {
+    let Some(session) = active_telegram_question_session(db) else {
+        return Ok(false);
+    };
+    if session.telegram_chat_id != chat_id.trim() {
+        return Ok(false);
+    }
+    if reply_to_message_id.map(str::trim) != Some(session.question_message_id.as_str()) {
+        return Ok(false);
+    }
+    if active_loop_for_remote_thread(db, &session.remote_thread_id)
+        .map(|loop_record| loop_record.id != session.loop_id || loop_record.status != "waiting_user")
+        .unwrap_or(true)
+    {
+        stop_telegram_question_session(db)?;
+        return Ok(false);
+    }
+    db.enqueue_remote_pending_prompt(
+        session.local_thread_id,
+        text,
+        "telegram-loop-answer",
+        Some(chat_id),
+        incoming_message_id,
+        from_user_id,
+        from_username,
+    )
+    .map_err(|err| err.to_string())?;
+    stop_telegram_question_session(db)?;
+    Ok(true)
+}
+
 pub fn default_system_prompt() -> &'static str {
     "You are Enzim Agent, a loop supervisor for another coding agent.\n\
-You are not allowed to inspect files, builds, git state, tools, or any outside context.\n\
-You must decide only from the loop prompt, looping instructions, and the loop history provided.\n\
-Your job is to stop the coding agent from ending too early.\n\
-Prefer action=continue unless the work is clearly finished or you clearly need missing user input.\n\
-If you are unsure and the missing information can only come from the human, return action=ask_user.\n\
-Never invent validation that is not visible in the history.\n\
-Return strict JSON with keys: action, message, compacted_last_message, reason, summary_for_user.\n\
-For action=continue, message must be a short user-style follow-up prompt.\n\
-For action=ask_user, message must be the exact question for the human.\n\
-For action=finish, summary_for_user must clearly explain what was completed."
+\n\
+ROLE\n\
+- Your job is to prevent the coding agent from stopping too early.\n\
+- Your job is also to stop the loop once the visible history shows the task is done.\n\
+- You supervise only from the loop prompt, looping instructions, and loop history.\n\
+\n\
+HARD CONSTRAINTS\n\
+- Do not inspect files, tools, builds, git state, or any outside context.\n\
+- Do not assume work is complete unless the history clearly shows it.\n\
+- Do not invent validation, test results, or file changes that are not visible in the history.\n\
+- Return JSON only. No prose, no markdown, no code fences.\n\
+\n\
+DECISION POLICY\n\
+- Prefer `continue` while there is still concrete unfinished work in the visible history.\n\
+- If a `pending_request` object is present, you may use `respond` to answer that runtime approval request instead of asking the coding agent for another text turn.\n\
+- Use `ask_user` only when missing information must come from the human.\n\
+- Use `finish` only when the task appears fully done from the visible history.\n\
+- If the coding agent gave a summary plus next steps, that usually means the task is not done yet, so prefer `continue`.\n\
+- If the latest coding-agent message says the requested implementation is complete and does not list remaining work, blockers, or next-step recommendations, prefer `finish`.\n\
+- If the latest coding-agent message reports successful validation for the requested work, do not ask for repeated re-verification unless the history also shows an unresolved failure or missing requirement.\n\
+- Do not keep the loop running just to ask the coding agent to verify again, re-check again, or continue again when the visible history already indicates completion.\n\
+- Repeatedly asking for the same kind of follow-up without new unfinished work is a loop failure. Use `finish` instead.\n\
+- Keep follow-up messages short, concrete, and user-like.\n\
+\n\
+OUTPUT FORMAT\n\
+Return one JSON object with exactly these keys:\n\
+- `action`: `continue` | `ask_user` | `finish` | `respond`\n\
+- `message`: string or null\n\
+- `reason`: short string\n\
+- `summary_for_user`: string or null\n\
+- `request_option_id`: string or null\n\
+\n\
+FIELD RULES\n\
+- For `continue`, `message` must be a short follow-up prompt to the coding agent.\n\
+- For `ask_user`, `message` must be the exact question for the human.\n\
+- For `finish`, `summary_for_user` must clearly summarize what was completed.\n\
+- For `respond`, `request_option_id` must exactly match one of the option ids from `pending_request.options`.\n\
+- The loop history already includes the full prior messages. Do not summarize or rewrite the prior backend-agent messages inside your JSON.\n\
+- Treat phrases like \"done\", \"completed\", \"implemented\", \"finished\", \"build passed\", \"tests passed\", or \"all requested changes are in place\" as strong completion signals unless the same visible message also lists remaining work.\n\
+- Use null for fields that do not apply.\n\
+\n\
+EXAMPLES\n\
+{\"action\":\"continue\",\"message\":\"Continue and finish the remaining migration work. Do not stop until the app builds successfully.\",\"reason\":\"The visible history still shows unresolved compile errors and no successful build.\",\"summary_for_user\":null,\"request_option_id\":null}\n\
+\n\
+{\"action\":\"ask_user\",\"message\":\"Do you want the migration to keep the existing pages router structure, or switch to the app router as part of this task?\",\"reason\":\"A product decision from the user is required before the remaining work can be completed.\",\"summary_for_user\":null,\"request_option_id\":null}\n\
+\n\
+{\"action\":\"respond\",\"message\":null,\"reason\":\"The runtime is waiting for approval on a clearly required cleanup command, and the available option should be accepted.\",\"summary_for_user\":null,\"request_option_id\":\"accept\"}\n\
+\n\
+{\"action\":\"finish\",\"message\":null,\"reason\":\"The visible history indicates the requested work is complete, so repeating verification would be unnecessary.\",\"summary_for_user\":\"The task appears complete based on the loop history, including the reported validation result.\",\"request_option_id\":null}"
+}
+
+pub fn default_loop_prompt() -> &'static str {
+    "Continue this task from the current state and do not stop early."
+}
+
+pub fn default_loop_instructions() -> &'static str {
+    ""
 }
 
 impl Default for EnzimAgentConfig {
@@ -179,6 +386,22 @@ pub fn load_loop_draft_defaults(db: &AppDb) -> LoopDraftDefaults {
     }
 }
 
+pub fn effective_loop_draft_defaults(db: &AppDb) -> LoopDraftDefaults {
+    let stored = load_loop_draft_defaults(db);
+    LoopDraftDefaults {
+        prompt_text: if stored.prompt_text.trim().is_empty() {
+            default_loop_prompt().to_string()
+        } else {
+            stored.prompt_text
+        },
+        instructions_text: if stored.instructions_text.trim().is_empty() {
+            default_loop_instructions().to_string()
+        } else {
+            stored.instructions_text
+        },
+    }
+}
+
 pub fn save_loop_draft_defaults(db: &AppDb, defaults: &LoopDraftDefaults) -> Result<(), String> {
     db.set_setting(DEFAULT_LOOP_PROMPT_KEY, defaults.prompt_text.trim())
         .map_err(|err| err.to_string())?;
@@ -252,6 +475,128 @@ fn parse_error_body(value: &Value) -> Option<String> {
         .and_then(Value::as_str)
         .map(ToOwned::to_owned)
         .or_else(|| value.get("message").and_then(Value::as_str).map(ToOwned::to_owned))
+}
+
+fn extract_agent_message_text(item: &Value) -> Option<String> {
+    if item.get("type").and_then(Value::as_str) != Some("agentMessage") {
+        return None;
+    }
+
+    if let Some(text) = item.get("text").and_then(Value::as_str) {
+        if !text.trim().is_empty() {
+            return Some(text.to_string());
+        }
+    }
+
+    let content = item.get("content").and_then(Value::as_array)?;
+    let mut out = String::new();
+    for part in content {
+        if let Some(text) = part.get("text").and_then(Value::as_str) {
+            out.push_str(text);
+            continue;
+        }
+        if let Some(text) = part
+            .get("text")
+            .and_then(|value| value.get("value"))
+            .and_then(Value::as_str)
+        {
+            out.push_str(text);
+            continue;
+        }
+        if let Some(text) = part.get("value").and_then(Value::as_str) {
+            out.push_str(text);
+            continue;
+        }
+        if let Some(text) = part
+            .get("content")
+            .and_then(|value| value.get("text"))
+            .and_then(Value::as_str)
+        {
+            out.push_str(text);
+        }
+    }
+
+    let out = out.trim().to_string();
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
+fn effective_assistant_text(turn: &LocalChatTurnRecord) -> String {
+    if !turn.assistant_text.trim().is_empty() {
+        return turn.assistant_text.trim().to_string();
+    }
+    let Some(raw_items) = turn.raw_items_json.as_deref() else {
+        return String::new();
+    };
+    let Ok(items) = serde_json::from_str::<Vec<Value>>(raw_items) else {
+        return String::new();
+    };
+    items
+        .iter()
+        .filter_map(extract_agent_message_text)
+        .collect::<Vec<_>>()
+        .join("\n\n")
+        .trim()
+        .to_string()
+}
+
+fn cached_turn_error_message(
+    db: &AppDb,
+    remote_thread_id: &str,
+    turn_id: &str,
+) -> Option<String> {
+    let raw = db
+        .get_setting(&format!("thread_turn_errors:{remote_thread_id}"))
+        .ok()
+        .flatten()?;
+    let entries = serde_json::from_str::<Vec<Value>>(&raw).ok()?;
+    entries
+        .iter()
+        .find(|entry| entry.get("turnId").and_then(Value::as_str) == Some(turn_id))
+        .and_then(|entry| entry.get("message").and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn build_failed_turn_diagnostics(
+    db: &AppDb,
+    remote_thread_id: &str,
+    turn: &LocalChatTurnRecord,
+) -> String {
+    let mut lines = vec![
+        "The coding agent turn failed.".to_string(),
+        format!("Turn ID: {}", turn.external_turn_id),
+        format!("Turn status: {}", turn.status),
+    ];
+
+    if let Some(message) = cached_turn_error_message(db, remote_thread_id, &turn.external_turn_id) {
+        lines.push(format!("Runtime error: {message}"));
+    } else {
+        lines.push("No detailed runtime error was captured from the runtime event stream.".to_string());
+    }
+
+    let assistant_text = effective_assistant_text(turn);
+    if !assistant_text.trim().is_empty() {
+        lines.push("Latest agent output before failure:".to_string());
+        lines.push(assistant_text);
+    }
+
+    lines.join("\n")
+}
+
+pub fn detailed_runtime_error_for_turn(
+    db: &AppDb,
+    remote_thread_id: &str,
+    local_thread_id: i64,
+    turn_id: &str,
+) -> Option<String> {
+    let turns = db.list_local_chat_turns_for_local_thread(local_thread_id).ok()?;
+    let turn = turns.into_iter().find(|turn| turn.external_turn_id == turn_id)?;
+    Some(build_failed_turn_diagnostics(db, remote_thread_id, &turn))
 }
 
 fn parse_models(value: &Value) -> Vec<EnzimAgentModelOption> {
@@ -358,11 +703,30 @@ fn parse_decision(raw: &str) -> Result<LoopDecision, String> {
                 return Err("Finish decision missing summary_for_user.".to_string());
             }
         }
+        "respond" => {
+            if decision
+                .request_option_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .is_none()
+            {
+                return Err("Respond decision missing request_option_id.".to_string());
+            }
+        }
         other => {
             return Err(format!("Unsupported Enzim Agent action `{other}`."));
         }
     }
     Ok(decision)
+}
+
+fn format_invalid_json_error(last_error: &str) -> String {
+    format!(
+        "Enzim Agent did not return valid JSON after {} retries. Last error: {}",
+        MAX_LOOP_JSON_RETRIES,
+        last_error.trim()
+    )
 }
 
 fn render_history(events: &[EnzimAgentLoopEventRecord]) -> Vec<Value> {
@@ -373,10 +737,7 @@ fn render_history(events: &[EnzimAgentLoopEventRecord]) -> Vec<Value> {
                 "sequence": event.sequence_no,
                 "event_kind": event.event_kind,
                 "author_kind": event.author_kind,
-                "text": event.compact_text.as_deref()
-                    .filter(|value| !value.trim().is_empty())
-                    .or(event.full_text.as_deref())
-                    .unwrap_or(""),
+                "text": event.full_text.as_deref().unwrap_or(""),
             })
         })
         .collect()
@@ -387,6 +748,7 @@ fn call_loop_model(
     system_prompt: &str,
     loop_record: &EnzimAgentLoopRecord,
     events: &[EnzimAgentLoopEventRecord],
+    pending_request: Option<&LoopPendingRequest>,
 ) -> Result<LoopDecision, String> {
     let model_id = config
         .model_id
@@ -411,23 +773,60 @@ fn call_loop_model(
                 "history": render_history(events),
                 "current_status": loop_record.status,
                 "iteration_count": loop_record.iteration_count,
+                "pending_request": pending_request,
             }).to_string() }
         ]
     });
 
     let client = build_client(config.api_key.as_deref())?;
     let url = endpoint(&base_url, "/chat/completions");
-    let response = client.post(url).json(&body).send().map_err(|err| err.to_string())?;
-    let status = response.status();
-    let value = response.json::<Value>().map_err(|err| err.to_string())?;
-    if !status.is_success() {
-        return Err(
-            parse_error_body(&value).unwrap_or_else(|| format!("Loop model request failed: {status}"))
-        );
+    let mut last_json_error = String::new();
+
+    for attempt in 0..=MAX_LOOP_JSON_RETRIES {
+        let response = client
+            .post(&url)
+            .json(&body)
+            .send()
+            .map_err(|err| err.to_string())?;
+        let status = response.status();
+        let value = response.json::<Value>().map_err(|err| err.to_string())?;
+        if !status.is_success() {
+            return Err(
+                parse_error_body(&value)
+                    .unwrap_or_else(|| format!("Loop model request failed: {status}"))
+            );
+        }
+
+        let raw = match extract_response_text(&value) {
+            Some(raw) => raw,
+            None => {
+                last_json_error = "Loop model response missing content.".to_string();
+                if attempt < MAX_LOOP_JSON_RETRIES {
+                    continue;
+                }
+                return Err(format_invalid_json_error(&last_json_error));
+            }
+        };
+
+        match parse_decision(&raw) {
+            Ok(decision) => return Ok(decision),
+            Err(err) => {
+                last_json_error = err;
+                if attempt < MAX_LOOP_JSON_RETRIES {
+                    continue;
+                }
+                return Err(format_invalid_json_error(&last_json_error));
+            }
+        }
     }
-    let raw = extract_response_text(&value)
-        .ok_or_else(|| "Loop model response missing content.".to_string())?;
-    parse_decision(&raw)
+
+    Err(format_invalid_json_error(
+        if last_json_error.trim().is_empty() {
+            "Unknown JSON formatting error."
+        } else {
+            &last_json_error
+        },
+    ))
 }
 
 fn recent_agent_followup(events: &[EnzimAgentLoopEventRecord]) -> Option<String> {
@@ -442,21 +841,8 @@ fn apply_decision(
     db: &AppDb,
     loop_record: &EnzimAgentLoopRecord,
     decision: &LoopDecision,
-    compact_event_id: Option<i64>,
+    pending_request: Option<&LoopPendingRequest>,
 ) -> Result<LoopDriverAction, String> {
-    if let Some(event_id) = compact_event_id {
-        if let Some(compacted) = decision
-            .compacted_last_message
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            let json_raw = serde_json::to_string(decision).ok();
-            db.update_enzim_agent_loop_event(event_id, None, Some(compacted), json_raw.as_deref())
-                .map_err(|err| err.to_string())?;
-        }
-    }
-
     match decision.action.as_str() {
         "continue" => {
             if loop_record.iteration_count >= MAX_LOOP_ITERATIONS {
@@ -574,6 +960,7 @@ fn apply_decision(
                 decision_json.as_deref(),
             )
             .map_err(|err| err.to_string())?;
+            stop_telegram_question_session_for_loop(db, loop_record.id)?;
             db.update_enzim_agent_loop_status(
                 loop_record.id,
                 "finished",
@@ -587,6 +974,47 @@ fn apply_decision(
                 summary,
             })
         }
+        "respond" => {
+            let pending_request = pending_request
+                .ok_or_else(|| "Respond decision was returned without a pending request.".to_string())?;
+            let option_id = decision
+                .request_option_id
+                .as_deref()
+                .unwrap_or_default()
+                .trim();
+            let option = pending_request
+                .options
+                .iter()
+                .find(|option| option.id == option_id)
+                .ok_or_else(|| "Respond decision selected an unknown request option.".to_string())?;
+            let decision_json = serde_json::to_string(decision).ok();
+            db.append_enzim_agent_loop_event(
+                loop_record.id,
+                "agent_request_response",
+                "enzim_agent",
+                Some(&format!("request:{}", pending_request.request_id)),
+                Some(&format!("{}: {}", pending_request.title, option.label)),
+                None,
+                decision_json.as_deref(),
+            )
+            .map_err(|err| err.to_string())?;
+            db.update_enzim_agent_loop_progress(
+                loop_record.id,
+                "waiting_runtime",
+                None,
+                0,
+                0,
+                None,
+                None,
+            )
+            .map_err(|err| err.to_string())?;
+            Ok(LoopDriverAction::Respond {
+                loop_id: loop_record.id,
+                request_id: pending_request.request_id,
+                option_label: option.label.clone(),
+                payload: option.payload.clone(),
+            })
+        }
         _ => Err("Unsupported Enzim Agent action.".to_string()),
     }
 }
@@ -594,7 +1022,7 @@ fn apply_decision(
 fn evaluate_loop_from_history(
     db: &AppDb,
     loop_record: &EnzimAgentLoopRecord,
-    compact_event_id: Option<i64>,
+    pending_request: Option<&LoopPendingRequest>,
 ) -> Result<LoopDriverAction, String> {
     if loop_record.error_count >= MAX_LOOP_ERRORS {
         return Err("Loop paused because it reached the maximum error count.".to_string());
@@ -606,8 +1034,8 @@ fn evaluate_loop_from_history(
     let events = db
         .list_enzim_agent_loop_events(loop_record.id)
         .map_err(|err| err.to_string())?;
-    let decision = call_loop_model(&config, &system_prompt, loop_record, &events)?;
-    apply_decision(db, loop_record, &decision, compact_event_id)
+    let decision = call_loop_model(&config, &system_prompt, loop_record, &events, pending_request)?;
+    apply_decision(db, loop_record, &decision, pending_request)
 }
 
 pub fn start_loop(
@@ -620,9 +1048,6 @@ pub fn start_loop(
     let instructions = instructions.trim();
     if prompt.is_empty() {
         return Err("Prompt is empty.".to_string());
-    }
-    if instructions.is_empty() {
-        return Err("Looping instructions are empty.".to_string());
     }
     if db
         .active_enzim_agent_loop_for_local_thread(local_thread_id)
@@ -692,6 +1117,7 @@ pub fn cancel_active_loop_for_remote_thread(db: &AppDb, remote_thread_id: &str) 
     let Some(loop_record) = active_loop_for_remote_thread(db, remote_thread_id) else {
         return Ok(());
     };
+    stop_telegram_question_session_for_loop(db, loop_record.id)?;
     db.update_enzim_agent_loop_status(loop_record.id, "cancelled", None, None, Some(now()))
         .map_err(|err| err.to_string())
 }
@@ -703,6 +1129,7 @@ pub fn cancel_active_loop_for_local_thread(db: &AppDb, local_thread_id: i64) -> 
     else {
         return Ok(());
     };
+    stop_telegram_question_session_for_loop(db, loop_record.id)?;
     db.update_enzim_agent_loop_status(loop_record.id, "cancelled", None, None, Some(now()))
         .map_err(|err| err.to_string())
 }
@@ -741,18 +1168,17 @@ pub fn process_user_answer(
     if answer.is_empty() {
         return Err("Answer is empty.".to_string());
     }
-    let event = db
-        .append_enzim_agent_loop_event(
-            loop_record.id,
-            "user_answer",
-            source,
-            None,
-            Some(answer),
-            None,
-            None,
-        )
+    db.append_enzim_agent_loop_event(
+        loop_record.id,
+        "user_answer",
+        source,
+        None,
+        Some(answer),
+        None,
+        None,
+    )
         .map_err(|err| err.to_string())?;
-    evaluate_loop_from_history(db, &loop_record, Some(event.id)).map_err(|err| {
+    let action = evaluate_loop_from_history(db, &loop_record, None).map_err(|err| {
         let _ = db.update_enzim_agent_loop_progress(
             loop_record.id,
             "paused_error",
@@ -763,7 +1189,9 @@ pub fn process_user_answer(
             None,
         );
         err
-    })
+    })?;
+    stop_telegram_question_session_for_loop(db, loop_record.id)?;
+    Ok(action)
 }
 
 fn latest_completed_turn(loop_record: &EnzimAgentLoopRecord, turns: &[LocalChatTurnRecord]) -> Option<LocalChatTurnRecord> {
@@ -771,9 +1199,20 @@ fn latest_completed_turn(loop_record: &EnzimAgentLoopRecord, turns: &[LocalChatT
         .iter()
         .rev()
         .find(|turn| {
-            turn.completed_at.is_some()
-                && turn.external_turn_id != loop_record.last_seen_external_turn_id.clone().unwrap_or_default()
-                && (!turn.assistant_text.trim().is_empty() || turn.status == "failed")
+            if turn.created_at < loop_record.created_at {
+                return false;
+            }
+            turn.external_turn_id
+                != loop_record
+                    .last_seen_external_turn_id
+                    .clone()
+                    .unwrap_or_default()
+                && (turn.status == "failed"
+                    || turn.status == "completed"
+                    || turn.completed_at.is_some())
+                && (!effective_assistant_text(turn).trim().is_empty()
+                    || turn.status == "failed"
+                    || turn.completed_at.is_some())
         })
         .cloned()
 }
@@ -797,12 +1236,19 @@ pub fn process_waiting_runtime_turn(
     };
 
     if turn.status == "failed" {
+        let detailed_error =
+            build_failed_turn_diagnostics(db, remote_thread_id, &turn);
+        let short_error = cached_turn_error_message(db, remote_thread_id, &turn.external_turn_id)
+            .map(|message| format!("The coding agent turn failed: {message}"))
+            .unwrap_or_else(|| {
+                "The coding agent turn failed. Open Turn Details for diagnostics.".to_string()
+            });
         db.append_enzim_agent_loop_event(
             loop_record.id,
             "runtime_error",
             "runtime",
             Some(&turn.external_turn_id),
-            Some("The coding agent turn failed."),
+            Some(&detailed_error),
             None,
             None,
         )
@@ -813,12 +1259,19 @@ pub fn process_waiting_runtime_turn(
             Some(&turn.external_turn_id),
             0,
             1,
-            Some("The coding agent turn failed."),
+            Some(&short_error),
             None,
         )
         .map_err(|err| err.to_string())?;
-        return Err("The coding agent turn failed. Enzim Agent paused the loop.".to_string());
+        return Err(format!("{short_error} Enzim Agent paused the loop."));
     }
+
+    let assistant_text = effective_assistant_text(&turn);
+    let assistant_text = if assistant_text.trim().is_empty() {
+        "The coding agent completed a turn without a plain-text summary.".to_string()
+    } else {
+        assistant_text
+    };
 
     let event = db
         .append_enzim_agent_loop_event(
@@ -826,7 +1279,7 @@ pub fn process_waiting_runtime_turn(
             "assistant_reply",
             "assistant",
             Some(&turn.external_turn_id),
-            Some(&turn.assistant_text),
+            Some(&assistant_text),
             None,
             None,
         )
@@ -842,7 +1295,7 @@ pub fn process_waiting_runtime_turn(
     )
     .map_err(|err| err.to_string())?;
 
-    let action = evaluate_loop_from_history(db, &loop_record, Some(event.id)).map_err(|err| {
+    let action = evaluate_loop_from_history(db, &loop_record, None).map_err(|err| {
         let _ = db.update_enzim_agent_loop_progress(
             loop_record.id,
             "paused_error",
@@ -862,6 +1315,66 @@ pub fn process_waiting_runtime_turn(
     }))
 }
 
+pub fn process_pending_request(
+    db: &AppDb,
+    remote_thread_id: &str,
+    pending_request: &LoopPendingRequest,
+) -> Result<LoopDriverAction, String> {
+    let Some(loop_record) = active_loop_for_remote_thread(db, remote_thread_id) else {
+        return Err("No active Enzim Agent loop for this thread.".to_string());
+    };
+    if loop_record.status != "waiting_runtime" && loop_record.status != "active" {
+        return Err("Enzim Agent is not waiting on the coding agent for this thread.".to_string());
+    }
+
+    let request_key = format!("request:{}", pending_request.request_id);
+    let events = db
+        .list_enzim_agent_loop_events(loop_record.id)
+        .map_err(|err| err.to_string())?;
+    if !events.iter().any(|event| {
+        event.event_kind == "runtime_request"
+            && event.external_turn_id.as_deref() == Some(request_key.as_str())
+    }) {
+        let option_lines = pending_request
+            .options
+            .iter()
+            .map(|option| format!("- {} ({})", option.label, option.id))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let full_text = if option_lines.is_empty() {
+            format!("{}\n{}", pending_request.title, pending_request.details)
+        } else {
+            format!(
+                "{}\n{}\nOptions:\n{}",
+                pending_request.title, pending_request.details, option_lines
+            )
+        };
+        db.append_enzim_agent_loop_event(
+            loop_record.id,
+            "runtime_request",
+            "runtime",
+            Some(&request_key),
+            Some(&full_text),
+            None,
+            None,
+        )
+        .map_err(|err| err.to_string())?;
+    }
+
+    evaluate_loop_from_history(db, &loop_record, Some(pending_request)).map_err(|err| {
+        let _ = db.update_enzim_agent_loop_progress(
+            loop_record.id,
+            "paused_error",
+            None,
+            0,
+            1,
+            Some(&err),
+            None,
+        );
+        err
+    })
+}
+
 pub fn mark_followup_dispatched(
     db: &AppDb,
     _loop_id: i64,
@@ -869,7 +1382,7 @@ pub fn mark_followup_dispatched(
     remote_thread_id: &str,
     turn_id: &str,
 ) -> Result<(), String> {
-    db.update_enzim_agent_loop_event(event_id, Some(turn_id), None, None)
+    db.update_enzim_agent_loop_event(event_id, Some(turn_id), None)
         .map_err(|err| err.to_string())?;
     db.mark_enzim_agent_turn_origin(remote_thread_id, turn_id, "enzim_agent")
         .map_err(|err| err.to_string())
