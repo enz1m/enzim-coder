@@ -26,6 +26,8 @@ use operations::{
 };
 use runtime::install_worker_event_pump;
 
+const MAX_RENDERED_GIT_FILES: usize = 400;
+
 fn build_action_button(icon_name: &str, label: &str) -> gtk::Button {
     let button = gtk::Button::new();
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
@@ -390,7 +392,27 @@ pub fn build_git_tab(
                 return;
             }
 
-            for (idx, entry) in entries.iter().enumerate() {
+            let total_entries = entries.len();
+            let visible_count = total_entries.min(MAX_RENDERED_GIT_FILES);
+            if total_entries > MAX_RENDERED_GIT_FILES {
+                let overflow = gtk::Label::new(Some(&format!(
+                    "Showing the first {} of {} changed paths. This workspace is very large; use Refresh after narrowing the repo state or use Git in the terminal for the full list.",
+                    visible_count,
+                    total_entries
+                )));
+                overflow.add_css_class("git-tab-muted");
+                overflow.add_css_class("dim-label");
+                overflow.set_wrap(true);
+                overflow.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+                overflow.set_xalign(0.0);
+                overflow.set_margin_start(8);
+                overflow.set_margin_end(8);
+                overflow.set_margin_top(8);
+                overflow.set_margin_bottom(8);
+                listbox.append(&overflow);
+            }
+
+            for (idx, entry) in entries.iter().take(MAX_RENDERED_GIT_FILES).enumerate() {
                 let row = gtk::ListBoxRow::new();
                 row.add_css_class("git-tab-item");
                 row.set_selectable(false);
@@ -468,11 +490,15 @@ pub fn build_git_tab(
     let trigger_refresh: Rc<dyn Fn()> = {
         let db = db.clone();
         let active_workspace_path = active_workspace_path.clone();
+        let content_box = content_box.clone();
         let operation_busy = operation_busy.clone();
         let status_label = status_label.clone();
         let worker_tx = worker_tx.clone();
         let update_actions = update_actions.clone();
         Rc::new(move || {
+            if !content_box.is_mapped() || !content_box.is_visible() {
+                return;
+            }
             if *operation_busy.borrow() {
                 return;
             }
@@ -904,6 +930,5 @@ pub fn build_git_tab(
         });
     }
 
-    trigger_refresh();
     content_box
 }
