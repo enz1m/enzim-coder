@@ -114,6 +114,176 @@ fn map_model_id(value: &str) -> Option<(String, String)> {
     Some((provider_id.to_string(), model_id.to_string()))
 }
 
+#[derive(Clone, Debug)]
+struct OpenCodeProviderDescriptor {
+    id: String,
+    name: String,
+    env_keys: Vec<String>,
+    has_api_key_hint: bool,
+    raw: Value,
+}
+
+fn json_value_missing(value: &Value) -> bool {
+    matches!(value, Value::Null) || value.as_str().is_some_and(|item| item.trim().is_empty())
+}
+
+fn merge_string_array_values(primary: &mut Value, fallback: &Value) {
+    let Some(primary_items) = primary.as_array_mut() else {
+        if primary.is_null() {
+            *primary = fallback.clone();
+        }
+        return;
+    };
+    let Some(fallback_items) = fallback.as_array() else {
+        return;
+    };
+    let mut seen = primary_items
+        .iter()
+        .filter_map(Value::as_str)
+        .map(ToOwned::to_owned)
+        .collect::<HashSet<_>>();
+    for item in fallback_items {
+        let Some(text) = item.as_str() else {
+            continue;
+        };
+        if seen.insert(text.to_string()) {
+            primary_items.push(Value::String(text.to_string()));
+        }
+    }
+}
+
+fn merge_model_catalog_values(primary: &mut Value, fallback: &Value) {
+    if primary.is_null() {
+        *primary = fallback.clone();
+        return;
+    }
+    if let (Some(primary_models), Some(fallback_models)) =
+        (primary.as_object_mut(), fallback.as_object())
+    {
+        for (model_id, fallback_model) in fallback_models {
+            if let Some(primary_model) = primary_models.get_mut(model_id) {
+                merge_json_values_prefer_existing(primary_model, fallback_model);
+            } else {
+                primary_models.insert(model_id.clone(), fallback_model.clone());
+            }
+        }
+        return;
+    }
+    if let (Some(primary_models), Some(fallback_models)) =
+        (primary.as_array_mut(), fallback.as_array())
+    {
+        let mut seen = primary_models
+            .iter()
+            .filter_map(|model| model.get("id").and_then(Value::as_str))
+            .map(ToOwned::to_owned)
+            .collect::<HashSet<_>>();
+        for model in fallback_models {
+            let Some(model_id) = model.get("id").and_then(Value::as_str) else {
+                continue;
+            };
+            if seen.insert(model_id.to_string()) {
+                primary_models.push(model.clone());
+            }
+        }
+        return;
+    }
+    if let (Some(primary_models), Some(fallback_models)) =
+        (primary.as_object_mut(), fallback.as_array())
+    {
+        for model in fallback_models {
+            let Some(model_id) = model.get("id").and_then(Value::as_str) else {
+                continue;
+            };
+            primary_models
+                .entry(model_id.to_string())
+                .or_insert_with(|| model.clone());
+        }
+        return;
+    }
+    if let (Some(primary_models), Some(fallback_models)) =
+        (primary.as_array_mut(), fallback.as_object())
+    {
+        let mut seen = primary_models
+            .iter()
+            .filter_map(|model| model.get("id").and_then(Value::as_str))
+            .map(ToOwned::to_owned)
+            .collect::<HashSet<_>>();
+        for (model_id, model) in fallback_models {
+            if seen.insert(model_id.clone()) {
+                let mut merged_model = model.clone();
+                if let Some(model_object) = merged_model.as_object_mut() {
+                    model_object
+                        .entry("id".to_string())
+                        .or_insert_with(|| Value::String(model_id.clone()));
+                }
+                primary_models.push(merged_model);
+            }
+        }
+    }
+}
+
+fn merge_json_values_prefer_existing(primary: &mut Value, fallback: &Value) {
+    if json_value_missing(primary) {
+        *primary = fallback.clone();
+        return;
+    }
+    let Some(primary_obj) = primary.as_object_mut() else {
+        return;
+    };
+    let Some(fallback_obj) = fallback.as_object() else {
+        return;
+    };
+    for (key, fallback_value) in fallback_obj {
+        match primary_obj.get_mut(key) {
+            Some(primary_value) if key == "env" => {
+                merge_string_array_values(primary_value, fallback_value);
+            }
+            Some(primary_value) if key == "models" => {
+                merge_model_catalog_values(primary_value, fallback_value);
+            }
+            Some(primary_value) => {
+                merge_json_values_prefer_existing(primary_value, fallback_value);
+            }
+            None => {
+                primary_obj.insert(key.clone(), fallback_value.clone());
+            }
+        }
+    }
+}
+
+fn provider_entries_from_response(response: &Value, key: &str) -> Vec<Value> {
+    response
+        .get(key)
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+}
+
+fn provider_env_keys(provider: &Value) -> Vec<String> {
+    provider
+        .get("env")
+        .and_then(Value::as_array)
+        .map(|envs| {
+            envs.iter()
+                .filter_map(Value::as_str)
+                .map(|env| env.trim().to_ascii_uppercase())
+                .filter(|env| !env.is_empty())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+fn provider_has_api_key_hint(provider: &Value, env_keys: &[String]) -> bool {
+    provider
+        .get("options")
+        .and_then(Value::as_object)
+        .map(|options| options.contains_key("apiKey"))
+        .unwrap_or(false)
+        || env_keys.iter().any(|env| {
+            env.contains("API_KEY") || (env.ends_with("_TOKEN") && !env.contains("ACCESS_TOKEN"))
+        })
+}
+
 fn opencode_agent_for_collaboration_mode(mode: Option<&Value>) -> Option<&'static str> {
     match mode
         .and_then(|value| value.get("mode"))
@@ -1185,6 +1355,53 @@ pub struct OpenCodeAppServer {
 }
 
 impl OpenCodeAppServer {
+    fn merged_provider_descriptors(&self) -> Result<Vec<OpenCodeProviderDescriptor>, String> {
+        let provider_response = self.get_json("/provider", None)?;
+        let config_response = self
+            .get_json("/config/providers", None)
+            .unwrap_or(Value::Null);
+        let runtime_providers = provider_entries_from_response(&provider_response, "all");
+        let config_providers = provider_entries_from_response(&config_response, "providers");
+
+        let mut providers_by_id = HashMap::<String, Value>::new();
+        for provider in config_providers {
+            let Some(provider_id) = provider.get("id").and_then(Value::as_str) else {
+                continue;
+            };
+            providers_by_id.insert(provider_id.to_string(), provider);
+        }
+        for provider in runtime_providers {
+            let Some(provider_id) = provider.get("id").and_then(Value::as_str) else {
+                continue;
+            };
+            let mut merged = provider.clone();
+            if let Some(config_provider) = providers_by_id.get(provider_id) {
+                merge_json_values_prefer_existing(&mut merged, config_provider);
+            }
+            providers_by_id.insert(provider_id.to_string(), merged);
+        }
+
+        let mut providers = providers_by_id
+            .into_iter()
+            .map(|(id, raw)| {
+                let env_keys = provider_env_keys(&raw);
+                OpenCodeProviderDescriptor {
+                    name: raw
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .unwrap_or(&id)
+                        .to_string(),
+                    has_api_key_hint: provider_has_api_key_hint(&raw, &env_keys),
+                    env_keys,
+                    raw,
+                    id,
+                }
+            })
+            .collect::<Vec<_>>();
+        providers.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.id.cmp(&b.id)));
+        Ok(providers)
+    }
+
     pub fn profile_id(&self) -> i64 {
         self.profile_id
     }
@@ -2990,22 +3207,10 @@ impl OpenCodeAppServer {
         _include_hidden: bool,
         limit: usize,
     ) -> Result<Vec<ModelInfo>, String> {
-        let provider_response = self.get_json("/provider", None)?;
+        let mut providers = self.merged_provider_descriptors()?;
         let config_response = self
             .get_json("/config/providers", None)
             .unwrap_or(Value::Null);
-        let mut providers = provider_response
-            .get("all")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
-        if providers.is_empty() {
-            providers = config_response
-                .get("providers")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default();
-        }
         let defaults = config_response
             .get("default")
             .and_then(Value::as_object)
@@ -3020,38 +3225,22 @@ impl OpenCodeAppServer {
             .map(|provider| provider.provider_id)
             .collect::<HashSet<_>>();
         eprintln!(
-            "[opencode:{}] model.list providers={} preferred={} source={}",
+            "[opencode:{}] model.list providers={} preferred={} source=merged",
             self.log_label,
             providers.len(),
             preferred_providers.len(),
-            if provider_response
-                .get("all")
-                .and_then(Value::as_array)
-                .is_some()
-            {
-                "/provider"
-            } else {
-                "/config/providers"
-            }
         );
         providers.sort_by(|left, right| {
-            let left_id = left.get("id").and_then(Value::as_str).unwrap_or_default();
-            let right_id = right.get("id").and_then(Value::as_str).unwrap_or_default();
             preferred_providers
-                .contains(right_id)
-                .cmp(&preferred_providers.contains(left_id))
-                .then_with(|| left_id.cmp(right_id))
+                .contains(&right.id)
+                .cmp(&preferred_providers.contains(&left.id))
+                .then_with(|| left.id.cmp(&right.id))
         });
         let mut out = Vec::new();
         for provider in providers {
-            let provider_id = provider
-                .get("id")
-                .and_then(Value::as_str)
-                .unwrap_or("provider");
-            let provider_name = provider
-                .get("name")
-                .and_then(Value::as_str)
-                .unwrap_or(provider_id);
+            let provider_id = provider.id;
+            let provider_name = provider.name;
+            let provider = provider.raw;
             let mut model_entries = Vec::<(String, Value)>::new();
             if let Some(models) = provider.get("models").and_then(Value::as_object) {
                 for (model_id, model) in models {
@@ -3096,7 +3285,7 @@ impl OpenCodeAppServer {
                 variants.sort();
                 let combined_id = format!("{provider_id}:{model_id}");
                 let is_default =
-                    defaults.get(provider_id).and_then(Value::as_str) == Some(model_id);
+                    defaults.get(&provider_id).and_then(Value::as_str) == Some(model_id);
                 out.push(ModelInfo {
                     id: combined_id,
                     display_name: format!("{provider_name} / {display_name}"),
@@ -3169,44 +3358,16 @@ impl OpenCodeAppServer {
             .as_object()
             .ok_or_else(|| "OpenCode provider/auth response was not an object".to_string())?;
         let providers = self.get_json("/provider", None)?;
-        let provider_meta = providers
-            .get("all")
-            .and_then(Value::as_array)
-            .map(|items| {
-                items
-                    .iter()
-                    .filter_map(|provider| {
-                        let id = provider.get("id").and_then(Value::as_str)?;
-                        let name = provider
-                            .get("name")
-                            .and_then(Value::as_str)
-                            .unwrap_or(id)
-                            .to_string();
-                        let env_keys = provider
-                            .get("env")
-                            .and_then(Value::as_array)
-                            .map(|envs| {
-                                envs.iter()
-                                    .filter_map(Value::as_str)
-                                    .map(|env| env.trim().to_ascii_uppercase())
-                                    .filter(|env| !env.is_empty())
-                                    .collect::<Vec<_>>()
-                            })
-                            .unwrap_or_default();
-                        let has_api_key_hint = provider
-                            .get("options")
-                            .and_then(Value::as_object)
-                            .map(|options| options.contains_key("apiKey"))
-                            .unwrap_or(false)
-                            || env_keys.iter().any(|env| {
-                                env.contains("API_KEY")
-                                    || (env.ends_with("_TOKEN") && !env.contains("ACCESS_TOKEN"))
-                            });
-                        Some((id.to_string(), (name, has_api_key_hint, env_keys)))
-                    })
-                    .collect::<HashMap<_, _>>()
+        let provider_meta = self
+            .merged_provider_descriptors()?
+            .into_iter()
+            .map(|provider| {
+                (
+                    provider.id,
+                    (provider.name, provider.has_api_key_hint, provider.env_keys),
+                )
             })
-            .unwrap_or_default();
+            .collect::<HashMap<_, _>>();
         let connected = providers
             .get("connected")
             .and_then(Value::as_array)
@@ -3356,46 +3517,40 @@ impl OpenCodeAppServer {
         let methods = methods
             .as_object()
             .ok_or_else(|| "OpenCode provider/auth response was not an object".to_string())?;
-        let providers = self.get_json("/provider", None)?;
-        let provider_names = providers
-            .get("all")
-            .and_then(Value::as_array)
-            .map(|items| {
-                items
-                    .iter()
-                    .filter_map(|provider| {
-                        let id = provider.get("id").and_then(Value::as_str)?;
-                        let name = provider
-                            .get("name")
-                            .and_then(Value::as_str)
-                            .unwrap_or(id)
-                            .to_string();
-                        Some((id.to_string(), name))
-                    })
-                    .collect::<HashMap<_, _>>()
-            })
-            .unwrap_or_default();
-        let mut out = methods
-            .iter()
-            .filter_map(|(provider_id, methods)| {
-                methods.as_array().and_then(|items| {
-                    items
-                        .iter()
-                        .any(|method| {
+        let provider_meta = self
+            .merged_provider_descriptors()?
+            .into_iter()
+            .map(|provider| (provider.id, (provider.name, provider.has_api_key_hint)))
+            .collect::<HashMap<_, _>>();
+        let mut provider_ids = provider_meta.keys().cloned().collect::<HashSet<_>>();
+        provider_ids.extend(methods.keys().cloned());
+        let mut out = provider_ids
+            .into_iter()
+            .filter_map(|provider_id| {
+                let supports_api_key = methods
+                    .get(&provider_id)
+                    .and_then(Value::as_array)
+                    .map(|items| {
+                        items.iter().any(|method| {
                             matches!(
                                 method.get("type").and_then(Value::as_str),
                                 Some("api" | "wellknown")
                             )
                         })
-                        .then(|| {
-                            (
-                                provider_id.clone(),
-                                provider_names
-                                    .get(provider_id)
-                                    .cloned()
-                                    .unwrap_or_else(|| provider_id.clone()),
-                            )
-                        })
+                    })
+                    .unwrap_or(false)
+                    || provider_meta
+                        .get(&provider_id)
+                        .map(|(_, has_api_key_hint)| *has_api_key_hint)
+                        .unwrap_or(false);
+                supports_api_key.then(|| {
+                    (
+                        provider_id.clone(),
+                        provider_meta
+                            .get(&provider_id)
+                            .map(|(name, _)| name.clone())
+                            .unwrap_or_else(|| provider_id.clone()),
+                    )
                 })
             })
             .collect::<Vec<_>>();
