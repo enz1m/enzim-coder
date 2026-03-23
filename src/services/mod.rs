@@ -9,4 +9,5 @@ mod skills;
 mod worktree;
 
 pub mod app;
+pub mod automations;
 pub mod ops;

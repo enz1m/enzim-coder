@@ -187,6 +187,7 @@ const USER_OVERRIDE_CSS: &str = r#"
 
 const COMPONENT_STYLES: &[&str] = &[
     include_str!("styles/components/actions_popover.css"),
+    include_str!("styles/components/automatisation.css"),
     include_str!("styles/components/buttons.css"),
     include_str!("styles/components/chat.css"),
     include_str!("styles/components/chat_messages.css"),

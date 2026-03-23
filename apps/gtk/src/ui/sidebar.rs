@@ -120,6 +120,7 @@ pub fn build_sidebar(
     manager: Rc<CodexProfileManager>,
     active_thread_id: Rc<RefCell<Option<String>>>,
     active_workspace_path: Rc<RefCell<Option<String>>>,
+    selected_page: Rc<RefCell<String>>,
 ) -> adw::ToolbarView {
     let toolbar = adw::ToolbarView::new();
     toolbar.set_top_bar_style(adw::ToolbarStyle::Flat);
@@ -157,6 +158,34 @@ pub fn build_sidebar(
     root.add_css_class("sidebar-body");
     root.set_hexpand(false);
     root.set_halign(gtk::Align::Fill);
+
+    let automation_button = gtk::Button::with_label("Automatisation");
+    automation_button.add_css_class("sidebar-action-button");
+    automation_button.add_css_class("sidebar-automation-button");
+    {
+        let selected_page = selected_page.clone();
+        automation_button.connect_clicked(move |_| {
+            selected_page.replace(crate::ui::content::MAIN_PAGE_AUTOMATISATION.to_string());
+        });
+    }
+    {
+        let automation_button = automation_button.clone();
+        let selected_page = selected_page.clone();
+        gtk::glib::timeout_add_local(Duration::from_millis(120), move || {
+            if automation_button.root().is_none() {
+                return gtk::glib::ControlFlow::Break;
+            }
+            let is_active =
+                selected_page.borrow().as_str() == crate::ui::content::MAIN_PAGE_AUTOMATISATION;
+            if is_active {
+                automation_button.add_css_class("workspace-attention");
+            } else {
+                automation_button.remove_css_class("workspace-attention");
+            }
+            gtk::glib::ControlFlow::Continue
+        });
+    }
+    root.append(&automation_button);
 
     let workspaces_header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     workspaces_header.set_margin_start(4);

@@ -4,6 +4,10 @@ pub mod chat {
     pub use super::super::chat::*;
 }
 
+pub mod automations {
+    pub use super::super::automations::*;
+}
+
 pub mod runtime {
     pub use super::super::runtime::*;
 }

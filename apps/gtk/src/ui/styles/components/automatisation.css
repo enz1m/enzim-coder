@@ -1,0 +1,34 @@
+.automatisation-page,
+.automatisation-shell {
+  background: transparent;
+}
+
+.automatisation-title {
+  font-size: 1.28rem;
+  font-weight: 760;
+  letter-spacing: 0.01em;
+}
+
+.automatisation-card,
+.automatisation-list-card {
+  background: alpha(@view_bg_color, 0.42);
+  border: 1px solid alpha(@window_fg_color, 0.08);
+}
+
+.automatisation-shell > box {
+  max-width: 920px;
+}
+
+.automatisation-textbox {
+  border-radius: 12px;
+  border: 1px solid alpha(@window_fg_color, 0.12);
+  background: alpha(@window_fg_color, 0.03);
+}
+
+.automatisation-textbox text {
+  background: transparent;
+}
+
+.sidebar-automation-button {
+  min-height: 34px;
+}

@@ -1,5 +1,6 @@
 pub mod actions_menu;
 pub mod appimage_update;
+pub mod automatisation;
 pub mod bottom_bar;
 pub mod chat;
 pub mod file_browser;

@@ -435,6 +435,8 @@ pub fn build_ui(app: &adw::Application) {
     let active_thread_id: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
     let active_workspace_path: Rc<RefCell<Option<String>>> =
         Rc::new(RefCell::new(last_workspace_path));
+    let selected_page: Rc<RefCell<String>> =
+        Rc::new(RefCell::new(content::MAIN_PAGE_WORKSPACES.to_string()));
 
     let sidebar = sidebar::build_sidebar(
         &window,
@@ -442,6 +444,7 @@ pub fn build_ui(app: &adw::Application) {
         profile_manager.clone(),
         active_thread_id.clone(),
         active_workspace_path.clone(),
+        selected_page.clone(),
     );
     sidebar.set_width_request(sidebar::SIDEBAR_WIDTH);
     sidebar.set_size_request(sidebar::SIDEBAR_WIDTH, -1);
@@ -450,8 +453,10 @@ pub fn build_ui(app: &adw::Application) {
         db.clone(),
         profile_manager.clone(),
         codex.clone(),
+        sidebar.clone(),
         active_thread_id.clone(),
         active_workspace_path.clone(),
+        selected_page.clone(),
     );
     start_thread_autoclose_loop(
         db.clone(),
@@ -556,6 +561,19 @@ pub fn build_ui(app: &adw::Application) {
         active_thread_id.clone(),
         active_workspace_path.clone(),
     );
+    {
+        let db = db.clone();
+        let manager = profile_manager.clone();
+        let sidebar = sidebar.clone();
+        crate::ui::scheduler::every(Duration::from_secs(30), move || {
+            crate::ui::components::automatisation::run_due_automations(
+                db.clone(),
+                manager.clone(),
+                sidebar.clone(),
+            );
+            gtk::glib::ControlFlow::Continue
+        });
+    }
 
     window.set_content(Some(&root_overlay));
 

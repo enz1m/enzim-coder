@@ -758,6 +758,23 @@ pub fn append_thread_under_parent_from_root(
     true
 }
 
+pub fn append_thread_to_workspace_from_root_passive(
+    workspace_path: &str,
+    thread: ThreadRecord,
+) -> bool {
+    THREAD_LIST_REGISTRY.with(|registry| {
+        let registry = registry.borrow();
+        registry
+            .values()
+            .find(|thread_list| thread_list.workspace_path == workspace_path)
+            .map(|thread_list| {
+                thread_list.append_thread_passive(thread);
+                true
+            })
+            .unwrap_or(false)
+    })
+}
+
 pub fn append_thread_under_parent_from_root_passive(
     root: &gtk::Widget,
     parent_thread_id: i64,

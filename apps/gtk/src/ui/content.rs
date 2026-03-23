@@ -12,9 +12,12 @@ use crate::ui::settings::{
 };
 
 use crate::ui::components::{
-    bottom_bar::build_bottom_bar, chat, file_browser, git_tab,
+    automatisation, bottom_bar::build_bottom_bar, chat, file_browser, git_tab,
     multi_chat::build_multi_chat_content, top_bar,
 };
+
+pub(crate) const MAIN_PAGE_WORKSPACES: &str = "workspaces";
+pub(crate) const MAIN_PAGE_AUTOMATISATION: &str = "automatisation";
 
 fn parse_thread_drop_payload(raw: &str) -> Option<(Option<String>, Option<String>)> {
     let parsed: Value = serde_json::from_str(raw).ok()?;
@@ -172,8 +175,10 @@ pub fn build_content(
     db: Rc<AppDb>,
     profile_manager: Rc<CodexProfileManager>,
     codex: Option<Arc<RuntimeClient>>,
+    sidebar: adw::ToolbarView,
     active_thread_id: Rc<RefCell<Option<String>>>,
     active_workspace_path: Rc<RefCell<Option<String>>>,
+    selected_page: Rc<RefCell<String>>,
 ) -> adw::ToolbarView {
     let toolbar = adw::ToolbarView::new();
     toolbar.set_top_bar_style(adw::ToolbarStyle::Flat);
@@ -183,6 +188,13 @@ pub fn build_content(
     let content_shell = gtk::Box::new(gtk::Orientation::Vertical, 0);
     content_shell.add_css_class("content-shell");
 
+    let page_stack = gtk::Stack::new();
+    page_stack.set_hexpand(true);
+    page_stack.set_vexpand(true);
+    page_stack.set_transition_type(gtk::StackTransitionType::Crossfade);
+    page_stack.set_transition_duration(120);
+    content_shell.append(&page_stack);
+
     let mode_host = gtk::Box::new(gtk::Orientation::Vertical, 0);
     mode_host.set_vexpand(true);
     let mode_stack = gtk::Stack::new();
@@ -191,8 +203,6 @@ pub fn build_content(
     mode_stack.set_transition_type(gtk::StackTransitionType::Crossfade);
     mode_stack.set_transition_duration(120);
     mode_host.append(&mode_stack);
-    content_shell.append(&mode_host);
-
     let is_multi_mode = Rc::new(RefCell::new(is_multiview_enabled(db.as_ref())));
     let classic_view: Rc<RefCell<Option<gtk::Box>>> = Rc::new(RefCell::new(None));
     let multiview_view: Rc<RefCell<Option<gtk::Box>>> = Rc::new(RefCell::new(None));
@@ -257,6 +267,35 @@ pub fn build_content(
             gtk::glib::ControlFlow::Continue
         });
     }
+    page_stack.add_named(&mode_host, Some(MAIN_PAGE_WORKSPACES));
+    page_stack.add_named(
+        &automatisation::build_page(
+            db.clone(),
+            profile_manager.clone(),
+            sidebar,
+            active_thread_id.clone(),
+            active_workspace_path.clone(),
+            selected_page.clone(),
+        ),
+        Some(MAIN_PAGE_AUTOMATISATION),
+    );
+    page_stack.set_visible_child_name(&selected_page.borrow());
+
+    {
+        let page_stack = page_stack.clone();
+        let selected_page = selected_page.clone();
+        gtk::glib::timeout_add_local(std::time::Duration::from_millis(140), move || {
+            if page_stack.root().is_none() {
+                return gtk::glib::ControlFlow::Break;
+            }
+            let target = selected_page.borrow().clone();
+            if page_stack.visible_child_name().as_deref() != Some(target.as_str()) {
+                page_stack.set_visible_child_name(&target);
+            }
+            gtk::glib::ControlFlow::Continue
+        });
+    }
+
     toolbar.set_content(Some(&content_shell));
 
     let bottom = build_bottom_bar(db.clone(), profile_manager);
