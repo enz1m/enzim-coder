@@ -183,7 +183,7 @@ pub(crate) fn refresh_model_options_cache_async(runtime_client: Option<Arc<Runti
     });
 }
 
-pub(super) fn model_options(runtime_client: Option<&Arc<RuntimeClient>>) -> Vec<ModelInfo> {
+pub(crate) fn model_options(runtime_client: Option<&Arc<RuntimeClient>>) -> Vec<ModelInfo> {
     let Some(client) = runtime_client else {
         return Vec::new();
     };
@@ -271,7 +271,7 @@ fn compact_opencode_model_label(display_name: &str) -> String {
     truncate_label(model_name, 15)
 }
 
-pub(super) fn reasoning_effort_options_from_models(
+pub(crate) fn reasoning_effort_options_from_models(
     models: &[ModelInfo],
     model_id: &str,
 ) -> (Vec<(String, String)>, Option<String>) {
@@ -294,7 +294,7 @@ pub(super) fn reasoning_effort_options_from_models(
     (options, model.default_reasoning_effort.clone())
 }
 
-pub(super) fn opencode_variant_options_from_models(
+pub(crate) fn opencode_variant_options_from_models(
     models: &[ModelInfo],
     model_id: &str,
 ) -> Vec<(String, String)> {
@@ -320,7 +320,7 @@ pub(super) fn opencode_variant_options_from_models(
     options
 }
 
-pub(super) fn build_model_selector_with_state(
+pub(crate) fn build_model_selector_with_state(
     runtime_client: Option<&Arc<RuntimeClient>>,
     selected: Rc<RefCell<String>>,
     initial_model_id: Option<String>,
@@ -398,7 +398,7 @@ pub(super) fn build_model_selector_with_state(
     (selector, set_selected)
 }
 
-pub(super) fn build_model_selector(
+pub(crate) fn build_model_selector(
     runtime_client: Option<&Arc<RuntimeClient>>,
     initial_model_id: Option<String>,
     on_change: Option<Rc<dyn Fn(String)>>,
@@ -435,7 +435,7 @@ pub(super) fn build_mode_selector(
     (selector, selected, set_selected)
 }
 
-pub(super) fn build_access_selector(
+pub(crate) fn build_access_selector(
     initial_access_mode: Option<String>,
     on_change: Option<Rc<dyn Fn(String)>>,
 ) -> (gtk::Button, Rc<RefCell<String>>, Rc<dyn Fn(&str)>) {
@@ -481,7 +481,7 @@ pub(super) fn build_opencode_command_selector(
     (selector, selected, set_selected)
 }
 
-pub(super) fn build_effort_selector(
+pub(crate) fn build_effort_selector(
     options: &[(String, String)],
     initial_effort: Option<String>,
     on_change: Option<Rc<dyn Fn(String)>>,
@@ -508,7 +508,7 @@ pub(super) fn build_effort_selector(
     (selector, selected, set_selected)
 }
 
-pub(super) fn build_variant_selector(
+pub(crate) fn build_variant_selector(
     options: &[(String, String)],
     initial_variant: Option<String>,
     on_change: Option<Rc<dyn Fn(String)>>,

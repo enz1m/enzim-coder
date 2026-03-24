@@ -52,7 +52,7 @@ pub(super) fn clear_messages(messages_box: &gtk::Box) {
     widget_tree::clear_box_children(messages_box);
 }
 
-fn create_selector_menu(
+pub(crate) fn create_selector_menu(
     current_label: &str,
     options: &[(String, String)],
     selected_value: Rc<RefCell<String>>,
@@ -187,7 +187,7 @@ fn create_selector_menu(
     (button, setter)
 }
 
-pub(super) fn create_grouped_selector_menu(
+pub(crate) fn create_grouped_selector_menu(
     current_label: &str,
     options: &[(String, String)],
     selected_value: Rc<RefCell<String>>,

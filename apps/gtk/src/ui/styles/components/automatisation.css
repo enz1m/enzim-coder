@@ -9,24 +9,242 @@
   letter-spacing: 0.01em;
 }
 
+.automatisation-split {
+  min-height: 620px;
+}
+
+.automatisation-split > separator {
+  min-width: 1px;
+  margin: 12px 0;
+  background: alpha(@window_fg_color, 0.08);
+}
+
+.automatisation-left-shell,
+.automatisation-right-shell {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid alpha(@window_fg_color, 0.08);
+  background:
+    linear-gradient(
+      180deg,
+      alpha(@view_bg_color, 0.78),
+      alpha(@view_bg_color, 0.56)
+    );
+}
+
+.automatisation-left-shell {
+  margin-right: 10px;
+}
+
+.automatisation-right-shell {
+  margin-left: 10px;
+  background:
+    linear-gradient(
+      180deg,
+      alpha(@window_bg_color, 0.82),
+      alpha(@view_bg_color, 0.62)
+    );
+}
+
+.automatisation-left-scroll,
+.automatisation-detail-scroll,
+.automatisation-left-scroll > viewport,
+.automatisation-detail-scroll > viewport,
+.automatisation-left-scroll > viewport.view,
+.automatisation-detail-scroll > viewport.view {
+  background: transparent;
+  background-color: transparent;
+}
+
+.automatisation-left-list {
+  padding: 2px 4px 4px 2px;
+}
+
+button.automatisation-list-row,
+button.automatisation-history-row {
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
 .automatisation-card,
 .automatisation-list-card {
-  background: alpha(@view_bg_color, 0.42);
+  padding: 14px;
+  border-radius: 16px;
   border: 1px solid alpha(@window_fg_color, 0.08);
+  background: alpha(@view_bg_color, 0.42);
 }
 
-.automatisation-shell > box {
-  max-width: 920px;
+.automatisation-list-card {
+  padding: 12px;
+  background: alpha(@window_fg_color, 0.035);
 }
 
-.automatisation-textbox {
+button.automatisation-list-row:hover > .automatisation-list-card,
+button.automatisation-history-row:hover > .automatisation-list-card {
+  border-color: alpha(@accent_color, 0.28);
+  background: alpha(@accent_color, 0.08);
+}
+
+button.automatisation-list-card-active > .automatisation-list-card {
+  border-color: alpha(@accent_color, 0.52);
+  background:
+    linear-gradient(
+      180deg,
+      alpha(@accent_color, 0.16),
+      alpha(@accent_color, 0.08)
+    );
+  box-shadow: 0 0 0 1px alpha(@accent_color, 0.22);
+}
+
+.automatisation-inline-button {
+  min-height: 30px;
+  padding: 0 12px;
+}
+
+.automatisation-header-actions > button,
+.automatisation-settings-actions > button {
+  min-height: 36px;
+  border-radius: 10px;
+}
+
+.automatisation-mode-button {
+  min-width: 88px;
+}
+
+.automatisation-mode-button-active {
+  font-weight: 650;
+}
+
+.automatisation-settings-shell {
+  padding: 2px 0 16px;
+}
+
+.automatisation-settings-grid {
+  margin-bottom: 2px;
+}
+
+.automatisation-settings-card {
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid alpha(@window_fg_color, 0.08);
+  background:
+    linear-gradient(
+      180deg,
+      alpha(@view_bg_color, 0.56),
+      alpha(@window_fg_color, 0.028)
+    );
+}
+
+.automatisation-settings-grid label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: alpha(@window_fg_color, 0.82);
+}
+
+.automatisation-settings-shell entry,
+.automatisation-settings-shell spinbutton,
+.automatisation-settings-shell dropdown > button {
+  min-height: 38px;
+  border-radius: 10px;
+}
+
+.automatisation-settings-shell dropdown > button {
+  padding: 0 12px;
+}
+
+.automatisation-schedule-top-row {
+  align-items: center;
+}
+
+.automatisation-schedule-row {
+  padding: 2px 0 4px;
+}
+
+.automatisation-toggle-shell {
+  padding: 0 12px;
   border-radius: 12px;
-  border: 1px solid alpha(@window_fg_color, 0.12);
+  border: 1px solid alpha(@window_fg_color, 0.08);
+  background: alpha(@window_fg_color, 0.035);
+}
+
+.automatisation-weekday-row {
+  padding-top: 2px;
+}
+
+togglebutton.automatisation-weekday-button {
+  min-width: 48px;
+  min-height: 34px;
+  border-radius: 999px;
+}
+
+togglebutton.automatisation-weekday-button:checked {
+  border-color: alpha(@accent_color, 0.58);
+  background: alpha(@accent_color, 0.14);
+  box-shadow: 0 0 0 1px alpha(@accent_color, 0.2);
+}
+
+.automatisation-time-flow {
+  min-height: 42px;
+}
+
+.automatisation-time-chip {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid alpha(@window_fg_color, 0.1);
+  background: alpha(@window_fg_color, 0.04);
+}
+
+.automatisation-chip-button {
+  min-height: 26px;
+  padding: 0 10px;
+}
+
+.automatisation-settings-actions {
+  margin-top: 2px;
+}
+
+.automatisation-prompt-editor {
+  min-height: 180px;
+  border-radius: 16px;
+}
+
+.automatisation-prompt-editor > viewport,
+.automatisation-prompt-editor > viewport.view,
+.automatisation-prompt-editor > viewport > textview,
+.automatisation-prompt-editor > viewport > textview.view {
+  border-radius: 16px;
+}
+
+.automatisation-history-row .profile-section-title,
+.automatisation-list-row .profile-section-title,
+.automatisation-timeline-item .profile-section-title {
+  font-size: 0.9rem;
+}
+
+.automatisation-timeline-item {
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid alpha(@window_fg_color, 0.08);
   background: alpha(@window_fg_color, 0.03);
 }
 
-.automatisation-textbox text {
-  background: transparent;
+.automatisation-timeline-rail {
+  min-width: 18px;
+  margin-left: 6px;
+  border-left: 1px solid alpha(@accent_color, 0.28);
+}
+
+.automatisation-timeline-dot {
+  min-width: 10px;
+  min-height: 10px;
+  margin-top: 6px;
+  margin-left: -6px;
+  border-radius: 999px;
+  background: @accent_color;
+  box-shadow: 0 0 0 4px alpha(@accent_color, 0.14);
 }
 
 .sidebar-automation-button {
