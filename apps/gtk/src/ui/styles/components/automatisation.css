@@ -4,25 +4,25 @@
 }
 
 .automatisation-title {
-  font-size: 1.28rem;
-  font-weight: 760;
+  font-size: 1.12rem;
+  font-weight: 740;
   letter-spacing: 0.01em;
 }
 
 .automatisation-split {
-  min-height: 620px;
+  min-height: 560px;
 }
 
 .automatisation-split > separator {
   min-width: 1px;
-  margin: 12px 0;
+  margin: 8px 0;
   background: alpha(@window_fg_color, 0.08);
 }
 
 .automatisation-left-shell,
 .automatisation-right-shell {
-  padding: 16px;
-  border-radius: 18px;
+  padding: 12px;
+  border-radius: 14px;
   border: 1px solid alpha(@window_fg_color, 0.08);
   background:
     linear-gradient(
@@ -33,11 +33,11 @@
 }
 
 .automatisation-left-shell {
-  margin-right: 10px;
+  margin-right: 8px;
 }
 
 .automatisation-right-shell {
-  margin-left: 10px;
+  margin-left: 8px;
   background:
     linear-gradient(
       180deg,
@@ -57,7 +57,7 @@
 }
 
 .automatisation-left-list {
-  padding: 2px 4px 4px 2px;
+  padding: 0 2px 2px 0;
 }
 
 button.automatisation-list-row,
@@ -70,14 +70,14 @@ button.automatisation-history-row {
 
 .automatisation-card,
 .automatisation-list-card {
-  padding: 14px;
-  border-radius: 16px;
+  padding: 11px;
+  border-radius: 14px;
   border: 1px solid alpha(@window_fg_color, 0.08);
   background: alpha(@view_bg_color, 0.42);
 }
 
 .automatisation-list-card {
-  padding: 12px;
+  padding: 10px;
   background: alpha(@window_fg_color, 0.035);
 }
 
@@ -99,18 +99,18 @@ button.automatisation-list-card-active > .automatisation-list-card {
 }
 
 .automatisation-inline-button {
-  min-height: 30px;
-  padding: 0 12px;
+  min-height: 28px;
+  padding: 0 10px;
 }
 
 .automatisation-header-actions > button,
 .automatisation-settings-actions > button {
-  min-height: 36px;
-  border-radius: 10px;
+  min-height: 32px;
+  border-radius: 9px;
 }
 
 .automatisation-mode-button {
-  min-width: 88px;
+  min-width: 78px;
 }
 
 .automatisation-mode-button-active {
@@ -118,16 +118,16 @@ button.automatisation-list-card-active > .automatisation-list-card {
 }
 
 .automatisation-settings-shell {
-  padding: 2px 0 16px;
+  padding: 0 0 12px;
 }
 
 .automatisation-settings-grid {
-  margin-bottom: 2px;
+  margin-bottom: 0;
 }
 
 .automatisation-settings-card {
-  padding: 14px;
-  border-radius: 16px;
+  padding: 10px;
+  border-radius: 14px;
   border: 1px solid alpha(@window_fg_color, 0.08);
   background:
     linear-gradient(
@@ -138,21 +138,29 @@ button.automatisation-list-card-active > .automatisation-list-card {
 }
 
 .automatisation-settings-grid label {
-  font-size: 0.8rem;
-  font-weight: 700;
+  font-size: 0.76rem;
+  font-weight: 680;
   letter-spacing: 0.02em;
   color: alpha(@window_fg_color, 0.82);
+}
+
+.automatisation-right-shell .profile-section-title {
+  font-size: 0.84rem;
+}
+
+.automatisation-right-shell .dim-label {
+  font-size: 0.79rem;
 }
 
 .automatisation-settings-shell entry,
 .automatisation-settings-shell spinbutton,
 .automatisation-settings-shell dropdown > button {
-  min-height: 38px;
-  border-radius: 10px;
+  min-height: 34px;
+  border-radius: 9px;
 }
 
 .automatisation-settings-shell dropdown > button {
-  padding: 0 12px;
+  padding: 0 10px;
 }
 
 .automatisation-schedule-top-row {
@@ -160,23 +168,23 @@ button.automatisation-list-card-active > .automatisation-list-card {
 }
 
 .automatisation-schedule-row {
-  padding: 2px 0 4px;
+  padding: 0;
 }
 
 .automatisation-toggle-shell {
-  padding: 0 12px;
-  border-radius: 12px;
+  padding: 0 10px;
+  border-radius: 10px;
   border: 1px solid alpha(@window_fg_color, 0.08);
   background: alpha(@window_fg_color, 0.035);
 }
 
 .automatisation-weekday-row {
-  padding-top: 2px;
+  padding-top: 0;
 }
 
 togglebutton.automatisation-weekday-button {
-  min-width: 48px;
-  min-height: 34px;
+  min-width: 42px;
+  min-height: 30px;
   border-radius: 999px;
 }
 
@@ -187,28 +195,28 @@ togglebutton.automatisation-weekday-button:checked {
 }
 
 .automatisation-time-flow {
-  min-height: 42px;
+  min-height: 34px;
 }
 
 .automatisation-time-chip {
-  padding: 6px 10px;
+  padding: 4px 8px;
   border-radius: 999px;
   border: 1px solid alpha(@window_fg_color, 0.1);
   background: alpha(@window_fg_color, 0.04);
 }
 
 .automatisation-chip-button {
-  min-height: 26px;
-  padding: 0 10px;
+  min-height: 22px;
+  padding: 0 8px;
 }
 
 .automatisation-settings-actions {
-  margin-top: 2px;
+  margin-top: 0;
 }
 
 .automatisation-prompt-editor {
-  min-height: 180px;
-  border-radius: 16px;
+  min-height: 156px;
+  border-radius: 14px;
 }
 
 .automatisation-prompt-editor > viewport,
@@ -221,12 +229,12 @@ togglebutton.automatisation-weekday-button:checked {
 .automatisation-history-row .profile-section-title,
 .automatisation-list-row .profile-section-title,
 .automatisation-timeline-item .profile-section-title {
-  font-size: 0.9rem;
+  font-size: 0.84rem;
 }
 
 .automatisation-timeline-item {
-  padding: 12px 14px;
-  border-radius: 16px;
+  padding: 10px 11px;
+  border-radius: 14px;
   border: 1px solid alpha(@window_fg_color, 0.08);
   background: alpha(@window_fg_color, 0.03);
 }

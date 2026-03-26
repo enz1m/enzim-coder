@@ -518,11 +518,11 @@ pub(crate) fn build_page(
     let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
     root.add_css_class("automatisation-page");
 
-    let page_shell = gtk::Box::new(gtk::Orientation::Vertical, 16);
-    page_shell.set_margin_start(18);
-    page_shell.set_margin_end(18);
-    page_shell.set_margin_top(18);
-    page_shell.set_margin_bottom(18);
+    let page_shell = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    page_shell.set_margin_start(14);
+    page_shell.set_margin_end(14);
+    page_shell.set_margin_top(14);
+    page_shell.set_margin_bottom(14);
     root.append(&page_shell);
 
     let page_header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
@@ -532,7 +532,7 @@ pub(crate) fn build_page(
     page_title.add_css_class("automatisation-title");
     page_title.set_xalign(0.0);
     let page_subtitle = gtk::Label::new(Some(
-        "Schedule repeatable coding jobs, inspect run history, and drill into each run’s timeline.",
+        "Recurring jobs, reviewable history, and run timelines.",
     ));
     page_subtitle.add_css_class("dim-label");
     page_subtitle.set_wrap(true);
@@ -563,7 +563,7 @@ pub(crate) fn build_page(
     let split = gtk::Paned::new(gtk::Orientation::Horizontal);
     split.add_css_class("automatisation-split");
     split.set_wide_handle(false);
-    split.set_position(360);
+    split.set_position(332);
     split.set_resize_start_child(true);
     split.set_resize_end_child(true);
     split.set_shrink_start_child(false);
@@ -571,7 +571,7 @@ pub(crate) fn build_page(
     split.set_vexpand(true);
     page_shell.append(&split);
 
-    let left_shell = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    let left_shell = gtk::Box::new(gtk::Orientation::Vertical, 10);
     left_shell.add_css_class("automatisation-left-shell");
     let left_header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let left_copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
@@ -603,7 +603,7 @@ pub(crate) fn build_page(
     left_shell.append(&left_scroll);
     split.set_start_child(Some(&left_shell));
 
-    let right_shell = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    let right_shell = gtk::Box::new(gtk::Orientation::Vertical, 10);
     right_shell.add_css_class("automatisation-right-shell");
     let right_header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     let right_copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
@@ -643,21 +643,21 @@ pub(crate) fn build_page(
     right_shell.append(&detail_stack);
     split.set_end_child(Some(&right_shell));
 
-    let info_box = gtk::Box::new(gtk::Orientation::Vertical, 18);
+    let info_box = gtk::Box::new(gtk::Orientation::Vertical, 12);
     info_box.add_css_class("profile-settings-section");
     info_box.add_css_class("automatisation-card");
     let info_title = gtk::Label::new(Some("How this page works"));
     info_title.add_css_class("profile-section-title");
     info_title.set_xalign(0.0);
     let info_body = gtk::Label::new(Some(
-        "Choose an automation on the left to inspect its run history. Create a new automation to edit settings. Open a historical run to view its timeline and jump into the resulting thread.",
+        "Pick an automation on the left for history, switch to settings when needed, or open a run to inspect its timeline.",
     ));
     info_body.add_css_class("dim-label");
     info_body.set_wrap(true);
     info_body.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     info_body.set_xalign(0.0);
     let info_points = gtk::Label::new(Some(
-        "Current implementation: jobs run locally while Enzim stays open, each run creates a reviewable thread, and timeline events are recorded as the runtime starts and dispatches prompts.",
+        "Runs stay local while Enzim is open, create reviewable threads, and log timeline events as the runtime starts.",
     ));
     info_points.add_css_class("dim-label");
     info_points.set_wrap(true);
@@ -675,21 +675,19 @@ pub(crate) fn build_page(
         .hexpand(true)
         .build();
     settings_scroll.add_css_class("automatisation-detail-scroll");
-    let settings_box = gtk::Box::new(gtk::Orientation::Vertical, 14);
+    let settings_box = gtk::Box::new(gtk::Orientation::Vertical, 10);
     settings_box.add_css_class("automatisation-settings-shell");
     settings_scroll.set_child(Some(&settings_box));
     detail_stack.add_named(&settings_scroll, Some(DETAIL_SETTINGS));
 
-    let workspace_section = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    let workspace_section = gtk::Box::new(gtk::Orientation::Vertical, 8);
     workspace_section.add_css_class("profile-settings-section");
     workspace_section.add_css_class("automatisation-settings-card");
     let workspace_header = gtk::Box::new(gtk::Orientation::Vertical, 2);
     let workspace_title = gtk::Label::new(Some("Workspace"));
     workspace_title.add_css_class("profile-section-title");
     workspace_title.set_xalign(0.0);
-    let workspace_subtitle = gtk::Label::new(Some(
-        "Choose the workspace, runtime profile, and access mode for this automation.",
-    ));
+    let workspace_subtitle = gtk::Label::new(Some("Target workspace, profile, and access."));
     workspace_subtitle.add_css_class("dim-label");
     workspace_subtitle.set_wrap(true);
     workspace_subtitle.set_wrap_mode(gtk::pango::WrapMode::WordChar);
@@ -700,8 +698,8 @@ pub(crate) fn build_page(
 
     let workspace_grid = gtk::Grid::new();
     workspace_grid.add_css_class("automatisation-settings-grid");
-    workspace_grid.set_column_spacing(14);
-    workspace_grid.set_row_spacing(12);
+    workspace_grid.set_column_spacing(10);
+    workspace_grid.set_row_spacing(8);
     workspace_grid.set_hexpand(true);
     workspace_section.append(&workspace_grid);
 
@@ -744,16 +742,15 @@ pub(crate) fn build_page(
     workspace_grid.attach(&access_dropdown, 1, 3, 1, 1);
     settings_box.append(&workspace_section);
 
-    let model_section = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    let model_section = gtk::Box::new(gtk::Orientation::Vertical, 8);
     model_section.add_css_class("profile-settings-section");
     model_section.add_css_class("automatisation-settings-card");
     let model_header = gtk::Box::new(gtk::Orientation::Vertical, 2);
     let model_header_title = gtk::Label::new(Some("Model"));
     model_header_title.add_css_class("profile-section-title");
     model_header_title.set_xalign(0.0);
-    let model_header_subtitle = gtk::Label::new(Some(
-        "Select the model and variant or reasoning level exposed by the chosen profile.",
-    ));
+    let model_header_subtitle =
+        gtk::Label::new(Some("Use the profile default or pick a model and variant."));
     model_header_subtitle.add_css_class("dim-label");
     model_header_subtitle.set_wrap(true);
     model_header_subtitle.set_wrap_mode(gtk::pango::WrapMode::WordChar);
@@ -764,8 +761,8 @@ pub(crate) fn build_page(
 
     let model_grid = gtk::Grid::new();
     model_grid.add_css_class("automatisation-settings-grid");
-    model_grid.set_column_spacing(14);
-    model_grid.set_row_spacing(12);
+    model_grid.set_column_spacing(10);
+    model_grid.set_row_spacing(8);
     model_grid.set_hexpand(true);
     model_section.append(&model_grid);
 
@@ -785,16 +782,14 @@ pub(crate) fn build_page(
     model_grid.attach(&effort_dropdown, 1, 1, 1, 1);
     settings_box.append(&model_section);
 
-    let schedule_section = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    let schedule_section = gtk::Box::new(gtk::Orientation::Vertical, 8);
     schedule_section.add_css_class("profile-settings-section");
     schedule_section.add_css_class("automatisation-settings-card");
     let schedule_header = gtk::Box::new(gtk::Orientation::Vertical, 2);
     let schedule_title = gtk::Label::new(Some("Schedule"));
     schedule_title.add_css_class("profile-section-title");
     schedule_title.set_xalign(0.0);
-    let schedule_subtitle = gtk::Label::new(Some(
-        "Keep it simple with an interval, or target exact times on selected weekdays.",
-    ));
+    let schedule_subtitle = gtk::Label::new(Some("Interval or exact weekday times."));
     schedule_subtitle.add_css_class("dim-label");
     schedule_subtitle.set_wrap(true);
     schedule_subtitle.set_wrap_mode(gtk::pango::WrapMode::WordChar);
@@ -803,7 +798,7 @@ pub(crate) fn build_page(
     schedule_header.append(&schedule_subtitle);
     schedule_section.append(&schedule_header);
 
-    let schedule_top_row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    let schedule_top_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     schedule_top_row.add_css_class("automatisation-schedule-top-row");
     let schedule_mode_model = gtk::StringList::new(
         &schedule_mode_options()
@@ -843,7 +838,7 @@ pub(crate) fn build_page(
     manual_box.append(&manual_hint);
     schedule_stack.add_named(&manual_box, Some("manual"));
 
-    let interval_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    let interval_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
     let interval_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     interval_row.add_css_class("automatisation-schedule-row");
     let interval_spin = gtk::SpinButton::with_range(1.0, 365.0, 1.0);
@@ -867,7 +862,7 @@ pub(crate) fn build_page(
     interval_box.append(&interval_hint);
     schedule_stack.add_named(&interval_box, Some("interval"));
 
-    let weekly_box = gtk::Box::new(gtk::Orientation::Vertical, 10);
+    let weekly_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
     let weekly_days_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     weekly_days_row.add_css_class("automatisation-weekday-row");
     let weekday_buttons = weekday_options()
@@ -881,8 +876,8 @@ pub(crate) fn build_page(
         .collect::<Vec<_>>();
     weekly_box.append(&weekly_days_row);
 
-    let weekly_time_shell = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    let weekly_time_header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let weekly_time_shell = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    let weekly_time_header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     let weekly_time_title = gtk::Label::new(Some("Times"));
     weekly_time_title.add_css_class("profile-section-title");
     weekly_time_title.set_xalign(0.0);
@@ -898,9 +893,8 @@ pub(crate) fn build_page(
     weekly_time_flow.set_row_spacing(8);
     weekly_time_flow.add_css_class("automatisation-time-flow");
     weekly_time_shell.append(&weekly_time_flow);
-    let weekly_time_hint = gtk::Label::new(Some(
-        "Pick one or more times. Example: 11:35 and 17:30 on Wednesdays and Fridays.",
-    ));
+    let weekly_time_hint =
+        gtk::Label::new(Some("Add one or more exact times, then pick the weekdays."));
     weekly_time_hint.add_css_class("dim-label");
     weekly_time_hint.set_wrap(true);
     weekly_time_hint.set_wrap_mode(gtk::pango::WrapMode::WordChar);
@@ -930,16 +924,14 @@ pub(crate) fn build_page(
     add_time_root.append(&add_time_confirm);
     add_time_popover.set_child(Some(&add_time_root));
 
-    let tools_section = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    let tools_section = gtk::Box::new(gtk::Orientation::Vertical, 8);
     tools_section.add_css_class("profile-settings-section");
     tools_section.add_css_class("automatisation-settings-card");
     let tools_header = gtk::Box::new(gtk::Orientation::Vertical, 2);
     let tools_title = gtk::Label::new(Some("Tools"));
     tools_title.add_css_class("profile-section-title");
     tools_title.set_xalign(0.0);
-    let tools_subtitle = gtk::Label::new(Some(
-        "Select the skills and MCP servers the automation should prefer when it runs.",
-    ));
+    let tools_subtitle = gtk::Label::new(Some("Preferred skills and MCP servers for this job."));
     tools_subtitle.add_css_class("dim-label");
     tools_subtitle.set_wrap(true);
     tools_subtitle.set_wrap_mode(gtk::pango::WrapMode::WordChar);
@@ -948,7 +940,7 @@ pub(crate) fn build_page(
     tools_header.append(&tools_subtitle);
     tools_section.append(&tools_header);
 
-    let skills_row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    let skills_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     let skills_button = gtk::Button::with_label("Skills");
     skills_button.add_css_class("sidebar-action-button");
     let skills_summary = gtk::Label::new(Some("No skills selected"));
@@ -959,7 +951,7 @@ pub(crate) fn build_page(
     skills_row.append(&skills_summary);
     tools_section.append(&skills_row);
 
-    let mcp_row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    let mcp_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     let mcp_button = gtk::Button::with_label("MCP Servers");
     mcp_button.add_css_class("sidebar-action-button");
     let mcp_summary = gtk::Label::new(Some("No MCP servers selected"));
@@ -973,9 +965,7 @@ pub(crate) fn build_page(
     let tool_notes_label = gtk::Label::new(Some("Extra guidance"));
     tool_notes_label.set_xalign(0.0);
     let tool_notes_entry = gtk::Entry::new();
-    tool_notes_entry.set_placeholder_text(Some(
-        "Optional extra guidance for selected skills or MCP servers.",
-    ));
+    tool_notes_entry.set_placeholder_text(Some("Optional notes for the selected tools."));
     tools_section.append(&tool_notes_label);
     tools_section.append(&tool_notes_entry);
     settings_box.append(&tools_section);
@@ -1030,16 +1020,14 @@ pub(crate) fn build_page(
     mcp_popover_root.append(&mcp_popover_scroll);
     mcp_popover.set_child(Some(&mcp_popover_root));
 
-    let prompt_section = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    let prompt_section = gtk::Box::new(gtk::Orientation::Vertical, 8);
     prompt_section.add_css_class("profile-settings-section");
     prompt_section.add_css_class("automatisation-settings-card");
     let prompt_header = gtk::Box::new(gtk::Orientation::Vertical, 2);
     let prompt_header_title = gtk::Label::new(Some("Prompt"));
     prompt_header_title.add_css_class("profile-section-title");
     prompt_header_title.set_xalign(0.0);
-    let prompt_header_subtitle = gtk::Label::new(Some(
-        "Define the job clearly. This uses the same editor treatment as Enzim Agent prompts.",
-    ));
+    let prompt_header_subtitle = gtk::Label::new(Some("Define the job clearly."));
     prompt_header_subtitle.add_css_class("dim-label");
     prompt_header_subtitle.set_wrap(true);
     prompt_header_subtitle.set_wrap_mode(gtk::pango::WrapMode::WordChar);
